@@ -1,4 +1,7 @@
 import csv
+from io import StringIO
+
+import hyperon
 
 
 def csv_to_matrix(filename, delimiter=",", quotechar='"') -> list[list[str]]:
@@ -6,6 +9,14 @@ def csv_to_matrix(filename, delimiter=",", quotechar='"') -> list[list[str]]:
         r = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
         lines = [row for row in r]
     return lines
+
+
+def matrix_to_csv_str(m: list[list[str]]) -> str:
+    si = StringIO()
+    employee_writer = csv.writer(si, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    for row in m:
+        employee_writer.writerow(row)
+    return si.getvalue()
 
 
 def csv_to_dict(filename, delimiter=",", quotechar='"') -> list[dict[str, str]]:
@@ -44,6 +55,15 @@ def csv_to_dict(filename, delimiter=",", quotechar='"') -> list[dict[str, str]]:
 # row based without header
 def matrix_to_row_based_metta(csvlist: list[list[str]]) -> str:
     return '\n'.join(['(' + str(e) + ' (' + ' '.join(['"' + elem + '"' for elem in row]) + ')' + ')' for e, row in enumerate(csvlist)])
+
+
+def matrix_from_row_based_metta(mettastr: str) -> list[list[str]]:
+    """Assume all atoms have the structure (rownr (string per column))"""
+    rows = mettastr.split('\n')
+    m = hyperon.MeTTa()
+    atoms = [m.parse_single(r).get_children() for r in rows]
+    atoms.sort(key=lambda x: int(x[0].get_object().value))
+    return [[c.get_object().value for c in a[1].get_children()] for a in atoms]  # currently, this only works for GroundedAtoms
 
 
 # row based with header
