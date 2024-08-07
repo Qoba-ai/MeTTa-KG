@@ -138,6 +138,22 @@ class MeTTaToCSV(unittest.TestCase):
 
         self.assertEqual(self.customers_dict, dict_from_struct_based_metta(customer_struct_metta))
 
+    def test_field_based_to_dict(self):
+        customer_field_based = parse_metta('(0 "Index" "1")\n'
+                                           '(0 "Name" "Alice Johnson")\n'
+                                           '(0 "Phone" "384.555.0192x123")\n'
+                                           '(0 "Website" "http://www.alicejservices.com/")\n'
+                                           '(1 "Index" "2")\n'
+                                           '(1 "Name" "Michael Smith")\n'
+                                           '(1 "Phone" "(512)987-6543x56789")\n'
+                                           '(1 "Website" "http://www.msmithtech.net/")\n'
+                                           '(2 "Index" "3")\n'
+                                           '(2 "Name" "Emily Davis")\n'
+                                           '(2 "Phone" "+1-310-555-6789")\n'
+                                           '(2 "Website" "http://www.emilydavisconsulting.org/")')
+
+        self.assertEqual(self.customers_dict, dict_from_field_based_metta(customer_field_based))
+
 
 if __name__ == '__main__':
     unittest.main()
