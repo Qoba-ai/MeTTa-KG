@@ -123,6 +123,13 @@ def dict_to_struct_based_metta(dictlist: list[dict[str, str]]) -> str:
     return '\n'.join(['(' + ' '.join([f'("{key}" "{value}")' for key, value in d.items()]) + ')' for d in dictlist])
 
 
+def dict_from_struct_based_metta(metta: hyperon.MeTTa) -> list[dict[str, str]]:
+    kb = metta.space()
+    atoms = [r for r in kb.get_atoms() if isinstance(r, hyperon.ExpressionAtom)]
+
+    return [{t.get_children()[0].get_object().value: t.get_children()[1].get_object().value for t in c.get_children()} for c in atoms]
+
+
 # field based with header
 def dict_to_field_based_metta(dictlist: list[dict[str, str]]) -> str:
     return '\n'.join(['\n'.join([f'({i} "{key}" "{value}")'
