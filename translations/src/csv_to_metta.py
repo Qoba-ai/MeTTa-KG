@@ -78,13 +78,12 @@ def matrix_to_row_based_metta(csvlist: list[list[str]]) -> str:
                       enumerate(csvlist)])
 
 
-def matrix_from_row_based_metta(mettastr: str) -> list[list[str]]:
+def matrix_from_row_based_metta(m: hyperon.MeTTa) -> list[list[str]]:
     """Assume all atoms have the structure (rownr (string per column))"""
-    rows = mettastr.split('\n')
-    m = hyperon.MeTTa()
-    atoms = [m.parse_single(r).get_children() for r in rows]
-    atoms.sort(key=lambda x: int(x[0].get_object().value))
-    return [[c.get_object().value for c in a[1].get_children()] for a in
+    atoms = [a for a in m.space().get_atoms() if isinstance(a, hyperon.ExpressionAtom)]
+    print(atoms)
+    atoms.sort(key=lambda x: int(x.get_children()[0].get_object().value))
+    return [[c.get_object().value for c in a.get_children()[1].get_children()] for a in
             atoms]  # currently, this only works for GroundedAtoms
 
 
@@ -94,21 +93,7 @@ def matrix_to_header_row_based(csvlist: list[list[str]]) -> str:
         csvlist[1:])
 
 
-def matrix_from_header_row_based_(mettastr: str) -> list[list[str]]:
-    rows = mettastr.split('\n')
-    m = hyperon.MeTTa()
-    atoms = [m.parse_single(r).get_children() for r in rows]
-    header = [x for x in atoms if x[0] == hyperon.S("header")]
-    atoms.remove(header[0])
-    atoms.sort(key=lambda x: int(x[0].get_object().value))
-    return [[c.get_object().value for c in header[0][1].get_children()]] + [[c.get_object().value for c in a[1].get_children()] for a in
-                     atoms]  # currently, this only works for GroundedAtoms
-
-
-def matrix_from_header_row_based(mettastr: str) -> list[list[str]]:
-    m = parse_metta(mettastr)
-    kb = m.space()
-    m = hyperon.MeTTa(space=kb)
+def matrix_from_header_row_based(m: hyperon.MeTTa) -> list[list[str]]:
     # print('atoms', kb.get_atoms())
     header = m.run('!(match &self (header $pattern) (header $pattern))')[0][0]
     atoms = m.run('!(match &self ($nr $pattern) ($nr $pattern))')[0]
