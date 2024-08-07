@@ -39,11 +39,11 @@ def dict_to_csv(datadict: list[dict[str, str]]) -> str:
 def parse_metta(mettastr: str, kb: hyperon.SpaceRef = None) -> hyperon.MeTTa:
     if not kb:
         kb = hyperon.SpaceRef(hyperon.GroundingSpace())
-    m = hyperon.MeTTa(space=kb)
+    metta = hyperon.MeTTa(space=kb)
 
-    atoms: list[hyperon.ExpressionAtom] = m.parse_all(mettastr)
+    atoms: list[hyperon.ExpressionAtom] = metta.parse_all(mettastr)
     [kb.add_atom(a) for a in atoms]
-    return m
+    return metta
 
 
 # Index, Customer Id, First Name
@@ -120,3 +120,20 @@ def dict_to_field_based_metta(dictlist: list[dict[str, str]]) -> str:
     return '\n'.join(['\n'.join([f'({i} "{key}" "{value}")'
                                  for key, value in d.items()])
                       for i, d in enumerate(dictlist)])
+
+
+def dict_from_field_based_metta(metta: hyperon.MeTTa) -> list[dict[str, str]]:
+    atoms = [r for r in metta.space().get_atoms() if isinstance(r, hyperon.ExpressionAtom)]
+    n_rows = max([a.get_children()[0].get_object().value for a in atoms]) + 1
+
+    atom_dict = [dict() for _ in range(n_rows)]
+    for a in atoms:
+        cs = a.get_children()
+        row_nr = cs[0].get_object().value
+        label = cs[1].get_object().value
+        value = cs[2].get_object().value
+
+        atom_dict[row_nr][label] = value
+
+    return atom_dict
+
