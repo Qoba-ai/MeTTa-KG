@@ -96,10 +96,6 @@ class MeTTaToCSV(unittest.TestCase):
                   ["1", "Alice Johnson", "384.555.0192x123", "http://www.alicejservices.com/"],
                   ["2", "Michael Smith", "(512)987-6543x56789", "http://www.msmithtech.net/"],
                   ["3", "Emily Davis", "+1-310-555-6789", "http://www.emilydavisconsulting.org/"]]
-        self.customer_metta = parse_metta(
-            '(("Index" "1") ("Name" "Alice Johnson") ("Phone" "384.555.0192x123") ("Website" "http://www.alicejservices.com/"))\n'
-            '(("Index" "2") ("Name" "Michael Smith") ("Phone" "(512)987-6543x56789") ("Website" "http://www.msmithtech.net/"))\n'
-            '(("Index" "3") ("Name" "Emily Davis") ("Phone" "+1-310-555-6789") ("Website" "http://www.emilydavisconsulting.org/"))')
         self.customers_dict = [{'Index': '1', 'Name': 'Alice Johnson', 'Phone': '384.555.0192x123',
                                 'Website': 'http://www.alicejservices.com/'},
                                {'Index': '2', 'Name': 'Michael Smith', 'Phone': '(512)987-6543x56789',
@@ -117,21 +113,30 @@ class MeTTaToCSV(unittest.TestCase):
                          )
 
     def test_row_based_to_matrix(self):
+        customer_row_metta = parse_metta('(0 ("Index" "Name" "Phone" "Website"))\n'
+                         '(1 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n'
+                         '(2 ("2" "Michael Smith" "(512)987-6543x56789" "http://www.msmithtech.net/"))\n'
+                         '(3 ("3" "Emily Davis" "+1-310-555-6789" "http://www.emilydavisconsulting.org/"))')
+
         self.assertEqual(self.customer_matrix,
-                         matrix_from_row_based_metta('(0 ("Index" "Name" "Phone" "Website"))\n'
-                                                     '(1 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n'
-                                                     '(2 ("2" "Michael Smith" "(512)987-6543x56789" "http://www.msmithtech.net/"))\n'
-                                                     '(3 ("3" "Emily Davis" "+1-310-555-6789" "http://www.emilydavisconsulting.org/"))'))
+                         matrix_from_row_based_metta(customer_row_metta))
 
     def test_header_row_based_to_matrix(self):
+        customer_header_row_metta = parse_metta('(header ("Index" "Name" "Phone" "Website"))\n'
+                         '(0 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n'
+                         '(1 ("2" "Michael Smith" "(512)987-6543x56789" "http://www.msmithtech.net/"))\n'
+                         '(2 ("3" "Emily Davis" "+1-310-555-6789" "http://www.emilydavisconsulting.org/"))')
+
         self.assertEqual(self.customer_matrix,
-                         matrix_from_header_row_based('(header ("Index" "Name" "Phone" "Website"))\n'
-                                                      '(0 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n'
-                                                      '(1 ("2" "Michael Smith" "(512)987-6543x56789" "http://www.msmithtech.net/"))\n'
-                                                      '(2 ("3" "Emily Davis" "+1-310-555-6789" "http://www.emilydavisconsulting.org/"))'))
+                         matrix_from_header_row_based(customer_header_row_metta))
 
     def test_struct_based_to_dict(self):
-        self.assertEqual(self.customers_dict, dict_from_struct_based_metta(self.customer_metta))
+        customer_struct_metta = parse_metta(
+            '(("Index" "1") ("Name" "Alice Johnson") ("Phone" "384.555.0192x123") ("Website" "http://www.alicejservices.com/"))\n'
+            '(("Index" "2") ("Name" "Michael Smith") ("Phone" "(512)987-6543x56789") ("Website" "http://www.msmithtech.net/"))\n'
+            '(("Index" "3") ("Name" "Emily Davis") ("Phone" "+1-310-555-6789") ("Website" "http://www.emilydavisconsulting.org/"))')
+
+        self.assertEqual(self.customers_dict, dict_from_struct_based_metta(customer_struct_metta))
 
 
 if __name__ == '__main__':
