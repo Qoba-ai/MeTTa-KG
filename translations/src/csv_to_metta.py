@@ -26,6 +26,16 @@ def csv_to_dict(filename, delimiter=",", quotechar='"') -> list[dict[str, str]]:
     return lines
 
 
+def parse_metta(mettastr: str, kb: hyperon.SpaceRef = None) -> hyperon.MeTTa:
+    if not kb:
+        kb = hyperon.SpaceRef(hyperon.GroundingSpace())
+    m = hyperon.MeTTa(space=kb)
+
+    atoms: list[hyperon.ExpressionAtom] = m.parse_all(mettastr)
+    [kb.add_atom(a) for a in atoms]
+    return m
+
+
 # Index, Customer Id, First Name
 # 1, DD37Cf93aecA6Dc, Sheryl
 # 2, 1Ef7b82A4CAAD10, Preston
@@ -54,7 +64,8 @@ def csv_to_dict(filename, delimiter=",", quotechar='"') -> list[dict[str, str]]:
 
 # row based without header
 def matrix_to_row_based_metta(csvlist: list[list[str]]) -> str:
-    return '\n'.join(['(' + str(e) + ' (' + ' '.join(['"' + elem + '"' for elem in row]) + ')' + ')' for e, row in enumerate(csvlist)])
+    return '\n'.join(['(' + str(e) + ' (' + ' '.join(['"' + elem + '"' for elem in row]) + ')' + ')' for e, row in
+                      enumerate(csvlist)])
 
 
 def matrix_from_row_based_metta(mettastr: str) -> list[list[str]]:
@@ -63,12 +74,38 @@ def matrix_from_row_based_metta(mettastr: str) -> list[list[str]]:
     m = hyperon.MeTTa()
     atoms = [m.parse_single(r).get_children() for r in rows]
     atoms.sort(key=lambda x: int(x[0].get_object().value))
-    return [[c.get_object().value for c in a[1].get_children()] for a in atoms]  # currently, this only works for GroundedAtoms
+    return [[c.get_object().value for c in a[1].get_children()] for a in
+            atoms]  # currently, this only works for GroundedAtoms
 
 
 # row based with header
 def matrix_to_header_row_based(csvlist: list[list[str]]) -> str:
-    return '(' + 'header ' + '(' + ' '.join([f'"{t}"' for t in csvlist[0]]) + '))\n' + matrix_to_row_based_metta(csvlist[1:])
+    return '(' + 'header ' + '(' + ' '.join([f'"{t}"' for t in csvlist[0]]) + '))\n' + matrix_to_row_based_metta(
+        csvlist[1:])
+
+
+def matrix_from_header_row_based_(mettastr: str) -> list[list[str]]:
+    rows = mettastr.split('\n')
+    m = hyperon.MeTTa()
+    atoms = [m.parse_single(r).get_children() for r in rows]
+    header = [x for x in atoms if x[0] == hyperon.S("header")]
+    atoms.remove(header[0])
+    atoms.sort(key=lambda x: int(x[0].get_object().value))
+    return [[c.get_object().value for c in header[0][1].get_children()]] + [[c.get_object().value for c in a[1].get_children()] for a in
+                     atoms]  # currently, this only works for GroundedAtoms
+
+
+def matrix_from_header_row_based(mettastr: str) -> list[list[str]]:
+    m = parse_metta(mettastr)
+    kb = m.space()
+    m = hyperon.MeTTa(space=kb)
+    # print('atoms', kb.get_atoms())
+    header = m.run('!(match &self (header $pattern) (header $pattern))')[0][0]
+    atoms = m.run('!(match &self ($nr $pattern) ($nr $pattern))')[0]
+    atoms.remove(header)
+    atoms.sort(key=lambda x: int(x.get_children()[0].get_object().value))
+    return [[c.get_object().value for c in header.get_children()[1].get_children()]] + [[c.get_object().value for c in a.get_children()[1].get_children()] for a in
+                     atoms]  # currently, this only works for GroundedAtoms
 
 
 # struct based with header

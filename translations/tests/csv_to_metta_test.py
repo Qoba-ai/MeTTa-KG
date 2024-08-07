@@ -1,5 +1,7 @@
 import unittest
 
+import hyperon
+
 from translations.src.csv_to_metta import *
 
 
@@ -60,42 +62,50 @@ class CSVToMetta(unittest.TestCase):
                          dict_to_field_based_metta(self.d))
 
 
-class MeTTaToCSV(unittest.TestCase):
-    def test_matrix_to_csv(self):
-        s1 = ("Index,Name,Phone,Website\n"
-             "1,Alice Johnson,384.555.0192x123,http://www.alicejservices.com/\n"
-             "2,Michael Smith,(512)987-6543x56789,http://www.msmithtech.net/\n"
-             "3,Emily Davis,+1-310-555-6789,http://www.emilydavisconsulting.org/\n")
-        s2 = matrix_to_csv_str([["Index", "Name", "Phone", "Website"],
-                                            ["1", "Alice Johnson", "384.555.0192x123",
-                                             "http://www.alicejservices.com/"],
-                                            ["2", "Michael Smith", "(512)987-6543x56789", "http://www.msmithtech.net/"],
-                                            ["3", "Emily Davis", "+1-310-555-6789",
-                                             "http://www.emilydavisconsulting.org/"]])
+class ParseMeTTa(unittest.TestCase):
+    def test_parse_metta(self):
+        kb = hyperon.SpaceRef(hyperon.GroundingSpace())
+        m = hyperon.MeTTa(space=kb)
+        kb.add_atom(hyperon.E(hyperon.S("0"), hyperon.E(hyperon.S('"Index"'), hyperon.S('"Name"'), hyperon.S('"Phone"'),
+                                                        hyperon.S('"Website"'))))
+        kb.add_atom(hyperon.E(hyperon.S("1"),
+                              hyperon.E(hyperon.S('"1"'), hyperon.S('"Alice Johnson"'), hyperon.S('"384.555.0192x123"'),
+                                        hyperon.S('"http://www.alicejservices.com/"'))))
 
+        # TODO better way of comparing
+        self.assertEqual([str(a) for a in parse_metta('(0 ("Index" "Name" "Phone" "Website"))\n'
+                                                           '(1 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n').space().get_atoms()],
+                         [str(a) for a in kb.get_atoms()])
+
+
+class MeTTaToCSV(unittest.TestCase):
+    def setUp(self):
+        self.m = [["Index", "Name", "Phone", "Website"],
+                  ["1", "Alice Johnson", "384.555.0192x123", "http://www.alicejservices.com/"],
+                  ["2", "Michael Smith", "(512)987-6543x56789", "http://www.msmithtech.net/"],
+                  ["3", "Emily Davis", "+1-310-555-6789", "http://www.emilydavisconsulting.org/"]]
+
+    def test_matrix_to_csv(self):
         self.assertEqual("Index,Name,Phone,Website\r\n"
                          "1,Alice Johnson,384.555.0192x123,http://www.alicejservices.com/\r\n"
                          "2,Michael Smith,(512)987-6543x56789,http://www.msmithtech.net/\r\n"
                          "3,Emily Davis,+1-310-555-6789,http://www.emilydavisconsulting.org/\r\n",
-                         matrix_to_csv_str([["Index", "Name", "Phone", "Website"],
-                                            ["1", "Alice Johnson", "384.555.0192x123",
-                                             "http://www.alicejservices.com/"],
-                                            ["2", "Michael Smith", "(512)987-6543x56789", "http://www.msmithtech.net/"],
-                                            ["3", "Emily Davis", "+1-310-555-6789",
-                                             "http://www.emilydavisconsulting.org/"]])
+                         matrix_to_csv_str(self.m)
                          )
 
     def test_row_based_to_matrix(self):
-        self.assertEqual(["test"], ['test'])
-        self.assertEqual([["Index", "Name", "Phone", "Website"],
-                          ["1", "Alice Johnson", "384.555.0192x123", "http://www.alicejservices.com/"],
-                          ["2", "Michael Smith", "(512)987-6543x56789", "http://www.msmithtech.net/"],
-                          ["3", "Emily Davis", "+1-310-555-6789", "http://www.emilydavisconsulting.org/"]],
+        self.assertEqual(self.m,
                          matrix_from_row_based_metta('(0 ("Index" "Name" "Phone" "Website"))\n'
                                                      '(1 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n'
                                                      '(2 ("2" "Michael Smith" "(512)987-6543x56789" "http://www.msmithtech.net/"))\n'
                                                      '(3 ("3" "Emily Davis" "+1-310-555-6789" "http://www.emilydavisconsulting.org/"))'))
 
+    def test_header_row_based_to_matrix(self):
+        self.assertEqual(self.m,
+                         matrix_from_header_row_based('(header ("Index" "Name" "Phone" "Website"))\n'
+                                                     '(0 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n'
+                                                     '(1 ("2" "Michael Smith" "(512)987-6543x56789" "http://www.msmithtech.net/"))\n'
+                                                     '(2 ("3" "Emily Davis" "+1-310-555-6789" "http://www.emilydavisconsulting.org/"))'))
 
 if __name__ == '__main__':
     unittest.main()
