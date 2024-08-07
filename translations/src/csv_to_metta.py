@@ -26,6 +26,16 @@ def csv_to_dict(filename, delimiter=",", quotechar='"') -> list[dict[str, str]]:
     return lines
 
 
+def dict_to_csv(datadict: list[dict[str, str]]) -> str:
+    si = StringIO()
+    # !!! fieldnames here don't have a particular order (yet)
+    writer = csv.DictWriter(si, fieldnames=datadict[0].keys(), delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    writer.writeheader()
+    writer.writerows(datadict)
+
+    return si.getvalue()
+
+
 def parse_metta(mettastr: str, kb: hyperon.SpaceRef = None) -> hyperon.MeTTa:
     if not kb:
         kb = hyperon.SpaceRef(hyperon.GroundingSpace())

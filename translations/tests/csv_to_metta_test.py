@@ -6,18 +6,32 @@ from translations.src.csv_to_metta import *
 
 
 class ReadCSV(unittest.TestCase):
+    def setUp(self):
+        self.customers_csv = ('Index,Name,Phone,Website\r\n'
+                              '1,Alice Johnson,384.555.0192x123,http://www.alicejservices.com/\r\n'
+                              '2,Michael Smith,(512)987-6543x56789,http://www.msmithtech.net/\r\n'
+                              '3,Emily Davis,+1-310-555-6789,http://www.emilydavisconsulting.org/\r\n')
+        self.customers_matrix = [['Index', 'Name', 'Phone', 'Website'],
+                                 ['1', 'Alice Johnson', '384.555.0192x123', 'http://www.alicejservices.com/'],
+                                 ['2', 'Michael Smith', '(512)987-6543x56789', 'http://www.msmithtech.net/'],
+                                 ['3', 'Emily Davis', '+1-310-555-6789', 'http://www.emilydavisconsulting.org/']]
+        self.customers_dict = [{'Index': '1', 'Name': 'Alice Johnson', 'Phone': '384.555.0192x123',
+                                'Website': 'http://www.alicejservices.com/'},
+                               {'Index': '2', 'Name': 'Michael Smith', 'Phone': '(512)987-6543x56789',
+                                'Website': 'http://www.msmithtech.net/'},
+                               {'Index': '3', 'Name': 'Emily Davis', 'Phone': '+1-310-555-6789',
+                                'Website': 'http://www.emilydavisconsulting.org/'}]
+
     def test_to_matrix(self):
-        self.assertEqual([['Index', 'Name', 'Phone', 'Website'],
-                          ['1', 'Alice Johnson', '384.555.0192x123', 'http://www.alicejservices.com/'],
-                          ['2', 'Michael Smith', '(512)987-6543x56789', 'http://www.msmithtech.net/'],
-                          ['3', 'Emily Davis', '+1-310-555-6789', 'http://www.emilydavisconsulting.org/']],
+        self.assertEqual(self.customers_matrix,
                          csv_to_matrix("customers-3.csv"))
 
     def test_to_dict(self):
-        self.assertEqual([{'Index': '1', 'Name': 'Alice Johnson', 'Phone': '384.555.0192x123', 'Website': 'http://www.alicejservices.com/'},
-                          {'Index': '2', 'Name': 'Michael Smith', 'Phone': '(512)987-6543x56789', 'Website': 'http://www.msmithtech.net/'},
-                          {'Index': '3', 'Name': 'Emily Davis', 'Phone': '+1-310-555-6789', 'Website': 'http://www.emilydavisconsulting.org/'}],
+        self.assertEqual(self.customers_dict,
                          csv_to_dict("customers-3.csv"))
+
+    def test_from_dict(self):
+        self.assertEqual(self.customers_csv, dict_to_csv(self.customers_dict))
 
 
 class CSVToMetta(unittest.TestCase):
@@ -74,7 +88,7 @@ class ParseMeTTa(unittest.TestCase):
 
         # TODO better way of comparing
         self.assertEqual([str(a) for a in parse_metta('(0 ("Index" "Name" "Phone" "Website"))\n'
-                                                           '(1 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n').space().get_atoms()],
+                                                      '(1 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n').space().get_atoms()],
                          [str(a) for a in kb.get_atoms()])
 
 
@@ -103,9 +117,10 @@ class MeTTaToCSV(unittest.TestCase):
     def test_header_row_based_to_matrix(self):
         self.assertEqual(self.m,
                          matrix_from_header_row_based('(header ("Index" "Name" "Phone" "Website"))\n'
-                                                     '(0 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n'
-                                                     '(1 ("2" "Michael Smith" "(512)987-6543x56789" "http://www.msmithtech.net/"))\n'
-                                                     '(2 ("3" "Emily Davis" "+1-310-555-6789" "http://www.emilydavisconsulting.org/"))'))
+                                                      '(0 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n'
+                                                      '(1 ("2" "Michael Smith" "(512)987-6543x56789" "http://www.msmithtech.net/"))\n'
+                                                      '(2 ("3" "Emily Davis" "+1-310-555-6789" "http://www.emilydavisconsulting.org/"))'))
+
 
 if __name__ == '__main__':
     unittest.main()
