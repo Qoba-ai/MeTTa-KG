@@ -81,7 +81,6 @@ def matrix_to_row_based_metta(csvlist: list[list[str]]) -> str:
 def matrix_from_row_based_metta(m: hyperon.MeTTa) -> list[list[str]]:
     """Assume all atoms have the structure (rownr (string per column))"""
     atoms = [a for a in m.space().get_atoms() if isinstance(a, hyperon.ExpressionAtom)]
-    print(atoms)
     atoms.sort(key=lambda x: int(x.get_children()[0].get_object().value))
     return [[c.get_object().value for c in a.get_children()[1].get_children()] for a in
             atoms]  # currently, this only works for GroundedAtoms
