@@ -9,7 +9,11 @@ mod schema;
 fn rocket() -> Rocket<Build> {
     rocket::build().mount(
         "/",
-        routes![routes::namespaces::get_all, routes::namespaces::create],
+        routes![
+            routes::namespaces::get_all,
+            routes::namespaces::create,
+            routes::sessions::create
+        ],
     )
 }
 

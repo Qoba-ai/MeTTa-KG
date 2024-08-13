@@ -14,6 +14,7 @@ use sha2::Sha256;
 use std::collections::BTreeMap;
 
 pub mod namespaces;
+pub mod sessions;
 pub mod tokens;
 
 #[derive(Serialize, Deserialize)]
