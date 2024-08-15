@@ -13,3 +13,4 @@ dotenv = "0.15.0"
 jwt = "0.16.0"
 hmac = "0.12.1"
 sha2 = "0.10.8"
+uuid = { version = "1.10.0", features = ["v4"] }

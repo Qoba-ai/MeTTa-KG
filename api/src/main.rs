@@ -12,8 +12,8 @@ fn rocket() -> Rocket<Build> {
         routes![
             routes::namespaces::get_all,
             routes::namespaces::create,
-            routes::sessions::create
+            routes::sessions::create,
+            routes::translations::create
         ],
     )
 }
-
