@@ -5,7 +5,6 @@ import numpy as np
 from io import StringIO
 
 
-
 def csv_to_matrix(filename, delimiter=",", quotechar='"') -> list[list[str]]:
     with open(filename, mode="r") as f:
         r = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
@@ -78,12 +77,12 @@ def parse_metta(mettastr: str, kb: hyperon.SpaceRef = None) -> hyperon.MeTTa:
 # (2 "First Name" "Preston")
 
 # => Function based
-# (= ("Index" 0) "1")
-# (= ("Index" 1) "2")
-# (= ("Customer Id" 0) "DD37Cf93aecA6Dc")
-# (= ("Customer Id" 1) "1Ef7b82A4CAAD10")
-# (= ("First Name" 0) "Sheryl")
-# (= ("First Name" 1) "Preston")
+# (= (value ("Index" 0)) "1")
+# (= (value ("Index" 1)) "2")
+# (= (value ("Customer Id" 0)) "DD37Cf93aecA6Dc")
+# (= (value ("Customer Id" 1)) "1Ef7b82A4CAAD10")
+# (= (value ("First Name" 0)) "Sheryl")
+# (= (value ("First Name" 1)) "Preston")
 
 
 # row based without header
@@ -159,3 +158,15 @@ def dict_from_field_based_metta(metta: hyperon.MeTTa) -> list[dict[str, str]]:
 
     return atom_dict
 
+
+def dict_to_function_metta(dictlist: list[dict[str, str]]) -> str:
+    return '\n'.join([f'(= (value ("{key}" {rownr})) "{value}")' for rownr, d in enumerate(dictlist) for key, value in d.items()])
+
+
+def dict_from_function_metta(metta: hyperon.MeTTa) -> list[dict[str, str]]:
+    atoms = [r for r in metta.space().get_atoms() if isinstance(r, hyperon.ExpressionAtom)]
+    n_rows = max([a.get_children()[1].get_children()[1].get_children()[1].get_object().value for a in atoms]) + 1
+
+    keys = metta.run(f'!(match &self (= (value ($k 1)) $v) $k)')[0]
+
+    return [{k.get_object().value: metta.run(f'!(value ({k} {n}))')[0][0] for k in keys} for n in range(n_rows)]
