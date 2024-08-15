@@ -15,3 +15,8 @@ Cargo.lock
 
 .env
 db.sqlite3
+
+temp/
+
+venv/
+__pycache__/
