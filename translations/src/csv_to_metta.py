@@ -1,7 +1,9 @@
 import csv
+import hyperon
+import numpy as np
+
 from io import StringIO
 
-import hyperon
 
 
 def csv_to_matrix(filename, delimiter=",", quotechar='"') -> list[list[str]]:
@@ -28,7 +30,6 @@ def csv_to_dict(filename, delimiter=",", quotechar='"') -> list[dict[str, str]]:
 
 def dict_to_csv(datadict: list[dict[str, str]]) -> str:
     si = StringIO()
-    # !!! fieldnames here don't have a particular order (yet)
     writer = csv.DictWriter(si, fieldnames=datadict[0].keys(), delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
     writer.writeheader()
     writer.writerows(datadict)
@@ -60,6 +61,11 @@ def parse_metta(mettastr: str, kb: hyperon.SpaceRef = None) -> hyperon.MeTTa:
 # (0 (1 DD37Cf93aecA6Dc Sheryl))
 # (1 (2 1Ef7b82A4CAAD10 Preston))
 
+# => column based
+# (0 ("Index" 1 2))
+# (1 ("Customer Id" DD37Cf93aecA6Dc 1Ef7b82A4CAAD10))
+# (2 ("First Name" Sheryl Preston))
+
 # => (struct based, with header)
 # ((Index 1) ("Customer Id" DD37Cf93aecA6Dc) (...))
 
@@ -70,6 +76,14 @@ def parse_metta(mettastr: str, kb: hyperon.SpaceRef = None) -> hyperon.MeTTa:
 # (2 "Index" "2")
 # (2 "Customer Id" "1Ef7b82A4CAAD10")
 # (2 "First Name" "Preston")
+
+# => Function based
+# (= ("Index" 0) "1")
+# (= ("Index" 1) "2")
+# (= ("Customer Id" 0) "DD37Cf93aecA6Dc")
+# (= ("Customer Id" 1) "1Ef7b82A4CAAD10")
+# (= ("First Name" 0) "Sheryl")
+# (= ("First Name" 1) "Preston")
 
 
 # row based without header
@@ -100,6 +114,15 @@ def matrix_from_header_row_based(m: hyperon.MeTTa) -> list[list[str]]:
     atoms.sort(key=lambda x: int(x.get_children()[0].get_object().value))
     return [[c.get_object().value for c in header.get_children()[1].get_children()]] + [[c.get_object().value for c in a.get_children()[1].get_children()] for a in
                      atoms]  # currently, this only works for GroundedAtoms
+
+
+# column based
+def matrix_to_column_based_metta(csvmatrix: list[list[str]]) -> str:
+    return matrix_to_row_based_metta([list(a) for a in np.transpose(csvmatrix)])
+
+
+def matrix_from_column_based_metta(metta: hyperon.MeTTa) -> list[list[str, str]]:
+    return [list(a) for a in np.transpose(matrix_from_row_based_metta(metta))]
 
 
 # struct based with header
