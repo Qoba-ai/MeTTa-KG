@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 pub mod namespaces;
 pub mod sessions;
 pub mod tokens;
+pub mod translations;
 
 #[derive(Serialize, Deserialize)]
 pub struct TokenClaims {
@@ -57,12 +58,13 @@ impl<'r> FromRequest<'r> for TokenClaims {
 
         let claims: BTreeMap<String, String> = match token.verify_with_key(&key) {
             Ok(claims) => claims,
-            Err(_) => {
-                return request::Outcome::Error((Status::Unauthorized, Self::Error::InvalidToken))
+            Err(er) => {
+                println!("{}", er);
+                return request::Outcome::Error((Status::Unauthorized, Self::Error::InvalidToken));
             }
         };
 
-        let user_id = match claims.get("user_id").and_then(|id| id.parse::<i32>().ok()) {
+        let user_id = match claims.get("id").and_then(|id| id.parse::<i32>().ok()) {
             Some(user_id) => user_id,
             None => {
                 return request::Outcome::Error((Status::Unauthorized, Self::Error::InvalidToken))
