@@ -8,7 +8,7 @@ use super::TokenClaims;
 use crate::{db::establish_connection, model::Namespace};
 
 #[get("/namespaces")]
-pub fn get_all() -> (Status, Option<Json<Vec<Namespace>>>) {
+pub fn get_all() -> Result<Json<Vec<Namespace>>, Status> {
     use crate::schema::namespaces::dsl::*;
 
     let conn = &mut establish_connection();
@@ -16,8 +16,8 @@ pub fn get_all() -> (Status, Option<Json<Vec<Namespace>>>) {
     let results = namespaces.select(Namespace::as_select()).get_results(conn);
 
     match results {
-        Ok(results) => (Status::Ok, Some(Json(results))),
-        Err(_) => (Status::InternalServerError, None),
+        Ok(results) => Ok(Json(results)),
+        Err(e) => return Err(Status::InternalServerError),
     }
 }
 
