@@ -14,4 +14,6 @@ RUN cargo install --path ./api/
 
 EXPOSE 8000
 
+RUN mkdir /usr/src/mettakg/temp
+
 CMD ["api"]
