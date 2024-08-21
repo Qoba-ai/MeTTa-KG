@@ -1,3 +1,9 @@
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY NOT NULL,
+    username VARCHAR NOT NULL,
+    email VARCHAR NOT NULL
+);
+
 CREATE TABLE namespaces (
     id INTEGER PRIMARY KEY NOT NULL,
     name VARCHAR NOT NULL,
@@ -12,8 +18,3 @@ CREATE TABLE tokens (
     namespace_id INTEGER NOT NULL REFERENCES namespaces(id)
 );
 
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY NOT NULL,
-    username VARCHAR NOT NULL,
-    email VARCHAR NOT NULL
-);
