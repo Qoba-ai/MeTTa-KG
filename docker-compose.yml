@@ -1,0 +1,23 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql://admin:password@db/mettakg"
+      SECRET: "secret"
+  db: 
+    image: "postgres"
+    restart: always
+    ports: 
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: "admin"
+      POSTGRES_PASSWORD: "password"
+      POSTGRES_DB: "mettakg"
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+
