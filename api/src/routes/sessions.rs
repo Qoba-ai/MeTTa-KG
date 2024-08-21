@@ -11,7 +11,7 @@ use std::env;
 use crate::{db::establish_connection, model::User};
 
 #[post("/sessions", data = "<user>")]
-pub fn create(user: Json<User>) -> (Status, Option<String>) {
+pub fn create(user: Json<User>) -> Result<String, Status> {
     use crate::schema::users::dsl::*;
 
     let conn = &mut establish_connection();
@@ -23,17 +23,17 @@ pub fn create(user: Json<User>) -> (Status, Option<String>) {
 
     let user = match result {
         Ok(user) => user,
-        Err(_) => return (Status::Unauthorized, None),
+        Err(_) => return Err(Status::Unauthorized),
     };
 
     let secret = match env::var("SECRET") {
         Ok(secret) => secret,
-        Err(_) => return (Status::InternalServerError, None),
+        Err(_) => return Err(Status::InternalServerError),
     };
 
     let key: Hmac<Sha256> = match Hmac::new_from_slice(secret.as_bytes()) {
         Ok(key) => key,
-        Err(_) => return (Status::InternalServerError, None),
+        Err(_) => return Err(Status::InternalServerError),
     };
 
     let mut claims = BTreeMap::new();
@@ -45,7 +45,7 @@ pub fn create(user: Json<User>) -> (Status, Option<String>) {
     let token = claims.sign_with_key(&key);
 
     match token {
-        Ok(token) => (Status::Ok, Some(token)),
-        Err(_) => (Status::InternalServerError, None),
+        Ok(token) => Ok(token),
+        Err(_) => Err(Status::InternalServerError),
     }
 }

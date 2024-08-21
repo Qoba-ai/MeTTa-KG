@@ -15,7 +15,7 @@ pub async fn create(
     claims: TokenClaims,
     file_type: String,
     mut file: TempFile<'_>,
-) -> (Status, Option<Json<String>>) {
+) -> Result<Json<String>, Status> {
     let id = Uuid::new_v4();
 
     let path = format!("./temp/translations-{}-{}", claims.user_id, id);
@@ -38,14 +38,14 @@ pub async fn create(
     match output {
         Ok(_) => (),
         Err(_) => {
-            return (Status::InternalServerError, None);
+            return Err(Status::InternalServerError);
         }
     };
 
     let contents = fs::read_to_string(format!("{}-output.metta", path));
 
     match contents {
-        Ok(contents) => (Status::Ok, Some(Json(contents))),
-        Err(_) => (Status::InternalServerError, None),
+        Ok(contents) => Ok(Json(contents)),
+        Err(_) => Err(Status::InternalServerError),
     }
 }
