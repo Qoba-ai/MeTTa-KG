@@ -2,27 +2,27 @@
 
 diesel::table! {
     namespaces (id) {
-        id -> Integer,
-        name -> Text,
-        user_id -> Integer,
+        id -> Int4,
+        name -> Varchar,
+        user_id -> Int4,
     }
 }
 
 diesel::table! {
     tokens (id) {
-        id -> Integer,
-        code -> Text,
-        description -> Text,
-        user_id -> Integer,
-        namespace_id -> Integer,
+        id -> Int4,
+        code -> Varchar,
+        description -> Varchar,
+        user_id -> Int4,
+        namespace_id -> Int4,
     }
 }
 
 diesel::table! {
     users (id) {
-        id -> Integer,
-        username -> Text,
-        email -> Text,
+        id -> Int4,
+        username -> Varchar,
+        email -> Varchar,
     }
 }
 

@@ -17,7 +17,10 @@ pub fn get_all() -> Result<Json<Vec<Namespace>>, Status> {
 
     match results {
         Ok(results) => Ok(Json(results)),
-        Err(e) => return Err(Status::InternalServerError),
+        Err(err) => {
+            eprintln!("ERROR: {}", err);
+            return Err(Status::InternalServerError);
+        }
     }
 }
 
