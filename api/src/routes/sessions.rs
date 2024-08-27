@@ -11,7 +11,7 @@ use std::env;
 use crate::{db::establish_connection, model::User};
 
 #[post("/sessions", data = "<user>")]
-pub fn create(user: Json<User>) -> Result<String, Status> {
+pub fn create(user: Json<User>) -> Result<Json<String>, Status> {
     use crate::schema::users::dsl::*;
 
     let conn = &mut establish_connection();
@@ -45,7 +45,7 @@ pub fn create(user: Json<User>) -> Result<String, Status> {
     let token = claims.sign_with_key(&key);
 
     match token {
-        Ok(token) => Ok(token),
+        Ok(token) => Ok(Json(token)),
         Err(_) => Err(Status::InternalServerError),
     }
 }
