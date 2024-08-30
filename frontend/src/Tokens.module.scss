@@ -1,0 +1,140 @@
+@import "Common.module";
+
+.RootTokenFormWrapper,
+.NewTokenFormWrapper {
+  color: white;
+  margin: 0px 32px 100px 32px;
+  background-color: #1a2e32;
+  padding: 8px 16px 16px 16px;
+  border-radius: 8px;
+  box-shadow: 0px 2px 4px -1px rgba(0, 0, 0, 0.2),
+    0px 4px 5px 0px rgba(0, 0, 0, 0.14), 0px 1px 10px 0px rgba(0, 0, 0, 0.12);
+}
+
+.RootTokenFormWrapper > h1 {
+  text-align: center;
+}
+
+.NewTokenFormWrapper > h2 {
+  margin-left: 8px;
+}
+
+.RootTokenForm > *,
+.NewTokenForm > * {
+  margin: 8px;
+}
+
+.RootTokenForm {
+  display: flex;
+  flex-direction: column;
+}
+
+.TokenInput {
+  width: 300px;
+  padding: 8px;
+  border-radius: 8px;
+  flex-grow: 1;
+  text-align: center;
+}
+
+input[type=submit] {
+  background-color: rgb(179, 43, 97);
+  padding: 8px 16px;
+  color: white;
+  border: none;
+  border-radius: 4px;
+}
+
+input[type=text] {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+}
+
+.ContentWrapper {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.InnerContentWrapper {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: start;
+  gap: 64px;
+}
+
+.NewTokenFormWrapper {
+  background-color: #1a2e32;
+  padding: 4px 16px 16px 16px;
+  border-radius: 8px;
+  box-shadow: 0px 2px 4px -1px rgba(0, 0, 0, 0.2),
+    0px 4px 5px 0px rgba(0, 0, 0, 0.14), 0px 1px 10px 0px rgba(0, 0, 0, 0.12);
+}
+
+.TokenTableWrapper {
+  color: white;
+}
+
+
+.TokenTableWrapper::-webkit-scrollbar{
+  
+}
+
+.TokenTable {
+}
+
+td,
+th {
+  padding: 8px 16px;
+}
+
+.TokenTable > thead {
+  background-color: #1a2e32;
+  position: sticky;
+  top: 0;
+}
+
+.TokenTable > tbody {
+}
+
+.TokenTable > thead > tr > th:first-child {
+  border-top-left-radius: 8px;
+}
+
+.TokenTable > thead > tr > th:last-child {
+  border-top-right-radius: 8px;
+}
+
+.TokenTableNoData {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.TableButtonBar {
+  margin-top: 16px;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: row;
+  justify-content: end;
+  align-items: center;
+  background-color: #1a2e32;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.TableButtonBar > button {
+  margin: 0px 4px;
+  background-color: transparent;
+  padding: 8px 16px;
+  color: white;
+  border: solid 1px rgb(179, 43, 97);
+  border-radius: 4px;
+}
