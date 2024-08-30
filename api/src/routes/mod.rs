@@ -1,7 +1,5 @@
-use std::env;
-
-use hmac::{Hmac, Mac};
-use jwt::VerifyWithKey;
+use crate::{db::establish_connection, model::Token};
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use rocket::{
     self,
     http::Status,
@@ -10,18 +8,9 @@ use rocket::{
     Request,
 };
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
-use std::collections::BTreeMap;
 
-pub mod namespaces;
-pub mod sessions;
 pub mod tokens;
 pub mod translations;
-
-#[derive(Serialize, Deserialize)]
-pub struct TokenClaims {
-    pub user_id: i32,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum AuthError {
@@ -30,11 +19,13 @@ pub enum AuthError {
 }
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for TokenClaims {
+impl<'r> FromRequest<'r> for Token {
     type Error = AuthError;
 
     #[must_use]
-    async fn from_request(request: &'r Request<'_>) -> request::Outcome<TokenClaims, Self::Error> {
+    async fn from_request(request: &'r Request<'_>) -> request::Outcome<Token, Self::Error> {
+        use crate::schema::tokens::dsl::*;
+
         let token = match request.headers().get_one("authorization") {
             Some(token) => token,
             None => {
@@ -42,37 +33,16 @@ impl<'r> FromRequest<'r> for TokenClaims {
             }
         };
 
-        let secret = match env::var("SECRET") {
-            Ok(secret) => secret,
-            Err(_) => {
-                return request::Outcome::Error((Status::InternalServerError, Self::Error::Unknown))
-            }
-        };
+        let conn = &mut establish_connection();
 
-        let key: Hmac<Sha256> = match Hmac::new_from_slice(secret.as_bytes()) {
-            Ok(key) => key,
-            Err(_) => {
-                return request::Outcome::Error((Status::InternalServerError, Self::Error::Unknown))
-            }
-        };
+        let result = tokens
+            .select(Token::as_select())
+            .filter(code.eq(token))
+            .get_result(conn);
 
-        let claims: BTreeMap<String, String> = match token.verify_with_key(&key) {
-            Ok(claims) => claims,
-            Err(er) => {
-                println!("{}", er);
-                return request::Outcome::Error((Status::Unauthorized, Self::Error::InvalidToken));
-            }
-        };
-
-        let user_id = match claims.get("id").and_then(|id| id.parse::<i32>().ok()) {
-            Some(user_id) => user_id,
-            None => {
-                return request::Outcome::Error((Status::Unauthorized, Self::Error::InvalidToken))
-            }
-        };
-
-        let token_claims = TokenClaims { user_id };
-
-        Outcome::Success(token_claims)
+        match result {
+            Ok(claims) => Outcome::Success(claims),
+            Err(_) => Outcome::Error((Status::Unauthorized, Self::Error::Unknown)),
+        }
     }
 }
