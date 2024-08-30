@@ -6,19 +6,13 @@ use std::fs;
 use std::process::Command;
 use uuid::Uuid;
 
-use super::TokenClaims;
-
 // TODO: support formats other than csv
 
 #[post("/translations?<file_type>", format = "text/csv", data = "<file>")]
-pub async fn create(
-    claims: TokenClaims,
-    file_type: String,
-    mut file: TempFile<'_>,
-) -> Result<Json<String>, Status> {
+pub async fn create(file_type: String, mut file: TempFile<'_>) -> Result<Json<String>, Status> {
     let id = Uuid::new_v4();
 
-    let path = format!("temp/translations-{}-{}", claims.user_id, id);
+    let path = format!("temp/translations-{}", id);
 
     let path_with_extension = format!("{}.csv", path);
 
