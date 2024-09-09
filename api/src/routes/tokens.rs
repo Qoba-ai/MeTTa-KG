@@ -27,7 +27,7 @@ pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
 }
 
 #[post("/tokens", data = "<new_token>")]
-pub fn create(token: Token, new_token: Json<Token>) -> Status {
+pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Status> {
     use crate::schema::tokens::dsl::*;
     let conn = &mut establish_connection();
 
@@ -36,22 +36,22 @@ pub fn create(token: Token, new_token: Json<Token>) -> Status {
 
     if !token.permission_share_write && new_token.permission_write {
         println!("User tried to create write token without share_write permission");
-        return Status::BadRequest;
+        return Err(Status::BadRequest);
     }
 
     if !token.permission_share_read && new_token.permission_read {
         println!("User tried to create read token without share_read permission");
-        return Status::BadRequest;
+        return Err(Status::BadRequest);
     }
 
     if !new_token.namespace.starts_with(&token.namespace) {
         println!("User tried to create token for invalid namespace");
-        return Status::BadRequest;
+        return Err(Status::BadRequest);
     }
 
     if !new_token.namespace.ends_with("/") {
         println!("User tried to create token for invalid namespace (missing trailing '/')");
-        return Status::BadRequest;
+        return Err(Status::BadRequest);
     }
 
     let namespace_regex =
@@ -59,7 +59,7 @@ pub fn create(token: Token, new_token: Json<Token>) -> Status {
 
     if !namespace_regex.is_match(&new_token.namespace) {
         println!("User tried to create token for invalid namespace (invalid characters)");
-        return Status::BadRequest;
+        return Err(Status::BadRequest);
     }
 
     let token_code = Uuid::new_v4();
@@ -77,11 +77,33 @@ pub fn create(token: Token, new_token: Json<Token>) -> Status {
         parent: Some(token.id),
     };
 
-    let result = diesel::insert_into(tokens).values(&to_insert).execute(conn);
+    let result = diesel::insert_into(tokens)
+        .values(&to_insert)
+        .get_result(conn);
 
     match result {
-        Ok(_) => Status::Ok,
-        Err(_) => Status::InternalServerError,
+        Ok(token) => Ok(Json(token)),
+        Err(_) => Err(Status::InternalServerError),
+    }
+}
+
+#[delete("/tokens", data = "<token_ids>")]
+pub fn delete_batch(token: Token, token_ids: Json<Vec<i32>>) -> Result<Json<i32>, Status> {
+    use crate::schema::tokens::dsl::*;
+    let conn = &mut establish_connection();
+
+    // filtering by parent ID prevents root token from being deleted
+
+    let result = diesel::delete(
+        tokens
+            .filter(id.eq_any(token_ids.iter()))
+            .filter(parent.eq(&token.id)),
+    )
+    .execute(conn);
+
+    match result {
+        Ok(rows_affected) => Ok(Json(rows_affected as i32)),
+        Err(_) => Err(Status::NotFound),
     }
 }
 
@@ -113,6 +135,7 @@ pub fn update(token: Token, token_id: i32) -> Result<Json<Token>, Status> {
     }
 }
 
+/// delete child token
 #[delete("/tokens/<token_id>")]
 pub fn delete(token: Token, token_id: i32) -> Status {
     use crate::schema::tokens::dsl::*;

@@ -1,5 +1,5 @@
 use crate::schema::tokens;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use diesel::{Insertable, Queryable, Selectable};
 use rocket::serde::{Deserialize, Serialize};
 
