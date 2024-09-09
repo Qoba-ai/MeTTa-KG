@@ -29,6 +29,7 @@ fn rocket() -> Rocket<Build> {
                 routes::tokens::create,
                 routes::tokens::update,
                 routes::tokens::delete,
+                routes::tokens::delete_batch
             ],
         )
         .attach(cors)
