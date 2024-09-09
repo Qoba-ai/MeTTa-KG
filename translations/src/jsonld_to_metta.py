@@ -56,11 +56,26 @@ def graph_to_mettastr(graph: rdflib.Graph, context=None) -> str:
         + ('\n' + f'(context {dict_to_str(context)})' if context else '')
 
 
-def metta_to_graph(m: hyperon.MeTTa) -> rdflib.Graph:
+def metta_context_to_dict(c: hyperon.Atom) -> dict:
+    # input is one context atom, e.g. ((name http://xmlns.com/foaf/0.1/name) (homepage ((@id http://xmlns.com/foaf/0.1/workplaceHomepage) (@type @id))) (Person http://xmlns.com/foaf/0.1/Person))
+    match c:
+        case hyperon.ExpressionAtom():
+            return {child.get_children()[0].get_name(): metta_context_to_dict(child.get_children()[1]) for child in
+                    c.get_children()}
+        case hyperon.SymbolAtom():
+            return c.get_name()
+        case _:
+            raise NotImplemented
+
+
+def metta_to_graph(m: hyperon.MeTTa) -> tuple[rdflib.Graph, dict]:
     atoms = [r for r in m.space().get_atoms() if isinstance(r, hyperon.ExpressionAtom)]
-    context_full = m.run('!(match &self (context $c) (context $c))')[0][0]
-    atoms.remove(context_full)
-    context = context_full.get_children()[1]
+    context_full = m.run('!(match &self (context $c) (context $c))')[0]
+    if context_full:
+        atoms.remove(context_full[0])
+        context = context_full[0].get_children()[1]
+    else:
+        context = None
     # assert len(context) < 2
     # if len(context) == 0:
     #     context = None
@@ -89,15 +104,6 @@ def metta_to_graph(m: hyperon.MeTTa) -> rdflib.Graph:
                     case _:
                         return rdflib.term.Literal(literal_name, datatype=literal_uri)
 
-    def context_to_dict(c):
-        match c:
-            case hyperon.ExpressionAtom():
-                return {child.get_children()[0].get_name(): context_to_dict(child.get_children()[1]) for child in c.get_children()}
-            case hyperon.SymbolAtom():
-                return c.get_name()
-
-    print("context from metta", context_to_dict(context))
-
     g = rdflib.Graph()
     for a in atoms:
         subj = a.get_children()[0]
@@ -105,18 +111,5 @@ def metta_to_graph(m: hyperon.MeTTa) -> rdflib.Graph:
         obj = a.get_children()[2]
         g.add((atom_to_term(subj), atom_to_term(prop), atom_to_term(obj)))
 
-    return g
+    return g, (metta_context_to_dict(context) if context else None)
 
-
-with open("../tests/wiki_example.jsonld") as f:
-    g = jsonld_to_graph(f)
-with open("../tests/wiki_example.jsonld") as f:
-    context = json.load(f)['@context']  # context is not explicitly saved using the rdflib library
-    print("parsed context", context)
-
-ms = graph_to_mettastr(g, context)
-print("metta: ")
-print(ms)
-print()
-
-metta_to_graph(parse_metta(ms))
