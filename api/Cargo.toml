@@ -8,9 +8,12 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0.204", features = ["derive"] }
 rocket = { version = "0.5.1", features = ["json"] }
-diesel = { version = "2.2.2", features = ["sqlite"] }
+diesel = { version = "2.2.2", features = ["sqlite", "postgres", "chrono"] }
 dotenv = "0.15.0"
 jwt = "0.16.0"
 hmac = "0.12.1"
 sha2 = "0.10.8"
 uuid = { version = "1.10.0", features = ["v4"] }
+rocket_cors = "0.6.0"
+chrono = { version = "0.4.38", features = ["serde"] }
+regex = "1.10.6"

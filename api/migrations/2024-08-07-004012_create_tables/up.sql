@@ -1,19 +1,14 @@
-CREATE TABLE namespaces (
-    id INTEGER PRIMARY KEY NOT NULL,
-    name VARCHAR NOT NULL,
-    user_id INTEGER NOT NULL REFERENCES users(id)
-);
-
 CREATE TABLE tokens (
-    id INTEGER PRIMARY KEY NOT NULL,
+    id SERIAL PRIMARY KEY NOT NULL,
     code VARCHAR NOT NULL,
     description VARCHAR NOT NULL,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    namespace_id INTEGER NOT NULL REFERENCES namespaces(id)
+    namespace VARCHAR NOT NULL,
+    creation_timestamp TIMESTAMP NOT NULL,
+    permission_read BOOLEAN NOT NULL,
+    permission_write BOOLEAN NOT NULL,
+    permission_share_share BOOLEAN NOT NULL,
+    permission_share_read BOOLEAN NOT NULL,
+    permission_share_write BOOLEAN NOT NULL,
+    parent INTEGER REFERENCES tokens
 );
 
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY NOT NULL,
-    username VARCHAR NOT NULL,
-    email VARCHAR NOT NULL
-);
