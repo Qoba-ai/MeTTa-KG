@@ -1,5 +1,8 @@
 import hyperon
 import rdflib
+import json
+
+from translations.src.csv_to_metta import parse_metta
 
 
 def jsonld_to_graph(f):
@@ -9,7 +12,11 @@ def jsonld_to_graph(f):
     return g
 
 
-def graph_to_mettastr(graph: rdflib.Graph) -> str:
+def read_context(f):
+    return json.load(f)['@context']
+
+
+def graph_to_mettastr(graph: rdflib.Graph, context=None) -> str:
     """
     take an RDFlib graph and convert straight away to MeTTa strings
     method almost the same as for nt translation
@@ -37,11 +44,29 @@ def graph_to_mettastr(graph: rdflib.Graph) -> str:
             case x:
                 return f'({trans[type(x)]} {x})'
 
-    return '\n'.join(['(' + ' '.join([term_to_atom(t) for t in tup]) + ')' for tup in graph])
+    if context:
+        print("context", context)
+    def dict_to_str(d):
+        match d:
+            case dict():
+                return ', '.join([f'({dict_to_str(k)}, {dict_to_str(v)})' for k, v in d.items()])
+            case _:
+                return str(d)
+
+    return '\n'.join(['(' + ' '.join([term_to_atom(t) for t in tup]) + ')' for tup in graph]) \
+        + ('\n' + f'(context ({dict_to_str(context)}))' if context else '')
 
 
 def metta_to_graph(m: hyperon.MeTTa) -> rdflib.Graph:
     atoms = [r for r in m.space().get_atoms() if isinstance(r, hyperon.ExpressionAtom)]
+    context_full = m.run('!(match &self (context $c) (context $c))')[0][0]
+    atoms.remove(context_full)
+    print("atoms", atoms)
+    print(context_full)
+    context = context_full.get_children()[1]
+    # assert len(context) < 2
+    # if len(context) == 0:
+    #     context = None
 
     def atom_to_term(r):
         match r.get_children()[0]:
@@ -57,8 +82,6 @@ def metta_to_graph(m: hyperon.MeTTa) -> rdflib.Graph:
                 literal_type = r.get_children()[0]
                 literal_uri = literal_type.get_children()[1].get_children()[0].get_name()
                 literal_name = r.get_children()[1].get_object().value
-                string_dt = "http://www.w3.org/2001/XMLSchema#string"
-                langstring_dt = "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"
                 assert literal_type.get_children()[0].get_name() == "literal"
                 match literal_uri:
                     case "http://www.w3.org/2001/XMLSchema#string":
@@ -69,6 +92,28 @@ def metta_to_graph(m: hyperon.MeTTa) -> rdflib.Graph:
                     case _:
                         return rdflib.term.Literal(literal_name, datatype=literal_uri)
 
+    def context_to_dict(c):
+        match c:
+            case hyperon.ExpressionAtom():
+                print("exp", c)
+                print("child", c.get_children())
+                return {child.get_children()[0]: context_to_dict(child.get_children()[1]) for child in c.get_children()}
+            case hyperon.SymbolAtom():
+                return c.get_name()
+
+    def context_to_dict_(c):
+        match c:
+            case hyperon.ExpressionAtom():
+                for child in c.get_children:
+                    print("key", context_to_dict(c.get_children()[0]))
+                return {context_to_dict(c.get_children()[0]): context_to_dict(c.get_children()[1])}
+            case hyperon.SymbolAtom():
+                return c.get_name()
+            case _:
+                print(type(c))
+
+    print(context_to_dict(context))
+
     g = rdflib.Graph()
     for a in atoms:
         subj = a.get_children()[0]
@@ -78,3 +123,14 @@ def metta_to_graph(m: hyperon.MeTTa) -> rdflib.Graph:
 
     return g
 
+
+with open("../tests/wiki_example.jsonld") as f:
+    g = jsonld_to_graph(f)
+with open("../tests/wiki_example.jsonld") as f:
+    context = json.load(f)['@context']  # context is not explicitly saved using the rdflib library
+    print(context)
+
+ms = graph_to_mettastr(g, context)
+print(ms)
+
+metta_to_graph(parse_metta(ms))

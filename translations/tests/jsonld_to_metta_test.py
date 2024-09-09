@@ -3,12 +3,16 @@
 import unittest
 from translations.src.jsonld_to_metta import *
 from translations.src.csv_to_metta import parse_metta
+import json
 
 
 class TranslateJSONLD(unittest.TestCase):
     def test_JSONLD_to_graph(self):
         with open("wiki_example.jsonld") as f:
             g = jsonld_to_graph(f)
+        with open("wiki_example.jsonld") as f:
+            context = json.load(f)['@context']      # context is not explicitly saved using the rdflib library
+            print(context)
         self.assertEqual(3, len(g))
         self.assertSetEqual({(rdflib.term.URIRef('https://me.example.com'), rdflib.term.URIRef('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'), rdflib.term.URIRef('http://xmlns.com/foaf/0.1/Person')),
                              (rdflib.term.URIRef('https://me.example.com'), rdflib.term.URIRef('http://xmlns.com/foaf/0.1/name'), rdflib.term.Literal('John Smith')),
@@ -57,6 +61,15 @@ class TranslateJSONLD(unittest.TestCase):
         with open("wiki_example.jsonld") as f:
             g = jsonld_to_graph(f)
 
+        context = {
+                "name": "http://xmlns.com/foaf/0.1/name",
+                "homepage": {
+                  "@id": "http://xmlns.com/foaf/0.1/workplaceHomepage",
+                  "@type": "@id"
+                },
+                "Person": "http://xmlns.com/foaf/0.1/Person"
+              }
+
         self.assertEqual(('[\n'
                           '  {\n'
                           '    "@id": "https://me.example.com",\n'
@@ -75,7 +88,7 @@ class TranslateJSONLD(unittest.TestCase):
                           '    ]\n'
                           '  }\n'
                           ']'),
-                         g.serialize(format="json-ld"))
+                         g.serialize(format="json-ld", context=context))
 
 
 if __name__ == '__main__':
