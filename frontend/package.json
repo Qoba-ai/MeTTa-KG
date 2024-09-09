@@ -10,12 +10,16 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "sass": "^1.77.8",
     "solid-devtools": "^0.29.2",
     "typescript": "^5.3.3",
     "vite": "^5.0.11",
     "vite-plugin-solid": "^2.8.2"
   },
   "dependencies": {
-    "solid-js": "^1.8.11"
+    "@solidjs/router": "^0.14.3",
+    "solid-icons": "^1.1.0",
+    "solid-js": "^1.8.11",
+    "solid-toast": "^0.5.0"
   }
 }

@@ -1,32 +1,35 @@
-use diesel::{Queryable, Selectable};
+use crate::schema::tokens;
+use chrono::NaiveDateTime;
+use diesel::{Insertable, Queryable, Selectable};
 use rocket::serde::{Deserialize, Serialize};
 
-use crate::schema::{namespaces, tokens, users};
-
-#[derive(Serialize, Deserialize, Queryable, Selectable)]
-#[diesel(table_name = namespaces)]
-pub struct Namespace {
-    pub id: i32,
-    pub name: String,
-    pub user_id: i32,
-}
-
-#[derive(Serialize, Deserialize, Queryable, Selectable)]
-#[diesel(table_name = users)]
-pub struct User {
-    pub id: i32,
-    pub username: String,
-    pub email: String,
-}
-
-#[derive(Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Serialize, Deserialize, Insertable, Clone)]
 #[diesel(table_name = tokens)]
-#[diesel(belongs_to(Namespace))]
-#[diesel(belongs_to(User))]
+pub struct TokenInsert {
+    pub code: String,
+    pub description: String,
+    pub namespace: String,
+    pub creation_timestamp: NaiveDateTime,
+    pub permission_read: bool,
+    pub permission_write: bool,
+    pub permission_share_share: bool,
+    pub permission_share_read: bool,
+    pub permission_share_write: bool,
+    pub parent: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize, Queryable, Selectable, Clone)]
+#[diesel(table_name = tokens)]
 pub struct Token {
     pub id: i32,
     pub code: String,
     pub description: String,
-    pub namespace_id: i32,
-    pub user_id: i32,
+    pub namespace: String,
+    pub creation_timestamp: NaiveDateTime,
+    pub permission_read: bool,
+    pub permission_write: bool,
+    pub permission_share_share: bool,
+    pub permission_share_read: bool,
+    pub permission_share_write: bool,
+    pub parent: Option<i32>,
 }
