@@ -64,8 +64,6 @@ MeTTa:
 (2 "Last Name" "Smidth")
 ```
 
-
-
 ##### Functional
 - Every cell is encoded as a function of its header and row number 
 
@@ -84,10 +82,74 @@ MeTTa:
 - one atom will contain the information of one column
 - columns will be numbered in the atoms (enables isomorphism between CSV and MeTTa)
 
+Example: Daily todo list
+
+| Monday      | Tuesday               | Wednesday |
+|-------------|-----------------------|-----------|  
+| Programming | Learn category theory | Meeting   |  
+| Piano class | Send e-mail           | Sleep     |  
+
+#### Column based without header
+```
+(0 (Monday Programming "Piano class"))
+(1 (Tuesday "Learn category theory" "Send e-mail"))
+(2 (Wednesday Meeting Sleep))
+```
+
+#### Column based with header/without column numbers
+- Not implemented yet
+```
+(Monday (Programming "Piano class"))
+(Tuesday ("Learn category theory" "Send e-mail"))
+(Wednesday (Meeting Sleep))
+```
+
 ### Cell based
+- Not implemented yet
+
+
+#### Cell based unlabeled
+- Not implemented yet
 e.g. unlabeled matrix
 
+|     |     |     |
+|-----|-----|-----|  
+| a00 | a01 | a02 |  
+| a10 | a11 | a12 |
+| a20 | a21 | a22 |
 
+
+```
+(= (value (0 0)) a00)
+(= (value (0 1)) a01)
+(= (value (0 2)) a02)
+(= (value (1 0)) a10)
+(= (value (1 1)) a11)
+(= (value (1 2)) a12)
+...
+```
+
+
+#### Cell based labeled
+- Not implemented yet
+- For CSV documents with both row and column labels
+e.g. distances 
+
+|           | Home | Bakery | DanceHall |
+|-----------|------|--------|-----------|  
+| Home      | a00  | a01    | a02       |  
+| Bakery    | a10  | a11    | a12       |
+| DanceHall | a20  | a21    | a22       |
+
+```
+(= (value (Home Home)) a00)
+(= (value (Home Bakery)) a01)
+(= (value (Home DanceHall)) a02)
+(= (value (Bakery Home)) a10)
+(= (value (Bakery Bakery)) a11)
+(= (value (Bakery DanceHall)) a12)
+...
+```
 
 ## N3 Translations
 
