@@ -33,12 +33,14 @@ def graph_to_mettastr(graph: rdflib.Graph, context=None) -> str:
     def term_to_atom(t):
         match t:
             case rdflib.term.Literal(x):
+                # when using x.value instead of str(x), dates like "1979-10-12" become "None"
+                # not sure why, might be a bug in the library
                 if x.language:
-                    return f'((literal ({langstring_dt} {x.language})) "{x.value}")'
+                    return f'((literal ({langstring_dt} {x.language})) "{str(x)}")'
                 elif not x.language and not x.datatype:
-                    return f'((literal ({string_dt})) "{x.value}")'
+                    return f'((literal ({string_dt})) "{str(x)}")'
                 elif not x.language and x.datatype:
-                    return f'((literal ({x.datatype})) "{x.value}")'
+                    return f'((literal ({x.datatype})) "{str(x)}")'
             case rdflib.term.BNode(b):
                     return f'(bnode {b})'
             case x:
