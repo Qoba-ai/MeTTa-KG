@@ -149,13 +149,26 @@ def matrix_from_cell_metta_unlabeled(metta: hyperon.MeTTa) -> list[list[str]]:
 
     # n_cols = max([a.get_children()[1].get_children()[1].get_children()[1].get_object().value for a in atoms]) + 1
 
+
+# cell based labeled
 def matrix_to_cell_metta_labeled(matrix: list[list[str]]) -> str:
     # assume labels are in row 0 and column 0
-    rowlabels = matrix[0][1:]
-    collabels = [r[0] for r in matrix[1:]]
+    # TODO top-left corner of the matrix is not used
+    collabels = matrix[0][1:]
+    rowlabels = [r[0] for r in matrix[1:]]
+    print("rowlabels", rowlabels)
 
-    return '\n'.join([f'(= (value ("{rowlabel}", "{collabel}")) "{value}")'
+
+    return '\n'.join([f'(= (value ("{rowlabel}" "{collabel}")) "{value}")'
                       for rowlabel, row in zip(rowlabels, matrix[1:])
                       for collabel, value in zip(collabels, row[1:])])
+
+def matrix_from_cell_metta_labeled(metta: hyperon.MeTTa) -> list[list[str]]:
+    rowlabels = list(set([a.get_object().value for a in metta.run(f'!(match &self (= (value ($rowlabel $collabel)) $v) $rowlabel)')[0]]))
+    collabels = list(set([a.get_object().value for a in metta.run(f'!(match &self (= (value ($rowlabel $collabel)) $v) $collabel)')[0]]))
+
+    return [[""] + collabels] + [[rowlabel] + [metta.run(f'!(match &self (= (value ("{rowlabel}" "{collabel}")) $v) $v)')[0][0].get_object().value
+                                                     for collabel in collabels]
+                                       for rowlabel in rowlabels]
 
 
