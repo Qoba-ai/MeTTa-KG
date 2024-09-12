@@ -114,6 +114,18 @@ class CSVToMetta(unittest.TestCase):
                           '(= (value (3 3)) "http://www.emilydavisconsulting.org/")'),
                          matrix_to_cell_metta_unlabeled(self.m))
 
+    def test_cell_based_labeled(self):
+        self.assertEqual(('(= (value ("Name", "1")) "Alice Johnson")\n'
+                          '(= (value ("Name", "2")) "384.555.0192x123")\n'
+                          '(= (value ("Name", "3")) "http://www.alicejservices.com/")\n'
+                          '(= (value ("Phone", "1")) "Michael Smith")\n'
+                          '(= (value ("Phone", "2")) "(512)987-6543x56789")\n'
+                          '(= (value ("Phone", "3")) "http://www.msmithtech.net/")\n'
+                          '(= (value ("Website", "1")) "Emily Davis")\n'
+                          '(= (value ("Website", "2")) "+1-310-555-6789")\n'
+                          '(= (value ("Website", "3")) "http://www.emilydavisconsulting.org/")'),
+                         matrix_to_cell_metta_labeled(self.m))
+
 
 class ParseMeTTa(unittest.TestCase):
     def test_parse_metta(self):
