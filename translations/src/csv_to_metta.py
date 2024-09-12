@@ -4,6 +4,8 @@ import numpy as np
 
 from io import StringIO
 
+from hyperon import ValueObject, GroundedAtom
+
 
 def csv_to_matrix(filename, delimiter=",", quotechar='"') -> list[list[str]]:
     with open(filename, mode="r") as f:
@@ -137,3 +139,14 @@ def dict_from_function_metta(metta: hyperon.MeTTa) -> list[dict[str, str]]:
 # cell based unlabeled
 def matrix_to_cell_metta_unlabeled(matrix: list[list[str]]) -> str:
     return '\n'.join([f'(= (value ({rownr} {colnr})) "{value}")' for rownr, row in enumerate(matrix) for colnr, value in enumerate(row)])
+
+
+def matrix_from_cell_metta_unlabeled(metta: hyperon.MeTTa) -> list[list[str]]:
+    # atoms = [r for r in metta.space().get_atoms() if isinstance(r, hyperon.ExpressionAtom)]
+    n_rows = max([a.get_object().value for a in metta.run(f'!(match &self (= (value ($rownr $colnr)) $v) $rownr)')[0]]) + 1
+    n_cols = max([a.get_object().value for a in metta.run(f'!(match &self (= (value ($rownr $colnr)) $v) $colnr)')[0]]) + 1
+    return [[metta.run(f'!(match &self (= (value ({rownr} {colnr})) $v) $v)')[0][0].get_object().value for colnr in range(n_cols)] for rownr in range(n_rows)]
+
+    # n_cols = max([a.get_children()[1].get_children()[1].get_children()[1].get_object().value for a in atoms]) + 1
+
+

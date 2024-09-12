@@ -222,6 +222,26 @@ class MeTTaToCSV(unittest.TestCase):
            self.assertDictEqual({k.replace('"', "'"): v for k, v in d1.items()},
                                 {k.replace('"', "'"): str(v).replace('"', '') for k, v in d2.items()})
 
+    def test_cell_based_to_matrix(self):
+        m = parse_metta(('(= (value (0 0)) "Index")\n'
+                          '(= (value (0 1)) "Name")\n'
+                          '(= (value (0 2)) "Phone")\n'
+                          '(= (value (0 3)) "Website")\n'
+                          '(= (value (1 0)) "1")\n'
+                          '(= (value (1 1)) "Alice Johnson")\n'
+                          '(= (value (1 2)) "384.555.0192x123")\n'
+                          '(= (value (1 3)) "http://www.alicejservices.com/")\n'
+                          '(= (value (2 0)) "2")\n'
+                          '(= (value (2 1)) "Michael Smith")\n'
+                          '(= (value (2 2)) "(512)987-6543x56789")\n'
+                          '(= (value (2 3)) "http://www.msmithtech.net/")\n'
+                          '(= (value (3 0)) "3")\n'
+                          '(= (value (3 1)) "Emily Davis")\n'
+                          '(= (value (3 2)) "+1-310-555-6789")\n'
+                          '(= (value (3 3)) "http://www.emilydavisconsulting.org/")'))
+
+        self.assertEqual(self.customer_matrix, matrix_from_cell_metta_unlabeled(m))
+
             
 
 
