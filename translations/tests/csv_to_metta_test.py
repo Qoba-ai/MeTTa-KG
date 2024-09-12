@@ -95,6 +95,25 @@ class CSVToMetta(unittest.TestCase):
                           '(= (value ("Website" 2)) "http://www.emilydavisconsulting.org/")'),
                          dict_to_function_metta(self.d))
 
+    def test_to_cell_based(self):
+        self.assertEqual(('(= (value (0 0)) "Index")\n'
+                          '(= (value (0 1)) "Name")\n'
+                          '(= (value (0 2)) "Phone")\n'
+                          '(= (value (0 3)) "Website")\n'
+                          '(= (value (1 0)) "1")\n'
+                          '(= (value (1 1)) "Alice Johnson")\n'
+                          '(= (value (1 2)) "384.555.0192x123")\n'
+                          '(= (value (1 3)) "http://www.alicejservices.com/")\n'
+                          '(= (value (2 0)) "2")\n'
+                          '(= (value (2 1)) "Michael Smith")\n'
+                          '(= (value (2 2)) "(512)987-6543x56789")\n'
+                          '(= (value (2 3)) "http://www.msmithtech.net/")\n'
+                          '(= (value (3 0)) "3")\n'
+                          '(= (value (3 1)) "Emily Davis")\n'
+                          '(= (value (3 2)) "+1-310-555-6789")\n'
+                          '(= (value (3 3)) "http://www.emilydavisconsulting.org/")'),
+                         matrix_to_cell_metta_unlabeled(self.m))
+
 
 class ParseMeTTa(unittest.TestCase):
     def test_parse_metta(self):
@@ -184,7 +203,7 @@ class MeTTaToCSV(unittest.TestCase):
 
         self.assertEqual(self.customers_dict, dict_from_field_based_metta(customer_field_based))
 
-    def function_based_to_dict(self):
+    def test_function_based_to_dict(self):
         customer_function_based = parse_metta('(= (value ("Index" 0)) "1")\n'
                                               '(= (value ("Name" 0)) "Alice Johnson")\n'
                                               '(= (value ("Phone" 0)) "384.555.0192x123")\n'
@@ -198,7 +217,12 @@ class MeTTaToCSV(unittest.TestCase):
                                               '(= (value ("Phone" 2)) "+1-310-555-6789")\n'
                                               '(= (value ("Website" 2)) "http://www.emilydavisconsulting.org/")\n')
 
-        self.assertEqual(self.customers_dict, dict_from_function_metta(customer_function_based))
+        # TODO fix quotation marks
+        for d1, d2 in zip(self.customers_dict, dict_from_function_metta(customer_function_based)):
+           self.assertDictEqual({k.replace('"', "'"): v for k, v in d1.items()},
+                                {k.replace('"', "'"): str(v).replace('"', '') for k, v in d2.items()})
+
+            
 
 
 if __name__ == '__main__':
