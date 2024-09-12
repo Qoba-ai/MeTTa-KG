@@ -149,4 +149,13 @@ def matrix_from_cell_metta_unlabeled(metta: hyperon.MeTTa) -> list[list[str]]:
 
     # n_cols = max([a.get_children()[1].get_children()[1].get_children()[1].get_object().value for a in atoms]) + 1
 
+def matrix_to_cell_metta_labeled(matrix: list[list[str]]) -> str:
+    # assume labels are in row 0 and column 0
+    rowlabels = matrix[0][1:]
+    collabels = [r[0] for r in matrix[1:]]
+
+    return '\n'.join([f'(= (value ("{rowlabel}", "{collabel}")) "{value}")'
+                      for rowlabel, row in zip(rowlabels, matrix[1:])
+                      for collabel, value in zip(collabels, row[1:])])
+
 
