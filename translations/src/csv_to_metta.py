@@ -46,45 +46,6 @@ def parse_metta(mettastr: str, kb: hyperon.SpaceRef = None) -> hyperon.MeTTa:
     return metta
 
 
-# Index, Customer Id, First Name
-# 1, DD37Cf93aecA6Dc, Sheryl
-# 2, 1Ef7b82A4CAAD10, Preston
-
-# => (row based, without header)
-# (0 ("Index" "Customer Id" "First Name"))
-# (1 (1 DD37Cf93aecA6Dc Sheryl))
-# (2 (2 1Ef7b82A4CAAD10 Preston))
-
-# => (row based, with header)
-# (Header ("Index" "Customer Id" "First Name"))
-# (0 (1 DD37Cf93aecA6Dc Sheryl))
-# (1 (2 1Ef7b82A4CAAD10 Preston))
-
-# => column based
-# (0 ("Index" 1 2))
-# (1 ("Customer Id" DD37Cf93aecA6Dc 1Ef7b82A4CAAD10))
-# (2 ("First Name" Sheryl Preston))
-
-# => (struct based, with header)
-# ((Index 1) ("Customer Id" DD37Cf93aecA6Dc) (...))
-
-# => (field based, with header)
-# (1 "Index" "1")
-# (1 "Customer Id" "DD37Cf93aecA6Dc")
-# (1 "First Name" "Sheryl")
-# (2 "Index" "2")
-# (2 "Customer Id" "1Ef7b82A4CAAD10")
-# (2 "First Name" "Preston")
-
-# => Function based
-# (= (value ("Index" 0)) "1")
-# (= (value ("Index" 1)) "2")
-# (= (value ("Customer Id" 0)) "DD37Cf93aecA6Dc")
-# (= (value ("Customer Id" 1)) "1Ef7b82A4CAAD10")
-# (= (value ("First Name" 0)) "Sheryl")
-# (= (value ("First Name" 1)) "Preston")
-
-
 # row based without header
 def matrix_to_row_based_metta(csvlist: list[list[str]]) -> str:
     return '\n'.join(['(' + str(e) + ' (' + ' '.join(['"' + elem + '"' for elem in row]) + ')' + ')' for e, row in
@@ -159,6 +120,7 @@ def dict_from_field_based_metta(metta: hyperon.MeTTa) -> list[dict[str, str]]:
     return atom_dict
 
 
+# row - function based
 def dict_to_function_metta(dictlist: list[dict[str, str]]) -> str:
     return '\n'.join([f'(= (value ("{key}" {rownr})) "{value}")' for rownr, d in enumerate(dictlist) for key, value in d.items()])
 
@@ -170,3 +132,8 @@ def dict_from_function_metta(metta: hyperon.MeTTa) -> list[dict[str, str]]:
     keys = metta.run(f'!(match &self (= (value ($k 1)) $v) $k)')[0]
 
     return [{k.get_object().value: metta.run(f'!(value ({k} {n}))')[0][0] for k in keys} for n in range(n_rows)]
+
+
+# cell based unlabeled
+def matrix_to_cell_metta_unlabeled(matrix: list[list[str]]) -> str:
+    return '\n'.join([f'(= (value ({rownr} {colnr})) "{value}")' for rownr, row in enumerate(matrix) for colnr, value in enumerate(row)])
