@@ -86,6 +86,19 @@ def matrix_to_column_based_metta(csvmatrix: list[list[str]]) -> str:
 def matrix_from_column_based_metta(metta: hyperon.MeTTa) -> list[list[str, str]]:
     return [list(a) for a in np.transpose(matrix_from_row_based_metta(metta))]
 
+# column based with header
+def dict_to_column_based_header_metta(dictlist: list[dict[str, str]]) -> str:
+    return '\n'.join(['(' + f'"{key}" ({" ".join([f"\"{d[key]}\"" for d in dictlist])})'  + ')' for key in dictlist[0].keys()])
+
+
+def column_based_header_metta_to_dict(metta: hyperon.MeTTa) -> list[dict[str, str]]:
+    atoms = [r for r in metta.space().get_atoms() if isinstance(r, hyperon.ExpressionAtom)]
+    num_cols = len(atoms[0].get_children()[1].get_children())
+
+    return [{a.get_children()[0].get_object().value: a.get_children()[1].get_children()[c].get_object().value for a in atoms} for c in range(num_cols)]
+
+
+
 
 # struct based with header
 def dict_to_struct_based_metta(dictlist: list[dict[str, str]]) -> str:

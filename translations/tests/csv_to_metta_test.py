@@ -58,6 +58,13 @@ class CSVToMetta(unittest.TestCase):
                          '(3 ("Website" "http://www.alicejservices.com/" "http://www.msmithtech.net/" "http://www.emilydavisconsulting.org/"))',
                          matrix_to_column_based_metta(self.m))
 
+    def test_column_based_with_header(self):
+        self.assertEqual('("Index" ("1" "2" "3"))\n'
+                         '("Name" ("Alice Johnson" "Michael Smith" "Emily Davis"))\n'
+                         '("Phone" ("384.555.0192x123" "(512)987-6543x56789" "+1-310-555-6789"))\n'
+                         '("Website" ("http://www.alicejservices.com/" "http://www.msmithtech.net/" "http://www.emilydavisconsulting.org/"))',
+                         dict_to_column_based_header_metta(self.d))
+
     def test_struct_based(self):
         self.assertEqual(
             '(("Index" "1") ("Name" "Alice Johnson") ("Phone" "384.555.0192x123") ("Website" "http://www.alicejservices.com/"))\n'
@@ -126,7 +133,8 @@ class CSVToMetta(unittest.TestCase):
         #                   '(= (value ("Website" "3")) "http://www.emilydavisconsulting.org/")'),
         #                  matrix_to_cell_metta_labeled(self.m))
 
-        print(matrix_to_cell_metta_labeled(self.m))
+        # print(matrix_to_cell_metta_labeled(self.m))
+        pass
 
 
 class ParseMeTTa(unittest.TestCase):
@@ -183,6 +191,15 @@ class MeTTaToCSV(unittest.TestCase):
                                       '(3 ("Website" "http://www.alicejservices.com/" "http://www.msmithtech.net/" "http://www.emilydavisconsulting.org/"))')
         self.assertEqual(self.customer_matrix,
                          matrix_from_column_based_metta(customer_column))
+
+    def test_column_based_header_to_dict(self):
+        customer_column = parse_metta('("Index" ("1" "2" "3"))\n'
+                                      '("Name" ("Alice Johnson" "Michael Smith" "Emily Davis"))\n'
+                                      '("Phone" ("384.555.0192x123" "(512)987-6543x56789" "+1-310-555-6789"))\n'
+                                      '("Website" ("http://www.alicejservices.com/" "http://www.msmithtech.net/" "http://www.emilydavisconsulting.org/"))')
+
+        self.assertEqual(self.customers_dict,
+                         column_based_header_metta_to_dict(customer_column))
 
     def test_header_row_based_to_matrix(self):
         customer_header_row_metta = parse_metta('(header ("Index" "Name" "Phone" "Website"))\n'

@@ -97,7 +97,6 @@ Example: Daily todo list
 ```
 
 #### Column based with header/without column numbers
-- Not implemented yet
 ```
 (Monday (Programming "Piano class"))
 (Tuesday ("Learn category theory" "Send e-mail"))
@@ -105,11 +104,8 @@ Example: Daily todo list
 ```
 
 ### Cell based
-- Not implemented yet
-
 
 #### Cell based unlabeled
-- Not implemented yet
 e.g. unlabeled matrix
 
 |     |     |     |
@@ -131,7 +127,7 @@ e.g. unlabeled matrix
 
 
 #### Cell based labeled
-- Not implemented yet
+- Question: what to do with top left corner?
 - For CSV documents with both row and column labels
 e.g. distances 
 
