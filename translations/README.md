@@ -148,9 +148,22 @@ e.g. distances
 ```
 
 ## N3 Translations
+### Using RDF triples
+ - Downsides:
+   - A lot of the readability is lost 
+   - Keywords like "forall" are represented as long IRI's
+ - Upsides
+   - Same MeTTa syntax as NT
+
+### Syntactic translation
 
 ## NTriples Translations
 
 ## JSONLD Translations
+### Using RDF triples
+ - No context: context is not parsed by RDFlib library, we can parse it separately using JSON, but it gets overly complicated to match what rdf triples correspond to what part of the JSON-parsed context (although we think it is possible). 
+### Using JSON parsing
+ - TODO: add keywords to the parser
+
 
 
