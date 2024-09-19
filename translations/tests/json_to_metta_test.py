@@ -1,3 +1,4 @@
+import json
 import unittest
 from io import StringIO
 from translations.src.json_to_metta import *
@@ -34,6 +35,15 @@ class JSONToMeTTa(unittest.TestCase):
                                          "(outer (foo (c 3)))\n"
                                          "(outer (bar (x 4)))\n"
                                          "(outer (bar (y 5)))\n")
+
+    def test_jsonld_playground(self):
+        with open("contexts_person.jsonld") as f:
+            data = json.load(f)
+        print(data)
+        out = StringIO()
+        dict_to_metta(out, data)
+        print(out.getvalue())
+
 
 
 if __name__ == '__main__':
