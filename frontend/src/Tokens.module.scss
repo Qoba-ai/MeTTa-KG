@@ -1,9 +1,9 @@
 @import "Common.module";
 
-.RootTokenFormWrapper,
-.NewTokenFormWrapper {
+.RootTokenForm,
+.NewTokenForm {
   color: white;
-  margin: 0px 32px 100px 32px;
+  margin: 0px 32px 32px 32px;
   background-color: #1a2e32;
   padding: 8px 16px 16px 16px;
   border-radius: 8px;
@@ -11,7 +11,13 @@
     0px 4px 5px 0px rgba(0, 0, 0, 0.14), 0px 1px 10px 0px rgba(0, 0, 0, 0.12);
 }
 
-.RootTokenFormWrapper > h1 {
+.RootTokenForm,
+.NewTokenForm {
+  display: flex;
+  flex-direction: column;
+}
+
+.RootTokenForm > h1 {
   text-align: center;
 }
 
@@ -24,13 +30,7 @@
   margin: 8px;
 }
 
-.RootTokenForm {
-  display: flex;
-  flex-direction: column;
-}
-
 .TokenInput {
-  width: 300px;
   padding: 8px;
   border-radius: 8px;
   flex-grow: 1;
@@ -48,19 +48,17 @@
   margin: 0 4px;
 }
 
-.NewTokenPermissions {
-}
-
 .NewTokenPermissions input {
   margin-top: 8px;
   margin-bottom: 8px;
 }
 
-input[type=checkbox] {
+input[type="checkbox"] {
   transform: scale(1.15);
 }
 
-input[type=submit], input[type=button] {
+input[type="submit"],
+input[type="button"] {
   background-color: rgb(179, 43, 97);
   padding: 8px 16px;
   color: white;
@@ -68,34 +66,10 @@ input[type=submit], input[type=button] {
   border-radius: 4px;
 }
 
-input[type=text] {
+input[type="text"] {
   padding: 8px 16px;
   border: none;
   border-radius: 4px;
-}
-
-.ContentWrapper {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-
-.InnerContentWrapper {
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: start;
-  gap: 64px;
-}
-
-.NewTokenFormWrapper {
-  background-color: #1a2e32;
-  padding: 4px 16px 16px 16px;
-  border-radius: 8px;
-  box-shadow: 0px 2px 4px -1px rgba(0, 0, 0, 0.2),
-    0px 4px 5px 0px rgba(0, 0, 0, 0.14), 0px 1px 10px 0px rgba(0, 0, 0, 0.12);
 }
 
 .TokenTableWrapper {
@@ -113,9 +87,6 @@ th {
   top: 0;
 }
 
-.TokenTable > tbody {
-}
-
 .TokenTable > thead > tr > th > * {
   text-align: center;
   margin: 4px;
@@ -127,6 +98,10 @@ th {
 
 .TokenTable > thead > tr > th:last-child {
   border-top-right-radius: 8px;
+}
+
+.TableHeaderCell:focus {
+  border: 1px white solid;
 }
 
 .SelectedToken {
@@ -142,18 +117,6 @@ th {
   align-items: center;
 }
 
-.TableButtonBar {
-  margin-top: 16px;
-  padding: 8px 16px;
-  display: flex;
-  flex-direction: row;
-  justify-content: end;
-  align-items: center;
-  background-color: #1a2e32;
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
-}
-
 .TableButtonBar > button {
   margin: 0px 4px;
   background-color: transparent;
@@ -167,7 +130,8 @@ button:disabled {
   border-color: grey;
 }
 
-.NamespaceSearchRegexInput, .DescriptionSearchRegexInput {
+.NamespaceSearchRegexInput,
+.DescriptionSearchRegexInput {
   margin: 6px;
 }
 
@@ -191,7 +155,7 @@ button:disabled {
 }
 
 .TokenTableCodeCell:not(.Copied):hover .TokenTableCellCode {
-  opacity: 0.90;
+  opacity: 0.9;
 }
 
 .TokenTableCodeCellIcon {
@@ -206,7 +170,7 @@ button:disabled {
   padding: 5px 0;
   border-radius: 4px;
   font-size: 14px;
- 
+
   position: absolute;
   z-index: 1;
 }
@@ -261,4 +225,94 @@ dialog::backdrop {
   background-color: transparent;
   border: none;
   color: white;
+}
+
+.TokenTableCode,
+.TokenTableNamespace {
+  font-family: "Courier New", monospace;
+}
+
+.NewTokenNoPermissionsWarning {
+  color: rgb(227, 212, 49);
+}
+
+.ContentWrapper {
+  width: 100%;
+}
+
+.RootTokenForm {
+  margin-top: 32px;
+}
+
+.RootTokenFormWrapper,
+.NewTokenFormWrapper,
+.TokenTableWrapper {
+  box-sizing: border-box;
+}
+
+.RootTokenFormWrapper {
+  width: 30%;
+}
+
+.NewTokenFormWrapper {
+  width: 30%;
+}
+
+.TokenTable {
+}
+
+.TableButtonBar {
+  width: auto;
+  margin-top: 16px;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: row;
+  justify-content: end;
+  align-items: center;
+  background-color: #1a2e32;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+  box-sizing: border-box;
+}
+
+.TokenTableWrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.TokenTableInnerWrapper {
+  width: max-content;
+  padding: 16px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media screen and (max-width: 1024px) {
+  .RootTokenFormWrapper {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .NewTokenFormWrapper {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+@media screen and (min-width: 1025px) {
+  .RootTokenFormWrapper {
+    width: 40%;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .NewTokenFormWrapper {
+    width: 40%;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
 }

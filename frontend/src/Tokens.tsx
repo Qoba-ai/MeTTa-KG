@@ -2,7 +2,11 @@ import type { Component, JSX, ResourceFetcherInfo } from "solid-js";
 import { createResource, createSignal, For, onMount, Show } from "solid-js";
 import { A } from "@solidjs/router";
 import { BACKEND_URL } from "./urls";
-import { AiOutlineCopy } from "solid-icons/ai";
+import {
+  AiOutlineCopy,
+  AiOutlineGithub,
+  AiOutlineInfoCircle,
+} from "solid-icons/ai";
 import styles from "./Tokens.module.scss";
 import toast, { Toaster } from "solid-toast";
 
@@ -62,7 +66,10 @@ const createToken = async (
   description: string,
   namespace: string,
   read: boolean,
-  write: boolean
+  write: boolean,
+  shareRead: boolean,
+  shareWrite: boolean,
+  shareShare: boolean
 ): Promise<Token> => {
   if (root === null) {
     console.error(`Tried creating token without root`);
@@ -79,9 +86,9 @@ const createToken = async (
     creation_timestamp: new Date().toISOString().split("Z")[0],
     permission_read: read,
     permission_write: write,
-    permission_share_read: false,
-    permission_share_write: false,
-    permission_share_share: false,
+    permission_share_read: shareRead,
+    permission_share_write: shareWrite,
+    permission_share_share: shareShare,
     parent: 0,
   };
 
@@ -147,9 +154,8 @@ const Tokens: Component = () => {
   let descriptionSearch: HTMLDivElement;
   let descriptionSearchInput: HTMLInputElement;
 
-  let createdTokenModel: HTMLDialogElement;
   let refreshTokensModel: HTMLDialogElement;
-  let deleteTokensModel: HTMLDialogElement;
+  let deleteTokensModal: HTMLDialogElement;
 
   const [rootTokenCode, setRootTokenCode] = createSignal<string | null>(
     localStorage.getItem("rootToken")
@@ -158,6 +164,9 @@ const Tokens: Component = () => {
   const [rootTokenCodeInputValue, setRootTokenCodeInputValue] = createSignal<
     string | null
   >(localStorage.getItem("rootToken"));
+
+  const [newTokenReadEnabled, setNewTokenReadEnabled] =
+    createSignal<boolean>(true);
 
   // TODO: refactor into separate component
   const [selectedTokens, setSelectedTokens] = createSignal<Token[]>([]);
@@ -195,6 +204,9 @@ const Tokens: Component = () => {
       const namespace = newTokenNamespaceInput.value;
       const read = newTokenReadCheckbox.checked;
       const write = newTokenWriteCheckbox.checked;
+      const shareRead = newTokenShareReadCheckbox.checked;
+      const shareWrite = newTokenShareWriteCheckbox.checked;
+      const shareShare = false;
 
       try {
         const newToken = await createToken(
@@ -202,7 +214,10 @@ const Tokens: Component = () => {
           description,
           namespace,
           read,
-          write
+          write,
+          shareRead,
+          shareWrite,
+          shareShare
         );
 
         mutateTokens((v) => [...v, newToken]);
@@ -234,9 +249,24 @@ const Tokens: Component = () => {
     };
   });
 
-  const handleTableHeadCellClick = (column: SortableColumns) => {
+  const handleTableHeadCellClick = (
+    e: MouseEvent & { currentTarget: HTMLTableCellElement },
+    column: SortableColumns
+  ) => {
     setSortColumn(column);
     setSortDirectionDescending(!sortDirectionDescending());
+
+    e.currentTarget.focus();
+  };
+
+  const handleTableHeadCellKeyPress = (
+    e: KeyboardEvent,
+    column: SortableColumns
+  ) => {
+    if (e.code === "Enter") {
+      setSortColumn(column);
+      setSortDirectionDescending(!sortDirectionDescending());
+    }
   };
 
   const handleRefreshTokensButtonClick = async () => {
@@ -349,6 +379,12 @@ const Tokens: Component = () => {
     <div class={styles.Page}>
       <div class={styles.Navbar}>
         <span class={styles.NavbarTitle}>MeTTa KG</span>
+        <a
+          class={styles.NavbarGithubLink}
+          href="https://github.com/Qoba-ai/MeTTa-KG"
+        >
+          <AiOutlineGithub size={24} />
+        </a>
         <div class={styles.NavbarContent}>
           <A href="/" class={styles.LoginButton}>
             Editor
@@ -357,17 +393,23 @@ const Tokens: Component = () => {
       </div>
       <div class={styles.ContentWrapper}>
         <div class={styles.RootTokenFormWrapper}>
-          <h1>Manage Access</h1>
           <form class={styles.RootTokenForm} ref={rootTokenForm!}>
+            <h1>Manage Access</h1>
             <input
               ref={rootTokenFormInput!}
               type="search"
               class={styles.TokenInput}
               placeholder="Token"
-              value={rootTokenCodeInputValue() ?? ""}
-              onchange={(e) =>
-                setRootTokenCodeInputValue(e.target.value.trim())
+              oninvalid={() =>
+                rootTokenFormInput.setCustomValidity(
+                  "Please enter a valid UUIDv4"
+                )
               }
+              value={rootTokenCodeInputValue() ?? ""}
+              onchange={(e) => {
+                setRootTokenCodeInputValue(e.target.value.trim());
+                rootTokenFormInput.setCustomValidity("");
+              }}
               pattern={
                 "(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)"
               }
@@ -377,12 +419,129 @@ const Tokens: Component = () => {
             </div>
           </form>
         </div>
-        <div class={styles.InnerContentWrapper}>
-          <div class={styles.TokenTableWrapper}>
+        <div class={styles.NewTokenFormWrapper}>
+          <form class={styles.NewTokenForm} ref={newTokenForm!}>
+            <h2>Create Token</h2>
+            <label>Namespace</label>
+            <input
+              ref={newTokenNamespaceInput!}
+              type="text"
+              placeholder="Namespace"
+              required
+              pattern={"^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$"}
+              disabled={!tokens().find((t) => t.code === rootTokenCode())}
+              onchange={() => newTokenNamespaceInput.setCustomValidity("")}
+              oninvalid={() =>
+                newTokenNamespaceInput.setCustomValidity(
+                  "Namespaces start with '/' followed by 2 or more alphanumeric characters and end with '/'."
+                )
+              }
+              value={
+                tokens().find((t) => t.code === rootTokenCode())?.namespace ??
+                ""
+              }
+            />
+            <label>Description</label>
+            <input
+              ref={newTokenDescriptionInput!}
+              type="text"
+              required
+              placeholder="Description"
+              disabled={!tokens().find((t) => t.code === rootTokenCode())}
+            />
+            <div class={styles.NewTokenPermissions}>
+              <fieldset>
+                <legend>Permissions</legend>
+                <label>Read</label>
+                <input
+                  ref={newTokenReadCheckbox!}
+                  onchange={(e) => {
+                    if (!e.target.checked) {
+                      newTokenWriteCheckbox.checked = false;
+                      newTokenShareReadCheckbox.checked = false;
+                      newTokenShareWriteCheckbox.checked = false;
+                    }
+
+                    setNewTokenReadEnabled(e.target.checked);
+                  }}
+                  type="checkbox"
+                  checked={newTokenReadEnabled()}
+                  disabled={
+                    !rootTokenCode() ||
+                    !tokens().find((t) => t.code === rootTokenCode())
+                      ?.permission_share_read
+                  }
+                />
+                <br />
+                <label>Write</label>
+                <input
+                  ref={newTokenWriteCheckbox!}
+                  onchange={(e) => {
+                    if (e.target.checked) {
+                      newTokenReadCheckbox.checked = true;
+                    } else {
+                      newTokenShareWriteCheckbox.checked = false;
+                    }
+                  }}
+                  type="checkbox"
+                  disabled={
+                    !rootTokenCode() ||
+                    !tokens().find((t) => t.code === rootTokenCode())
+                      ?.permission_share_write
+                  }
+                />
+                <br />
+                <label>Share read</label>
+                <input
+                  ref={newTokenShareReadCheckbox!}
+                  onchange={(e) => {
+                    if (e.target.checked) {
+                      newTokenReadCheckbox.checked = true;
+                    } else {
+                      newTokenShareWriteCheckbox.checked = false;
+                    }
+                  }}
+                  type="checkbox"
+                  disabled={
+                    !rootTokenCode() ||
+                    !tokens().find((t) => t.code === rootTokenCode())
+                      ?.permission_share_share
+                  }
+                />
+                <br />
+                <label>Share write</label>
+                <input
+                  ref={newTokenShareWriteCheckbox!}
+                  onchange={(e) => {
+                    if (e.target.checked) {
+                      newTokenReadCheckbox.checked = true;
+                      newTokenWriteCheckbox.checked = true;
+                      newTokenShareReadCheckbox.checked = true;
+                    }
+                  }}
+                  type="checkbox"
+                  disabled={
+                    !rootTokenCode() ||
+                    !tokens().find((t) => t.code === rootTokenCode())
+                      ?.permission_share_share
+                  }
+                />
+              </fieldset>
+            </div>
+            <input type="submit" value={"Create"} />
+            <Show when={!newTokenReadEnabled()}>
+              <div class={styles.NewTokenNoPermissionsWarning}>
+                <span>Token has no permissions</span>
+              </div>
+            </Show>
+          </form>
+        </div>
+        <div class={styles.TokenTableWrapper}>
+          <div class={styles.TokenTableInnerWrapper}>
             <table class={styles.TokenTable}>
               <thead>
                 <tr>
-                  <th>
+                  <th class={styles.TableHeaderCell} tabIndex={0}>
                     <input
                       type="checkbox"
                       onchange={handleSelectAllTokensChecked}
@@ -390,8 +549,13 @@ const Tokens: Component = () => {
                     />
                   </th>
                   <th
-                    onclick={() =>
-                      handleTableHeadCellClick(SortableColumns.TIMESTAMP)
+                    class={styles.TableHeaderCell}
+                    tabIndex={0}
+                    onclick={(e) =>
+                      handleTableHeadCellClick(e, SortableColumns.TIMESTAMP)
+                    }
+                    onkeypress={(e) =>
+                      handleTableHeadCellKeyPress(e, SortableColumns.TIMESTAMP)
                     }
                   >
                     <span>Creation</span>
@@ -412,13 +576,20 @@ const Tokens: Component = () => {
                       ↑
                     </Show>
                   </th>
-                  <th>Code</th>
+                  <th class={styles.TableHeaderCell} tabIndex={0}>
+                    Code
+                  </th>
                   <th
+                    class={styles.TableHeaderCell}
+                    tabIndex={0}
                     onclick={(e) => {
                       if (e.target !== namespaceSearchInput) {
-                        handleTableHeadCellClick(SortableColumns.NAMESPACE);
+                        handleTableHeadCellClick(e, SortableColumns.NAMESPACE);
                       }
                     }}
+                    onkeypress={(e) =>
+                      handleTableHeadCellKeyPress(e, SortableColumns.NAMESPACE)
+                    }
                   >
                     <span>Namespace</span>
                     <Show
@@ -441,20 +612,20 @@ const Tokens: Component = () => {
                       <input
                         class={styles.NamespaceSearchRegexInput}
                         ref={namespaceSearchInput!}
-                        placeholder="Search Pattern"
+                        placeholder="Search Regex Pattern"
                         onchange={(e) =>
                           setNamespaceSearchRegex(e.target.value)
                         }
                       />
                     </div>
                   </th>
-                  <th>
+                  <th class={styles.TableHeaderCell} tabIndex={0}>
                     <span>Description</span>
                     <div ref={descriptionSearch!}>
                       <input
                         class={styles.DescriptionSearchRegexInput}
                         ref={descriptionSearchInput!}
-                        placeholder="Search Pattern"
+                        placeholder="Search Regex Pattern"
                         onchange={(e) =>
                           setDescriptionSearchRegex(e.target.value)
                         }
@@ -462,8 +633,13 @@ const Tokens: Component = () => {
                     </div>
                   </th>
                   <th
+                    class={styles.TableHeaderCell}
+                    tabIndex={0}
                     onClick={(e) =>
-                      handleTableHeadCellClick(SortableColumns.READ)
+                      handleTableHeadCellClick(e, SortableColumns.READ)
+                    }
+                    onkeypress={(e) =>
+                      handleTableHeadCellKeyPress(e, SortableColumns.READ)
                     }
                   >
                     <span>Read</span>
@@ -485,8 +661,13 @@ const Tokens: Component = () => {
                     </Show>
                   </th>
                   <th
+                    class={styles.TableHeaderCell}
+                    tabIndex={0}
                     onClick={(e) =>
-                      handleTableHeadCellClick(SortableColumns.WRITE)
+                      handleTableHeadCellClick(e, SortableColumns.WRITE)
+                    }
+                    onkeypress={(e) =>
+                      handleTableHeadCellKeyPress(e, SortableColumns.WRITE)
                     }
                   >
                     <span>Write</span>
@@ -508,8 +689,13 @@ const Tokens: Component = () => {
                     </Show>
                   </th>
                   <th
+                    class={styles.TableHeaderCell}
+                    tabIndex={0}
                     onClick={(e) =>
-                      handleTableHeadCellClick(SortableColumns.SHARE_READ)
+                      handleTableHeadCellClick(e, SortableColumns.SHARE_READ)
+                    }
+                    onkeypress={(e) =>
+                      handleTableHeadCellKeyPress(e, SortableColumns.SHARE_READ)
                     }
                   >
                     <span>Share Read</span>
@@ -531,8 +717,16 @@ const Tokens: Component = () => {
                     </Show>
                   </th>
                   <th
+                    class={styles.TableHeaderCell}
+                    tabIndex={0}
                     onClick={(e) =>
-                      handleTableHeadCellClick(SortableColumns.SHARE_WRITE)
+                      handleTableHeadCellClick(e, SortableColumns.SHARE_WRITE)
+                    }
+                    onkeypress={(e) =>
+                      handleTableHeadCellKeyPress(
+                        e,
+                        SortableColumns.SHARE_WRITE
+                      )
                     }
                   >
                     <span>Share Write</span>
@@ -554,8 +748,16 @@ const Tokens: Component = () => {
                     </Show>
                   </th>
                   <th
+                    class={styles.TableHeaderCell}
+                    tabIndex={0}
                     onClick={(e) =>
-                      handleTableHeadCellClick(SortableColumns.SHARE_SHARE)
+                      handleTableHeadCellClick(e, SortableColumns.SHARE_SHARE)
+                    }
+                    onkeypress={(e) =>
+                      handleTableHeadCellKeyPress(
+                        e,
+                        SortableColumns.SHARE_SHARE
+                      )
                     }
                   >
                     <span>Recursive Share</span>
@@ -597,6 +799,32 @@ const Tokens: Component = () => {
                             ? styles.SelectedToken
                             : styles.UnselectedToken
                         }
+                        onkeypress={(e) => {
+                          if (
+                            e.code === "Enter" &&
+                            selectedTokens().includes(token)
+                          ) {
+                            navigator.clipboard.writeText(token.code);
+
+                            const codeCell = e.currentTarget.querySelector(
+                              styles.TokenTableCodeCell
+                            );
+
+                            if (codeCell) {
+                              codeCell.classList.add("Copied");
+                            }
+
+                            setCopiedToken(token);
+
+                            setTimeout(() => {
+                              if (codeCell) {
+                                codeCell.classList.remove("Copied");
+                              }
+
+                              setCopiedToken(null);
+                            }, 1000 * 1);
+                          }
+                        }}
                       >
                         <td>
                           <input
@@ -629,9 +857,6 @@ const Tokens: Component = () => {
                             }}
                             onPointerLeave={(e) => {}}
                           >
-                            <div class={styles.TokenTableCellCode}>
-                              <span>{token.code}</span>
-                            </div>
                             <div>
                               <AiOutlineCopy
                                 class={styles.TokenTableCodeCellIcon}
@@ -644,9 +869,16 @@ const Tokens: Component = () => {
                                 </div>
                               </Show>
                             </div>
+                            <div class={styles.TokenTableCellCode}>
+                              <span class={styles.TokenTableCode}>
+                                {token.code}
+                              </span>
+                            </div>
                           </div>
                         </td>
-                        <td>{token.namespace}</td>
+                        <td class={styles.TokenTableNamespace}>
+                          {token.namespace}
+                        </td>
                         <td>{token.description}</td>
                         <td>
                           <div class={styles.PermissionIcon}>
@@ -698,120 +930,12 @@ const Tokens: Component = () => {
                     (t) => t.code === rootTokenCode()
                   ) !== -1
                 }
-                onclick={() => deleteTokensModel.showModal()}
+                onclick={() => deleteTokensModal.showModal()}
               >
                 Delete
               </button>
               <div style={{ "flex-grow": 1 }}> </div>
             </div>
-          </div>
-          <div class={styles.NewTokenFormWrapper}>
-            <h2>Create Token</h2>
-            <form class={styles.NewTokenForm} ref={newTokenForm!}>
-              <label>Namespace</label>
-              <br />
-              <input
-                ref={newTokenNamespaceInput!}
-                type="text"
-                placeholder="Namespace"
-                required
-                pattern={"^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$"}
-                disabled={!tokens().find((t) => t.code === rootTokenCode())}
-                value={
-                  tokens().find((t) => t.code === rootTokenCode())?.namespace ??
-                  ""
-                }
-              />
-              <br />
-              <label>Description</label>
-              <br />
-              <input
-                ref={newTokenDescriptionInput!}
-                type="text"
-                required
-                placeholder="Description"
-                disabled={!tokens().find((t) => t.code === rootTokenCode())}
-              />
-              <br />
-              <div class={styles.NewTokenPermissions}>
-                <fieldset>
-                  <legend>Permissions</legend>
-                  <label>Read</label>
-                  <input
-                    ref={newTokenReadCheckbox!}
-                    onchange={(e) => {
-                      if (!e.target.checked) {
-                        newTokenWriteCheckbox.checked = false;
-                        newTokenShareReadCheckbox.checked = false;
-                        newTokenShareWriteCheckbox.checked = false;
-                      }
-                    }}
-                    type="checkbox"
-                    checked={true}
-                    disabled={
-                      !rootTokenCode() ||
-                      !tokens().find((t) => t.code === rootTokenCode())
-                        ?.permission_share_read
-                    }
-                  />
-                  <br />
-                  <label>Write</label>
-                  <input
-                    ref={newTokenWriteCheckbox!}
-                    onchange={(e) => {
-                      if (e.target.checked) {
-                        newTokenReadCheckbox.checked = true;
-                      } else {
-                        newTokenShareWriteCheckbox.checked = false;
-                      }
-                    }}
-                    type="checkbox"
-                    disabled={
-                      !rootTokenCode() ||
-                      !tokens().find((t) => t.code === rootTokenCode())
-                        ?.permission_share_write
-                    }
-                  />
-                  <br />
-                  <label>Share read</label>
-                  <input
-                    ref={newTokenShareReadCheckbox!}
-                    onchange={(e) => {
-                      if (e.target.checked) {
-                        newTokenReadCheckbox.checked = true;
-                      } else {
-                        newTokenShareWriteCheckbox.checked = false;
-                      }
-                    }}
-                    type="checkbox"
-                    disabled={
-                      !rootTokenCode() ||
-                      !tokens().find((t) => t.code === rootTokenCode())
-                        ?.permission_share_share
-                    }
-                  />
-                  <br />
-                  <label>Share write</label>
-                  <input
-                    ref={newTokenShareWriteCheckbox!}
-                    onchange={(e) => {
-                      if (e.target.checked) {
-                        newTokenReadCheckbox.checked = true;
-                        newTokenWriteCheckbox.checked = true;
-                        newTokenShareReadCheckbox.checked = true;
-                      }
-                    }}
-                    type="checkbox"
-                    disabled={
-                      !rootTokenCode() ||
-                      !tokens().find((t) => t.code === rootTokenCode())
-                        ?.permission_share_share
-                    }
-                  />
-                </fieldset>
-              </div>
-              <input type="submit" value={"Create"} />
-            </form>
           </div>
         </div>
       </div>
@@ -831,10 +955,15 @@ const Tokens: Component = () => {
           >
             Confirm
           </button>
-          <button class={styles.CancelButton}>Cancel</button>
+          <button
+            class={styles.CancelButton}
+            onclick={() => refreshTokensModel.close()}
+          >
+            Cancel
+          </button>
         </div>
       </dialog>
-      <dialog ref={deleteTokensModel!} class={styles.deleteTokensModal}>
+      <dialog ref={deleteTokensModal!} class={styles.deleteTokensModal}>
         <h2>Delete tokens?</h2>
         <span>
           Selected tokens will be deleted permanently. Sub-tokens will be
@@ -845,12 +974,17 @@ const Tokens: Component = () => {
             class={styles.ConfirmButton}
             onclick={() => {
               handleDeleteTokensButtonClick();
-              deleteTokensModel.close();
+              deleteTokensModal.close();
             }}
           >
             Confirm
           </button>
-          <button class={styles.CancelButton}>Cancel</button>
+          <button
+            class={styles.CancelButton}
+            onclick={() => deleteTokensModal.close()}
+          >
+            Cancel
+          </button>
         </div>
       </dialog>
       <Toaster />
