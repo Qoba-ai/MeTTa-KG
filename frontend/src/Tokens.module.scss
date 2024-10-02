@@ -21,10 +21,6 @@
   text-align: center;
 }
 
-.NewTokenFormWrapper > h2 {
-  margin-left: 8px;
-}
-
 .RootTokenForm > *,
 .NewTokenForm > * {
   margin: 8px;
@@ -130,7 +126,7 @@ th {
   border-radius: 4px;
 }
 
-button:disabled {
+.TableButtonBar > button:disabled {
   border-color: grey;
 }
 
