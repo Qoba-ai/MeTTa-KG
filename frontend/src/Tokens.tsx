@@ -5,7 +5,6 @@ import { BACKEND_URL } from "./urls";
 import {
   AiOutlineCopy,
   AiOutlineGithub,
-  AiOutlineInfoCircle,
 } from "solid-icons/ai";
 import styles from "./Tokens.module.scss";
 import toast, { Toaster } from "solid-toast";
@@ -190,8 +189,6 @@ const Tokens: Component = () => {
 
   onMount(() => {
     rootTokenForm.onsubmit = (event) => {
-      event.preventDefault();
-
       const newRootToken = rootTokenFormInput.value.trim();
 
       setRootTokenCode(newRootToken);
@@ -337,10 +334,6 @@ const Tokens: Component = () => {
       }
     }
   };
-
-  const onTokenInputChanged: JSX.ChangeEventHandler<HTMLInputElement, Event> = (
-    e
-  ) => {};
 
   const sortTokens = (a: Token, b: Token) => {
     let result = 0;
@@ -505,7 +498,7 @@ const Tokens: Component = () => {
                   disabled={
                     !rootTokenCode() ||
                     !tokens().find((t) => t.code === rootTokenCode())
-                      ?.permission_share_share
+                      ?.permission_share_read
                   }
                 />
                 <br />
@@ -523,7 +516,7 @@ const Tokens: Component = () => {
                   disabled={
                     !rootTokenCode() ||
                     !tokens().find((t) => t.code === rootTokenCode())
-                      ?.permission_share_share
+                      ?.permission_share_write
                   }
                 />
               </fieldset>

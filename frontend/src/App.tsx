@@ -1,8 +1,9 @@
 import type { Component } from "solid-js";
-import { AiOutlineImport } from "solid-icons/ai";
+import { AiOutlineGithub, AiOutlineImport } from "solid-icons/ai";
 import { createSignal, onMount, Show } from "solid-js";
 
 import styles from "./App.module.scss";
+import { A } from "@solidjs/router";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
@@ -82,17 +83,20 @@ const App: Component = () => {
   return (
     <div class={styles.Page}>
       <div class={styles.Navbar}>
-        <div class={styles.NavbarTitle}>
-          <span class={styles.NavbarTitle}>MeTTa Editor</span>
-        </div>
+        <span class={styles.NavbarTitle}>MeTTa KG</span>
+        <a
+          class={styles.NavbarGithubLink}
+          href="https://github.com/Qoba-ai/MeTTa-KG"
+        >
+          <AiOutlineGithub size={24} />
+        </a>
         <div class={styles.NavbarContent}>
-          <div>
-            <button class={styles.LoginButton}>Tokens</button>
-          </div>
+          <A href="/tokens" class={styles.LoginButton}>
+            Tokens
+          </A>
         </div>
       </div>
-      <div class={styles.Editor}>
-        <div></div>
+      <div class={styles.ContentWrapper}>
         <div class={styles.MettaInputWrapper}>
           <textarea class={styles.MettaInput} readonly>
             {contents()}
@@ -127,14 +131,14 @@ const App: Component = () => {
             </div>
           </Show>
         </div>
-        <dialog ref={importCSVModal!} class={styles.ImportCSVModal}>
-          <form ref={importCSVForm!}>
-            <h4>Import CSV</h4>
-            <input ref={importCSVFormFileInput!} type="file" />
-            <input type="submit" />
-          </form>
-        </dialog>
       </div>
+      <dialog ref={importCSVModal!} class={styles.ImportCSVModal}>
+        <form ref={importCSVForm!}>
+          <h4>Import CSV</h4>
+          <input ref={importCSVFormFileInput!} type="file" />
+          <input type="submit" />
+        </form>
+      </dialog>
     </div>
   );
 };
