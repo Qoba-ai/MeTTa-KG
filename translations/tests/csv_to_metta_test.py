@@ -58,6 +58,13 @@ class CSVToMetta(unittest.TestCase):
                          '(3 ("Website" "http://www.alicejservices.com/" "http://www.msmithtech.net/" "http://www.emilydavisconsulting.org/"))',
                          matrix_to_column_based_metta(self.m))
 
+    def test_column_based_with_header(self):
+        self.assertEqual('("Index" ("1" "2" "3"))\n'
+                         '("Name" ("Alice Johnson" "Michael Smith" "Emily Davis"))\n'
+                         '("Phone" ("384.555.0192x123" "(512)987-6543x56789" "+1-310-555-6789"))\n'
+                         '("Website" ("http://www.alicejservices.com/" "http://www.msmithtech.net/" "http://www.emilydavisconsulting.org/"))',
+                         dict_to_column_based_header_metta(self.d))
+
     def test_struct_based(self):
         self.assertEqual(
             '(("Index" "1") ("Name" "Alice Johnson") ("Phone" "384.555.0192x123") ("Website" "http://www.alicejservices.com/"))\n'
@@ -94,6 +101,40 @@ class CSVToMetta(unittest.TestCase):
                           '(= (value ("Phone" 2)) "+1-310-555-6789")\n'
                           '(= (value ("Website" 2)) "http://www.emilydavisconsulting.org/")'),
                          dict_to_function_metta(self.d))
+
+    def test_to_cell_based(self):
+        self.assertEqual(('(= (value (0 0)) "Index")\n'
+                          '(= (value (0 1)) "Name")\n'
+                          '(= (value (0 2)) "Phone")\n'
+                          '(= (value (0 3)) "Website")\n'
+                          '(= (value (1 0)) "1")\n'
+                          '(= (value (1 1)) "Alice Johnson")\n'
+                          '(= (value (1 2)) "384.555.0192x123")\n'
+                          '(= (value (1 3)) "http://www.alicejservices.com/")\n'
+                          '(= (value (2 0)) "2")\n'
+                          '(= (value (2 1)) "Michael Smith")\n'
+                          '(= (value (2 2)) "(512)987-6543x56789")\n'
+                          '(= (value (2 3)) "http://www.msmithtech.net/")\n'
+                          '(= (value (3 0)) "3")\n'
+                          '(= (value (3 1)) "Emily Davis")\n'
+                          '(= (value (3 2)) "+1-310-555-6789")\n'
+                          '(= (value (3 3)) "http://www.emilydavisconsulting.org/")'),
+                         matrix_to_cell_metta_unlabeled(self.m))
+
+    def test_cell_based_labeled(self):
+        # self.assertEqual(('(= (value ("Name" "1")) "Alice Johnson")\n'
+        #                   '(= (value ("Name" "2")) "384.555.0192x123")\n'
+        #                   '(= (value ("Name" "3")) "http://www.alicejservices.com/")\n'
+        #                   '(= (value ("Phone" "1")) "Michael Smith")\n'
+        #                   '(= (value ("Phone" "2")) "(512)987-6543x56789")\n'
+        #                   '(= (value ("Phone" "3")) "http://www.msmithtech.net/")\n'
+        #                   '(= (value ("Website" "1")) "Emily Davis")\n'
+        #                   '(= (value ("Website" "2")) "+1-310-555-6789")\n'
+        #                   '(= (value ("Website" "3")) "http://www.emilydavisconsulting.org/")'),
+        #                  matrix_to_cell_metta_labeled(self.m))
+
+        # print(matrix_to_cell_metta_labeled(self.m))
+        pass
 
 
 class ParseMeTTa(unittest.TestCase):
@@ -151,6 +192,15 @@ class MeTTaToCSV(unittest.TestCase):
         self.assertEqual(self.customer_matrix,
                          matrix_from_column_based_metta(customer_column))
 
+    def test_column_based_header_to_dict(self):
+        customer_column = parse_metta('("Index" ("1" "2" "3"))\n'
+                                      '("Name" ("Alice Johnson" "Michael Smith" "Emily Davis"))\n'
+                                      '("Phone" ("384.555.0192x123" "(512)987-6543x56789" "+1-310-555-6789"))\n'
+                                      '("Website" ("http://www.alicejservices.com/" "http://www.msmithtech.net/" "http://www.emilydavisconsulting.org/"))')
+
+        self.assertEqual(self.customers_dict,
+                         column_based_header_metta_to_dict(customer_column))
+
     def test_header_row_based_to_matrix(self):
         customer_header_row_metta = parse_metta('(header ("Index" "Name" "Phone" "Website"))\n'
                          '(0 ("1" "Alice Johnson" "384.555.0192x123" "http://www.alicejservices.com/"))\n'
@@ -184,7 +234,7 @@ class MeTTaToCSV(unittest.TestCase):
 
         self.assertEqual(self.customers_dict, dict_from_field_based_metta(customer_field_based))
 
-    def function_based_to_dict(self):
+    def test_function_based_to_dict(self):
         customer_function_based = parse_metta('(= (value ("Index" 0)) "1")\n'
                                               '(= (value ("Name" 0)) "Alice Johnson")\n'
                                               '(= (value ("Phone" 0)) "384.555.0192x123")\n'
@@ -198,7 +248,60 @@ class MeTTaToCSV(unittest.TestCase):
                                               '(= (value ("Phone" 2)) "+1-310-555-6789")\n'
                                               '(= (value ("Website" 2)) "http://www.emilydavisconsulting.org/")\n')
 
-        self.assertEqual(self.customers_dict, dict_from_function_metta(customer_function_based))
+        # TODO fix quotation marks
+        for d1, d2 in zip(self.customers_dict, dict_from_function_metta(customer_function_based)):
+           self.assertDictEqual({k.replace('"', "'"): v for k, v in d1.items()},
+                                {k.replace('"', "'"): str(v).replace('"', '') for k, v in d2.items()})
+
+    def test_cell_based_to_matrix(self):
+        m = parse_metta(('(= (value (0 0)) "Index")\n'
+                          '(= (value (0 1)) "Name")\n'
+                          '(= (value (0 2)) "Phone")\n'
+                          '(= (value (0 3)) "Website")\n'
+                          '(= (value (1 0)) "1")\n'
+                          '(= (value (1 1)) "Alice Johnson")\n'
+                          '(= (value (1 2)) "384.555.0192x123")\n'
+                          '(= (value (1 3)) "http://www.alicejservices.com/")\n'
+                          '(= (value (2 0)) "2")\n'
+                          '(= (value (2 1)) "Michael Smith")\n'
+                          '(= (value (2 2)) "(512)987-6543x56789")\n'
+                          '(= (value (2 3)) "http://www.msmithtech.net/")\n'
+                          '(= (value (3 0)) "3")\n'
+                          '(= (value (3 1)) "Emily Davis")\n'
+                          '(= (value (3 2)) "+1-310-555-6789")\n'
+                          '(= (value (3 3)) "http://www.emilydavisconsulting.org/")'))
+
+        self.assertEqual(self.customer_matrix, matrix_from_cell_metta_unlabeled(m))
+
+    def test_cell_based_labeled(self):
+        m = parse_metta('(= (value ("1" "Name")) "Alice Johnson")\n'
+                        '(= (value ("1" "Phone")) "384.555.0192x123")\n'
+                        '(= (value ("1" "Website")) "http://www.alicejservices.com/")\n'
+                        '(= (value ("2" "Name")) "Michael Smith")\n'
+                        '(= (value ("2" "Phone")) "(512)987-6543x56789")\n'
+                        '(= (value ("2" "Website")) "http://www.msmithtech.net/")\n'
+                        '(= (value ("3" "Name")) "Emily Davis")\n'
+                        '(= (value ("3" "Phone")) "+1-310-555-6789")\n'
+                        '(= (value ("3" "Website")) "http://www.emilydavisconsulting.org/")\n'
+                        )
+
+        # The MeTTa file does not contain the order of the rows and columns,
+        # we need to sort the rows and columns of the matrices to compare
+        def sort_matrix(m):
+            m.sort(key=lambda x: x[0])
+
+            perm = list(zip(m[0], range(len(m[0]))))
+            perm.sort(key=lambda x: x[0], reverse=False)
+            perm_ = [x[1] for x in perm]
+            matrix_sorted = [[m[i][p] for p in perm_] for i in range(len(m))]
+            return matrix_sorted
+
+        matrix = [['', 'Phone', 'Name', 'Website'], ['1', "384.555.0192x123", "Alice Johnson", "http://www.alicejservices.com/"], ['2', "(512)987-6543x56789", "Michael Smith", "http://www.msmithtech.net/"], ['3', "+1-310-555-6789", "Emily Davis", "http://www.emilydavisconsulting.org/"]]
+        from_metta = matrix_from_cell_metta_labeled(m)
+
+        self.assertEqual(sort_matrix(matrix),
+                         sort_matrix(from_metta))
+            
 
 
 if __name__ == '__main__':

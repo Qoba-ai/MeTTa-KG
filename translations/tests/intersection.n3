@@ -1,0 +1,39 @@
+# https://github.com/eyereasoner/Notation3-By-Example/blob/main/graph/intersection.n3
+
+@prefix : <urn:example:> .
+@prefix graph: <http://www.w3.org/2000/10/swap/graph#> .
+@prefix log: <http://www.w3.org/2000/10/swap/log#> .
+
+:Let :param1 {
+    :A :B :C .
+    :A :X :C .
+    :D :E :F .
+} .
+
+:Let :param2 {
+    :A :X :C .
+} .
+
+{
+    :Let :param1 ?X1 .
+    :Let :param2 ?X2 .
+
+    # Y is the formula X1 ∩ X2  ( intersection of X1 and X2)
+    #    ( X1 X2 ... XN ) where X1 .. XN are formula
+    #    Y a variable or formula
+    ( ?X1 ?X2 ) graph:intersection ?Y .
+}
+=>
+{
+    ( ?X1 ?X2 ) :intersection ?Y .
+} .
+
+# Test
+{
+    ?X :intersection [ log:equalTo { :A :X :C } ] .
+}
+=>
+{
+    :test :is true .
+} .
+
