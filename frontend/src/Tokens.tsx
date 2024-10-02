@@ -189,6 +189,8 @@ const Tokens: Component = () => {
 
   onMount(() => {
     rootTokenForm.onsubmit = (event) => {
+      event.preventDefault();
+
       const newRootToken = rootTokenFormInput.value.trim();
 
       setRootTokenCode(newRootToken);

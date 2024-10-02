@@ -24,7 +24,7 @@ fn rocket() -> Rocket<Build> {
         .mount(
             "/",
             routes![
-                routes::translations::create,
+                routes::translations::create_from_csv,
                 routes::tokens::get_all,
                 routes::tokens::create,
                 routes::tokens::update,
