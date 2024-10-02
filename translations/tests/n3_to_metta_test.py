@@ -1,6 +1,10 @@
+# Sources to get N3 examples
+# https://github.com/eyereasoner/Notation3-By-Example
+# https://github.com/w3c/N3/tree/master
+
 import unittest
 from translations.src.n3_to_metta import *
-from translations.src.csv_to_metta import parse_metta
+from translations.src.csv_to_metta import parse_metta, csv_to_matrix
 import re
 
 
@@ -10,6 +14,8 @@ class TranslateN3(unittest.TestCase):
             self.g_check_list = n3_to_graph(f)
         with open("gedcom_relations.n3") as f:
             self.g_relations = n3_to_graph(f)
+        with open("intersection.n3") as f:
+            self.g_intersection = n3_to_graph(f)
 
         self.mettastr_check_list = ('((Graph 0) ((uriref file:///home/anneline/PycharmProjects/MeTTa-KG/translations/tests/check_list.n3#taskB1) (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#type) (uriref file:///home/anneline/PycharmProjects/MeTTa-KG/translations/tests/check_list.n3#Completed)))\n'
                                     '((Graph 0) ((uriref file:///home/anneline/PycharmProjects/MeTTa-KG/translations/tests/check_list.n3#taskA2) (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#type) (uriref file:///home/anneline/PycharmProjects/MeTTa-KG/translations/tests/check_list.n3#Completed)))\n'
@@ -51,7 +57,7 @@ class TranslateN3(unittest.TestCase):
                          len([triple for triple in g]))
 
     def test_back_and_forth(self):
-        for g in [self.g_check_list, self.g_relations]:
+        for g in [self.g_check_list, self.g_relations, self.g_intersection]:
             # compare with serialized graph instead of original document,
             # because parsing and serializing does not exactly reproduce the original document using rdflib
             original = g.serialize(format="n3")
@@ -61,6 +67,12 @@ class TranslateN3(unittest.TestCase):
             # better would be to split by meaningful blocks than to split by enters
             # but this already gives a good indication
             self.assertSetEqual(set(original.split("\n")), set(back_and_forth.split("\n")))
+
+    def intersection(self):
+        with open("intersection.n3") as f:
+            g = n3_to_graph(f)
+
+        print(graph_to_mettastr(g))
 
 
 if __name__ == '__main__':
