@@ -17,11 +17,12 @@ pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
 
     // get all tokens recursively
     // TODO: find a better way to do this
+    // TODO: verify that this sanitizes inputs (token.id is not user input, but still)
     let results = diesel::sql_query(
         "WITH RECURSIVE rectree AS (
         SELECT * 
             FROM tokens 
-        WHERE id = ?
+        WHERE id = $1
         UNION ALL 
         SELECT t.* 
             FROM tokens t 
