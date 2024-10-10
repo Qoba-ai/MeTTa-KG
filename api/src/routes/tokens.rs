@@ -1,4 +1,5 @@
 use chrono::Utc;
+use diesel::sql_types::Integer;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use regex::Regex;
 use rocket::http::Status;
@@ -14,14 +15,32 @@ pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
 
     let conn = &mut establish_connection();
 
-    // TODO: get all nested tokens
+    // get all tokens recursively
+    // TODO: find a better way to do this
+    let results = diesel::sql_query(
+        "WITH RECURSIVE rectree AS (
+        SELECT * 
+            FROM tokens 
+        WHERE id = ?
+        UNION ALL 
+        SELECT t.* 
+            FROM tokens t 
+            JOIN rectree
+            ON t.parent = rectree.id
+        ) SELECT * FROM rectree;",
+    )
+    .bind::<Integer, _>(token.id)
+    .get_results::<Token>(conn);
+
+    /*
     let results = tokens
         .select(Token::as_select())
         .filter(parent.eq(&token.id))
         .get_results(conn);
+    */
 
     match results {
-        Ok(results) => Ok(Json([results, vec![token]].concat())),
+        Ok(results) => Ok(Json(results)),
         Err(_) => Err(Status::InternalServerError),
     }
 }

@@ -1,6 +1,6 @@
 use crate::schema::tokens;
 use chrono::NaiveDateTime;
-use diesel::{Insertable, Queryable, Selectable};
+use diesel::{QueryableByName, Insertable, Queryable, Selectable};
 use rocket::serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Insertable, Clone)]
@@ -18,7 +18,7 @@ pub struct TokenInsert {
     pub parent: Option<i32>,
 }
 
-#[derive(Serialize, Deserialize, Queryable, Selectable, Clone)]
+#[derive(Serialize, Deserialize, Queryable, Selectable, Clone, QueryableByName)]
 #[diesel(table_name = tokens)]
 pub struct Token {
     pub id: i32,

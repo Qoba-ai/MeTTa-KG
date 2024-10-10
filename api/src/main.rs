@@ -1,3 +1,4 @@
+use rocket::http::Method;
 use rocket::{self, launch, routes, Build, Rocket};
 use rocket_cors::AllowedOrigins;
 
@@ -15,6 +16,10 @@ fn rocket() -> Rocket<Build> {
 
     let cors = rocket_cors::CorsOptions {
         allowed_origins,
+        allowed_methods: vec![Method::Get, Method::Post]
+            .into_iter()
+            .map(From::from)
+            .collect(),
         ..Default::default()
     }
     .to_cors()
@@ -24,7 +29,10 @@ fn rocket() -> Rocket<Build> {
         .mount(
             "/",
             routes![
-                routes::translations::create,
+                routes::translations::create_from_csv,
+                routes::translations::create_from_nt,
+                routes::translations::create_from_jsonld,
+                routes::translations::create_from_n3,
                 routes::tokens::get_all,
                 routes::tokens::create,
                 routes::tokens::update,
@@ -32,5 +40,7 @@ fn rocket() -> Rocket<Build> {
                 routes::tokens::delete_batch
             ],
         )
-        .attach(cors)
+        .mount("/", rocket_cors::catch_all_options_routes())
+        .attach(cors.clone())
+        .manage(cors)
 }

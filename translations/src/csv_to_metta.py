@@ -88,7 +88,12 @@ def matrix_from_column_based_metta(metta: hyperon.MeTTa) -> list[list[str, str]]
 
 # column based with header
 def dict_to_column_based_header_metta(dictlist: list[dict[str, str]]) -> str:
-    return '\n'.join(['(' + f'"{key}" ({" ".join([f"\"{d[key]}\"" for d in dictlist])})'  + ')' for key in dictlist[0].keys()])
+    def serialize(key):
+        inner = " ".join([f"\"{d[key]}\"" for d in dictlist])
+
+        return '(' + f'"{key}" ({inner})'  + ')'
+
+    return '\n'.join([serialize(key) for key in dictlist[0].keys()])
 
 
 def column_based_header_metta_to_dict(metta: hyperon.MeTTa) -> list[dict[str, str]]:
@@ -169,7 +174,7 @@ def matrix_to_cell_metta_labeled(matrix: list[list[str]]) -> str:
     # TODO top-left corner of the matrix is not used
     collabels = matrix[0][1:]
     rowlabels = [r[0] for r in matrix[1:]]
-    print("rowlabels", rowlabels)
+    # print("rowlabels", rowlabels)
 
 
     return '\n'.join([f'(= (value ("{rowlabel}" "{collabel}")) "{value}")'

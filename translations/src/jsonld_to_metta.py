@@ -2,7 +2,7 @@ import hyperon
 import rdflib
 import json
 
-from translations.src.csv_to_metta import parse_metta
+from csv_to_metta import parse_metta
 
 
 def jsonld_to_graph(f):
