@@ -1,81 +1,204 @@
 @import 'Common.module';
 
-.Editor {
+// using class .Main for HTML main elements to prevent applying these styles to main elements on other pages
+// sass requires you to use class and id selectors
+.Main {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: safe center;
+    align-items: safe center;
+    gap: 64px;
+    overflow-x: auto;
+}
 
+.EditorWrapper {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 1;
+    width: 700px;
+    min-height: 500px;
+    background: var(--rp-moon-base);
+    box-shadow:
+        0px 8px 10px -5px rgba(0, 0, 0, 0.2),
+        0px 16px 24px 2px rgba(0, 0, 0, 0.14),
+        0px 6px 30px 5px rgba(0, 0, 0, 0.12);
+    border-radius: 20px;
+}
+
+.MettaInputActionsWrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    background: var(--rp-moon-surface);
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    box-shadow:
+        0px 3px 3px -2px rgba(0, 0, 0, 0.2),
+        0px 3px 4px 0px rgba(0, 0, 0, 0.14),
+        0px 1px 8px 0px rgba(0, 0, 0, 0.12);
+    padding: 8px;
+
+    .EditorRootTokenForm {
+        width: 100%;
+
+        input {
+            width: 100%;
+            border-radius: 12px;
+            padding: 12px 20px;
+        }
+    }
 }
 
 .MettaInput {
-  position: absolute;
-  background-color: #1A2E32;
-  min-width: 600px;
-  min-height: 400px;
-  border: none;
-  caret-color: white;
-  color: white;
-  border-radius: 20px;
-    box-shadow: 0px 8px 10px -5px rgba(0, 0, 0, 0.2),
-    0px 16px 24px 2px rgba(0, 0, 0, 0.14),
-    0px 6px 30px 5px rgba(0, 0, 0, 0.12);
-}
-
-.MettaInput:focus {
-  border: none;
-  outline: solid 1px #1A2E3F;
+    width: 700px;
+    flex-grow: 1;
+    border: none;
+    caret-color: var(--rp-text);
+    color: var(--rp-text);
+    border-radius: 16px;
+    padding: 8px 0px;
+    box-sizing: border-box;
+    word-break: break-all;
 }
 
 .NewSessionDiv {
-  position: absolute; 
-  color: white;
+    color: var(--rp-text);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    width: 700px;
+
+    & > div {
+        display: flex;
+        flex-direction: row;
+        margin: 16px 0;
+        width: 30%;
+        height: 0;
+        gap: 10px;
+        text-align: center;
+        line-height: 0px;
+
+        & > div {
+            width: 100%;
+            border: solid 1px var(--rp-highlight-high);
+        }
+    }
+
+    .ImportButton {
+        background: transparent;
+        border: none;
+        color: var(--rp-text);
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        font-size: 1.4rem;
+    }
 }
 
-.MettaInputWrapper {
-  min-width: 600px;
-  min-height: 400px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.Console {
+    width: 100%;
+    height: 90px;
+    border-top: solid 1px var(--rp-highlight-high);
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+    padding: 12px;
+    box-sizing: border-box;
+    background: transparent;
+    margin: 0;
 }
 
-.ImportButton {
-  background-color: transparent;
-  border: none;
-  color: white;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
+#ImportParametersForm {
+    background-color: var(--rp-surface);
+    padding: 8px 16px 16px 16px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow:
+        0px 3px 3px -2px rgba(0, 0, 0, 0.2),
+        0px 3px 4px 0px rgba(0, 0, 0, 0.14),
+        0px 1px 8px 0px rgba(0, 0, 0, 0.12);
+
+    & > h2 {
+        margin: 16px 8px;
+    }
+
+    & > * {
+        margin: 8px;
+    }
+
+    label {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
 }
 
-.ImportButton > * {
-  padding: 0 4px;
+.MettaEditorActions {
+    display: flex;
+    gap: 8px;
+
+    button {
+        @extend .TextButton;
+        color: var(--rp-subtle);
+    }
+
+    button:hover {
+        text-decoration: underline;
+    }
 }
 
-.ImportCSVButton {
-  width: 125px;
-  height: 35px;
+.RunIcon {
+    @extend .Icon;
+    color: var(--rp-moon-pine);
 }
 
-.CreateNewKGPopOver {
-  z-index: 100;
-  position: absolute;
-  display: flex;
-  flex-direction: column;
+.LoadSpaceModal {
+    width: 400px;
+
+    input {
+        width: 100%;
+    }
 }
 
-.ImportCSVModal {
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background-color: #1A2E3A;
-  border: solid 1px #785589;
-  color: white;
+#ImportFileFormInput {
+    margin: 16px;
 }
 
-.ButtonBar {
-  display: flex;
-  flex-direction: row;
-  justify-content: center;
-  align-items: center;
+@media screen and (max-width: 1024px) {
+    .Main {
+        flex-direction: column;
+    }
+
+    #ImportParametersForm {
+        width: 500px;
+    }
 }
 
+@media screen and (min-width: 1025px) {
+    .Main {
+        flex-direction: row;
+
+        // center editor with optional panes to the sides
+        & > div:first-child,
+        & > div:last-child {
+            width: 50%;
+        }
+    }
+
+    #ImportParametersForm {
+        width: 320px;
+    }
+}
