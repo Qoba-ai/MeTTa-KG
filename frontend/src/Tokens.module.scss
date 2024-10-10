@@ -1,319 +1,310 @@
-@import "Common.module";
+@import 'Common.module';
 
-.RootTokenForm,
-.NewTokenForm {
-  color: white;
-  margin: 0px 32px 32px 32px;
-  background-color: #1a2e32;
-  padding: 8px 16px 16px 16px;
-  border-radius: 8px;
-  box-shadow: 0px 2px 4px -1px rgba(0, 0, 0, 0.2),
-    0px 4px 5px 0px rgba(0, 0, 0, 0.14), 0px 1px 10px 0px rgba(0, 0, 0, 0.12);
-}
-
-.RootTokenForm,
-.NewTokenForm {
-  display: flex;
-  flex-direction: column;
-}
-
-.RootTokenForm > h1 {
-  text-align: center;
-}
-
-.RootTokenForm > *,
-.NewTokenForm > * {
-  margin: 8px;
-}
-
-.TokenInput {
-  padding: 8px;
-  border-radius: 8px;
-  flex-grow: 1;
-  text-align: center;
-}
-
-.RootTokenFormActions {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-}
-
-.RootTokenFormActions > input {
-  width: 100%;
-  margin: 0 4px;
-}
-
-.NewTokenPermissions input {
-  margin-top: 8px;
-  margin-bottom: 8px;
-}
-
-input[type="checkbox"] {
-  transform: scale(1.15);
-}
-
-input[type="submit"],
-input[type="button"] {
-  background-color: rgb(179, 43, 97);
-  padding: 8px 16px;
-  color: white;
-  border: none;
-  border-radius: 4px;
-}
-
-input[type="text"] {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-}
-
-.TokenTableWrapper {
-  color: white;
-}
-
-td,
-th {
-  padding: 8px 16px;
-}
-
-.TokenTable > thead {
-  background-color: #1a2e32;
-  position: sticky;
-  top: 0;
-}
-
-.TokenTable > thead > tr > th > * {
-  text-align: center;
-  margin: 4px;
-}
-
-.TokenTable > thead > tr > th:first-child {
-  border-top-left-radius: 8px;
-}
-
-.TokenTable > thead > tr > th:last-child {
-  border-top-right-radius: 8px;
-}
-
-.TableHeaderCell {
-  box-sizing: border-box;
-}
-
-.TableHeaderCell:focus {
-  border: 1px white solid;
-}
-
-.SelectedToken {
-  background-color: #1a2e3f;
-}
-
-.TokenTableNoData {
-  position: relative;
-  width: 100%;
-  height: 200px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.TableButtonBar > button {
-  margin: 0px 4px;
-  background-color: transparent;
-  padding: 8px 16px;
-  color: white;
-  border: solid 1px rgb(179, 43, 97);
-  border-radius: 4px;
-}
-
-.TableButtonBar > button:disabled {
-  border-color: grey;
-}
-
-.NamespaceSearchRegexInput,
-.DescriptionSearchRegexInput {
-  margin: 6px;
-  box-sizing: border-box;
-}
-
-.NamespaceSearchPopperButton {
-  margin: 4px;
-}
-
-.TokenTableCodeCell {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 16px;
-}
-
-.TokenTableCodeCell:hover .TokenTableCodeCellIcon {
-  color: rgb(179, 43, 97);
-}
-
-.TokenTableCodeCell:not(.Copied):hover .TokenTableCodeCellIcon {
-  transform: scale(1.25);
-}
-
-.TokenTableCodeCell:not(.Copied):hover .TokenTableCellCode {
-  opacity: 0.9;
-}
-
-.TokenTableCodeCellIcon {
-  color: gray;
-}
-
-.TokenTableCodeCellCopyTooltip {
-  width: 110px;
-  background-color: rgb(64, 64, 64);
-  color: #fff;
-  text-align: center;
-  padding: 5px 0;
-  border-radius: 4px;
-  font-size: 14px;
-
-  position: absolute;
-  z-index: 1;
-}
-
-.PermissionIcon {
-  text-align: center;
-}
-
-.TokenTableHeadDescriptionCell {
-  width: 400px;
-}
-
-.ToastButton {
-  margin: 8px 4px;
-  padding: 8px 16px;
-  color: white;
-  background-color: rgb(179, 43, 97);
-  border-radius: 4px;
-  border: none;
-}
-
-dialog {
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background-color: #1a2e32;
-  border: none;
-  color: white;
-  border-radius: 2px;
-}
-
-dialog::backdrop {
-  background-color: rgba(0, 0, 0, 0.5);
-}
-
-.ButtonBar {
-  display: flex;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.ConfirmButton {
-  background-color: rgb(142, 16, 16);
-  color: white;
-  border-radius: 4px;
-  margin: 8px 4px;
-  padding: 8px 16px;
-  border: none;
-}
-
-.CancelButton {
-  background-color: transparent;
-  border: none;
-  color: white;
-}
-
-.TokenTableCode,
-.TokenTableNamespace {
-  font-family: "Courier New", monospace;
-}
-
-.NewTokenNoPermissionsWarning {
-  color: rgb(227, 212, 49);
-}
-
-.ContentWrapper {
-  width: 100%;
+.Main {
+    width: 100%;
+    margin-top: 64px;
 }
 
 .RootTokenForm {
-  margin-top: 32px;
+    background: var(--rp-surface);
+    padding: 8px 16px 16px 16px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow:
+        0px 3px 3px -2px rgba(0, 0, 0, 0.2),
+        0px 3px 4px 0px rgba(0, 0, 0, 0.14),
+        0px 1px 8px 0px rgba(0, 0, 0, 0.12);
+
+    & > h2 {
+        margin: 16px 8px;
+    }
+
+    & > * {
+        margin: 8px;
+    }
 }
 
-.RootTokenFormWrapper,
-.NewTokenFormWrapper,
+.NewTokenForm {
+    background: var(--rp-surface);
+    padding: 8px 16px 16px 16px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow:
+        0px 3px 3px -2px rgba(0, 0, 0, 0.2),
+        0px 3px 4px 0px rgba(0, 0, 0, 0.14),
+        0px 1px 8px 0px rgba(0, 0, 0, 0.12);
+
+    & > h2 {
+        margin: 16px;
+    }
+
+    & > * {
+        margin: 8px;
+    }
+
+    .NewTokenPermissions input {
+        margin-top: 8px;
+        margin-bottom: 8px;
+    }
+}
+
+// allows table to be horizontally scrollable without scrolling the page horizontally
 .TokenTableWrapper {
-  box-sizing: border-box;
-}
+    overflow-x: auto;
 
-.RootTokenFormWrapper {
-  width: 30%;
-}
-
-.NewTokenFormWrapper {
-  width: 30%;
+    .TokenTableInnerWrapper {
+        width: max-content;
+    }
 }
 
 .TokenTable {
+    thead {
+        background: var(--rp-surface);
+        position: sticky;
+    }
+
+    th:first-child {
+        border-top-left-radius: 8px;
+    }
+
+    th:last-child {
+        border-top-right-radius: 8px;
+    }
+
+    td,
+    th {
+        padding: 8px 16px;
+    }
+
+    // token code cells contain 2 elements
+    td > div.CodeCell {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 16px;
+
+        .CodeCellIcon {
+            color: var(--rp-muted);
+        }
+    }
+
+    // make code cells look clickable
+    td > div.CodeCell:hover {
+        .CodeCellIcon {
+            color: var(--rp-moon-text);
+        }
+
+        &:not(.Copied) {
+            opacity: 0.75;
+
+            .CodeCellIcon {
+                transform: scale(1.1);
+            }
+        }
+    }
+
+    th > * {
+        margin: 8px 0px;
+    }
+
+    // tab navigation can be used to focus header cells resulting in an outline color
+    // header cells are focused on-click to appear 'selected'
+    // this is needed due to how browsers distinguish between tab and on-click focusing
+    th:focus {
+        outline: 1px var(--rp-highlight-high) solid;
+    }
+
+    // highlight selected table rows
+    tbody > tr:has(input[type='checkbox']:checked) {
+        background: var(--rp-highlight-med);
+    }
+
+    .CopyTooltip {
+        background: var(--rp-overlay);
+        color: var(--rp-text);
+        padding: 12px;
+        border-radius: 8px;
+        border: solid 1px var(--rp-highlight-high);
+        position: absolute;
+        z-index: 1;
+    }
+
+    .PermissionIcon {
+        text-align: center;
+    }
+
+    .SortIcon {
+        margin-left: 12px;
+    }
+
+    .CodeCellContent,
+    .NamespaceCell {
+        font-family: 'Courier New', monospace;
+    }
+
+    .NamespaceSearchRegexInput,
+    .DescriptionSearchRegexInput {
+        text-align: center;
+    }
+}
+
+.TokenTableNoData {
+    position: relative;
+    width: 100%;
+    height: 250px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .TableButtonBar {
-  width: auto;
-  margin-top: 16px;
-  padding: 8px 16px;
-  display: flex;
-  flex-direction: row;
-  justify-content: end;
-  align-items: center;
-  background-color: #1a2e32;
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
-  box-sizing: border-box;
+    width: auto;
+    background: var(--rp-surface);
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    margin-top: 16px;
+    padding: 8px 16px;
+    display: flex;
+    flex-direction: row;
+    justify-content: start;
+    align-items: center;
+    gap: 16px;
+
+    button {
+        @extend .Button;
+    }
 }
 
-.TokenTableWrapper {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.TokenTableInnerWrapper {
-  width: max-content;
-  padding: 16px;
-  margin-left: auto;
-  margin-right: auto;
+.NewTokenNoPermissionsWarning {
+    color: var(--rp-gold);
 }
 
 @media screen and (max-width: 1024px) {
-  .RootTokenFormWrapper {
-    width: 100%;
-    margin-left: auto;
-    margin-right: auto;
-  }
+    .Main {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        justify-content: center;
+        align-items: center;
+    }
 
-  .NewTokenFormWrapper {
-    width: 100%;
-    margin-left: auto;
-    margin-right: auto;
-  }
+    .RootTokenForm {
+        width: 80%;
+
+        h2,
+        input {
+            text-align: center;
+        }
+    }
+
+    .NewTokenForm {
+        width: 80%;
+    }
+
+    .TokenTableWrapper {
+        width: 95%;
+    }
 }
 
-@media screen and (min-width: 1025px) {
-  .RootTokenFormWrapper {
-    width: 40%;
-    max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
-  }
+@media screen and (min-width: 1025px) and (max-width: 2099px) {
+    .Main {
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+        justify-content: safe center;
+        align-items: safe center;
+    }
 
-  .NewTokenFormWrapper {
-    width: 40%;
-    max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
-  }
+    .RootTokenForm {
+        width: 400px;
+
+        h2,
+        input {
+            text-align: center;
+        }
+    }
+
+    .NewTokenForm {
+        flex-direction: row;
+        align-items: center;
+
+        & > label {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .NewTokenPermissions {
+            fieldset > label > input {
+                margin: 8px;
+            }
+        }
+    }
+
+    .TokenTableWrapper {
+        margin: 16px;
+        width: 95%;
+
+        display: flex;
+        justify-content: safe center;
+        align-items: safe center;
+    }
+}
+
+@media screen and (min-width: 2100px) {
+    .Main {
+        display: grid;
+        grid-template-columns:
+            1fr
+            auto
+            1fr;
+        gap: 32px;
+        justify-items: center;
+        align-items: center;
+    }
+
+    .RootTokenForm {
+        width: 400px;
+        grid-row: 1;
+        grid-column: span 3;
+
+        h2,
+        input {
+            text-align: center;
+        }
+    }
+
+    .TokenTableWrapper {
+        grid-row: 2;
+        grid-column: 2;
+        align-self: center;
+        justify-self: center;
+        overflow-x: auto;
+    }
+
+    .NewTokenForm {
+        grid-row: 2;
+        grid-column: 3;
+        align-self: start;
+        justify-self: start;
+
+        & > label {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        fieldset {
+            display: flex;
+            flex-direction: column;
+
+            label > input {
+                margin: 8px;
+            }
+        }
+    }
 }

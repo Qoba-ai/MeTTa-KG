@@ -17,4 +17,12 @@ export default defineConfig({
   build: {
     target: 'esnext',
   },
+  optimizeDeps: {
+    include: ['@codemirror/state', '@codemirror/view', '**/*.module.scss'],
+  },
+  css: {
+    modules: {
+
+    }
+  }
 });
