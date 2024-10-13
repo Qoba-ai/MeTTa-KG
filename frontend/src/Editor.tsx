@@ -8,7 +8,7 @@ import {
 } from 'solid-icons/ai'
 import { VsRunAll } from 'solid-icons/vs'
 import { createSignal, onMount, Show } from 'solid-js'
-import styles from './App.module.scss'
+import styles from './Editor.module.scss'
 import { A } from '@solidjs/router'
 import toast, { Toaster } from 'solid-toast'
 import { BACKEND_URL } from './urls'
@@ -17,15 +17,20 @@ import 'highlight.js/styles/panda-syntax-dark.css'
 import {
     bracketMatching,
     foldGutter,
+    foldInside,
     foldKeymap,
+    foldNodeProp,
+    indentNodeProp,
     indentOnInput,
+    indentService,
+    indentUnit,
+    LanguageSupport,
+    LRLanguage,
     syntaxHighlighting,
+    syntaxTree,
+    TreeIndentContext,
 } from '@codemirror/language'
-import { commonLisp } from '@codemirror/legacy-modes/mode/commonlisp'
-import { StreamLanguage } from '@codemirror/language'
-import { HighlightStyle } from '@codemirror/language'
-import { tags } from '@lezer/highlight'
-import { EditorState } from '@codemirror/state'
+import { EditorState, Extension } from '@codemirror/state'
 import {
     crosshairCursor,
     drawSelection,
@@ -39,7 +44,13 @@ import {
     rectangularSelection,
 } from '@codemirror/view'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
-import { defaultKeymap, historyKeymap, history } from '@codemirror/commands'
+import {
+    defaultKeymap,
+    historyKeymap,
+    history,
+    indentWithTab,
+    indentSelection,
+} from '@codemirror/commands'
 import { lintKeymap } from '@codemirror/lint'
 import {
     autocompletion,
@@ -48,6 +59,12 @@ import {
     completionKeymap,
 } from '@codemirror/autocomplete'
 import { Token } from './types'
+import {
+    editorTheme,
+    highlightStyle,
+    languageSupport,
+    mettaLinter,
+} from './mettaLanguageSupport'
 
 enum EditorMode {
     DEFAULT,
@@ -69,22 +86,40 @@ enum ImportCSVDirection {
     CELL_UNLABELED = 'CellUnlabeled',
 }
 
+const extensionToImportFormat = (file: File) => {
+    // TODO: handle case where files have no extension
+    const extension = file.name.split('.')[1]
+
+    switch (extension) {
+        case 'csv': {
+            return ImportFormat.CSV
+        }
+        case 'nt': {
+            return ImportFormat.NTRIPLES
+        }
+        case 'n3': {
+            return ImportFormat.N3
+        }
+        case 'jsonld': {
+            return ImportFormat.JSONLD
+        }
+    }
+}
+
 const App: Component = () => {
     let importFileModal: HTMLDialogElement
     let importFileForm: HTMLFormElement
     let importFileFormInput: HTMLInputElement
     let commitImportForm: HTMLFormElement
     let mettaEditor: HTMLDivElement
+    let mettaInput: HTMLDivElement
     let rootTokenFormInput: HTMLInputElement
     let loadSpaceModal: HTMLDialogElement
     let loadSpaceForm: HTMLFormElement
     let loadSpaceFormInput: HTMLInputElement
 
-    const [rootTokenCodeInputValue, setRootTokenCodeInputValue] = createSignal<
-        string | null
-    >(localStorage.getItem('rootToken'))
     const [availableTokens, setAvailableTokens] = createSignal<Token[]>([])
-    const [mettaContent, setMettaContent] = createSignal('')
+    const [mettaContent, setMettaContent] = createSignal(``)
     const [fileToImport, setFileToImport] = createSignal<File | null>(null)
     const [fileToImportFormat, setFileToImportFormat] =
         createSignal<ImportFormat | null>(null)
@@ -95,6 +130,7 @@ const App: Component = () => {
     const [tokenToOpen, setTokenToOpen] = createSignal('')
     const [token, setToken] = createSignal<Token | null>(null)
     const [namespace, setNamespace] = createSignal('')
+    const [isFullscreen, setIsFullscreen] = createSignal(false)
     const [editorView, setEditorView] = createSignal<EditorView>()
 
     // CSV-specific import parameters
@@ -103,61 +139,23 @@ const App: Component = () => {
     const [importCSVDelimiter, setImportCSVDelimiter] =
         createSignal<string>('\u002C')
 
-    const editorTheme = EditorView.theme(
-        {
-            '&': {
-                backgroundColor: 'var(--rp-moon-base)',
-                color: 'var(--rp-moon-text)',
-                maxHeight: '600px',
-            },
-            '.cm-content': {
-                caretColor: 'var(--rp-moon-highlight-low)',
-                maxHeight: '600px',
-            },
-            '.cm-cursor, .cm-dropCursor': {
-                borderLeftColor: 'var(--rp-moon-highlight-low)',
-            },
-            '&.cm-focused .cm-selectionBackgroundm .cm-selectionBackground, .cm-content ::selection':
-                {
-                    backgroundColor: 'var(--rp-moon-highlight-med)',
-                },
-            '.cm-activeLine': {
-                backgroundColor: 'var(--rp-moon-highlight-med)',
-            },
-            '.cm-gutters': {
-                backgroundColor: 'var(--rp-moon-highlight-high)',
-                color: 'var(--rp-moon-subtle)',
-            },
-            '.cm-activeLineGutter': {
-                backgroundColor: 'var(--rp-moon-rose)',
-            },
-        },
-        {
-            dark: true,
-        }
-    )
-
     const editorState = EditorState.create({
         extensions: [
-            StreamLanguage.define(commonLisp),
-            // editorTheme,
             editorTheme,
+            languageSupport,
             highlightActiveLineGutter(),
-            highlightSpecialChars(),
             history(),
             foldGutter(),
             drawSelection(),
+            highlightSelectionMatches(),
             dropCursor(),
-            EditorState.allowMultipleSelections.of(true),
-            indentOnInput(),
             bracketMatching(),
             closeBrackets(),
-            autocompletion(),
-            rectangularSelection(),
-            crosshairCursor(),
             highlightActiveLine(),
-            highlightSelectionMatches(),
+            syntaxHighlighting(highlightStyle),
             EditorView.lineWrapping,
+            autocompletion(),
+            mettaLinter,
             keymap.of([
                 ...closeBracketsKeymap,
                 ...defaultKeymap,
@@ -167,43 +165,30 @@ const App: Component = () => {
                 ...completionKeymap,
                 ...lintKeymap,
             ]),
-            syntaxHighlighting(
-                HighlightStyle.define([
-                    {
-                        tag: tags.comment,
-                        color: 'gray',
-                    },
-                    {
-                        tag: tags.number,
-                        color: '#ea9a97',
-                    },
-                    {
-                        tag: tags.string,
-                        color: '#ea9a97',
-                    },
-                    {
-                        tag: tags.name,
-                        color: '#ea9a97',
-                    },
-                ])
-            ),
-            EditorView.updateListener.of((update) =>
+            EditorView.updateListener.of((update) => {
                 setMettaContent(update.state.doc.toString())
-            ),
+            }),
+            EditorView.domEventHandlers({
+                drop: (event, view) => {
+                    // translate files dropped into the editor (csv, jsonld,...)
+                    [...event.dataTransfer.items].forEach(async (item, i) => {
+                        if (item.kind === 'file') {
+                            const file = item.getAsFile()
+
+                            setFileToImport(file)
+                            setFileToImportFormat(extensionToImportFormat(file))
+
+                            await translateToMetta()
+
+                            setEditorMode(EditorMode.IMPORT)
+                        }
+                    })
+
+                    event.preventDefault()
+                },
+            }),
         ],
     })
-
-    const updateMettaContents = () => {
-        const transaction = editorView().state.update({
-            changes: {
-                from: 0,
-                to: editorView().state.doc.length,
-                insert: mettaContent(),
-            },
-        })
-
-        editorView().dispatch(transaction)
-    }
 
     onMount(() => {
         // TODO: put this in separate component
@@ -241,50 +226,72 @@ const App: Component = () => {
             // prevent page refresh on submit
             event.preventDefault()
 
-            const files = importFileFormInput.files
+            await translateToMetta()
 
-            if (files?.length === 1) {
-                await translate()
-
-                importFileModal.close()
-                setEditorMode(EditorMode.IMPORT)
-            }
+            importFileModal.close()
+            setEditorMode(EditorMode.IMPORT)
         }
 
-        loadSpaceForm.onsubmit = async (event) => {
+        loadSpaceForm.onsubmit = (event) => {
+            // prevent page refresh on submit
             event.preventDefault()
 
-            fetchTokens(tokenToOpen())
+            loadSpace(tokenToOpen())
             setEditorMode(EditorMode.EDIT)
 
             loadSpaceModal.close()
         }
+
+        // TODO: delete
+        loadSpace('5ad1773c-36af-4483-bde3-9b84a69c138f')
+        setEditorMode(EditorMode.EDIT)
 
         // clear file input after closing modal
         importFileModal.addEventListener('close', function (event) {
             importFileFormInput.value = ''
         })
 
-        // TODO: remove
-        /**
-        setFileToImport(
-            new File(
-                [
-                    `Index,Name,Phone,Website
-1,Alice Johnson,384.555.0192x123,http://www.alicejservices.com/
-2,Michael Smith,(512)987-6543x56789,http://www.msmithtech.net/
-3,Emily Davis,+1-310-555-6789,http://www.emilydavisconsulting.org/`,
-                ],
-                'test.csv'
-            )
-        )
-        setFileToImportFormat(ImportFormat.CSV)
-
-        translate().then(() => {
-            setEditorMode(EditorMode.IMPORT)
-        })
-         */
+        document.onfullscreenchange = async (event) => {
+            if (!document.fullscreenElement) {
+                setIsFullscreen(false)
+            }
+        }
     })
+
+    const initializeEditor = () => {
+        const newEditorView = new EditorView({
+            state: editorState,
+            parent: mettaInput,
+        })
+
+        setEditorView(newEditorView)
+
+        newEditorView.setTabFocusMode(true)
+
+        const transaction = newEditorView.state.update({
+            changes: {
+                from: 0,
+                to: editorView().state.doc.length,
+                insert: mettaContent(),
+            },
+        })
+
+        editorView().dispatch(transaction)
+    }
+
+    const handleImportFileSelect = (
+        e: Event & {
+            currentTarget: HTMLInputElement
+            target: HTMLInputElement
+        }
+    ) => {
+        const file = e.target?.files?.[0]
+
+        if (file) {
+            setFileToImport(file)
+            setFileToImportFormat(extensionToImportFormat(file))
+        }
+    }
 
     const getParserParameters = () => {
         switch (fileToImportFormat()) {
@@ -315,16 +322,18 @@ const App: Component = () => {
         }
     }
 
-    const translate = async (): Promise<void> => {
+    /**
+     * EDITOR ACTION: import, translate
+     */
+    const translateToMetta = async (): Promise<void> => {
         const file = fileToImport()
-
-        const parameters = new URLSearchParams(getParserParameters() as any)
-
         const fileFormat = fileToImportFormat()
 
         if (!fileFormat) {
             return
         }
+
+        const parameters = new URLSearchParams(getParserParameters() as any)
 
         try {
             const resp = await fetch(
@@ -336,29 +345,17 @@ const App: Component = () => {
                 }
             )
 
-            // const metta = (await resp.json()) + `\n\n!(value ("3" "Website"))`
-            const metta = await resp.json()
+            const mettaTranslation = await resp.json()
 
-            setMettaContent(metta)
-            setNamespace('')
-
-            const e = editorView()
-
-            if (e) {
-                const transaction = editorView().state.update({
+            // insert translated MeTTa code at cursor location
+            editorView().dispatch(
+                editorView().state.update({
                     changes: {
-                        from: 0,
-                        to: editorView().state.doc.length,
-                        insert: metta,
+                        from: editorView().state.selection.main.head,
+                        insert: mettaTranslation,
                     },
                 })
-
-                editorView().dispatch(transaction)
-            }
-
-            setTimeout(() => {
-                // mettaConsole.focus()
-            }, 10)
+            )
         } catch (e) {
             console.error(e)
             // TODO: specific error messages
@@ -368,9 +365,10 @@ const App: Component = () => {
         }
     }
 
-    const downloadMettaContent = async () => {
-        event.preventDefault()
-
+    /**
+     * EDITOR ACTION: export
+     */
+    const exportMetta = (): void => {
         const fileName = fileToImport()?.name.split('.')[0]
 
         const blob = URL.createObjectURL(new Blob([mettaContent()]))
@@ -386,58 +384,95 @@ const App: Component = () => {
         URL.revokeObjectURL(blob)
     }
 
-    const handleFileSelect = (e) => {
-        const file = e.target?.files?.[0]
+    /**
+     * EDITOR ACTION: run
+     */
+    const run = async (): Promise<void> => {
+        try {
+            const resp = await fetch(
+                'https://inter.metta-lang.dev/api/v1/codes',
+                {
+                    headers: {
+                        accept: '*/*',
+                        'content-type': 'application/json',
+                    },
+                    referrer: 'https://metta-lang.dev/',
+                    referrerPolicy: 'strict-origin-when-cross-origin',
+                    body: JSON.stringify({
+                        code: mettaContent(),
+                    }),
+                    method: 'POST',
+                    mode: 'cors',
+                    credentials: 'omit',
+                }
+            )
 
-        if (file) {
-            setFileToImport(file)
-            // TODO: what if file has no extension
-            const extension = file.name.split('.')[1]
+            const data = await resp.json()
 
-            switch (extension) {
-                case 'csv': {
-                    setFileToImportFormat(ImportFormat.CSV)
-                    break
-                }
-                case 'nt': {
-                    setFileToImportFormat(ImportFormat.NTRIPLES)
-                    break
-                }
-                case 'n3': {
-                    setFileToImportFormat(ImportFormat.N3)
-                    break
-                }
-                case 'jsonld': {
-                    setFileToImportFormat(ImportFormat.JSONLD)
-                    break
-                }
-            }
+            setOutput(data['result'])
+        } catch (e) {
+            console.error(e)
+            // TODO: specific error messages
+            toast(`Failed to run MeTTa.`)
         }
     }
 
-    const run = async () => {
-        const resp = await fetch('https://inter.metta-lang.dev/api/v1/codes', {
-            headers: {
-                accept: '*/*',
-                'content-type': 'application/json',
-            },
-            referrer: 'https://metta-lang.dev/',
-            referrerPolicy: 'strict-origin-when-cross-origin',
-            body: JSON.stringify({
-                code: mettaContent(),
-            }),
-            method: 'POST',
-            mode: 'cors',
-            credentials: 'omit',
+    /**
+     * EDITOR ACTION: indent
+     */
+    const indent = (): void => {
+        indentSelection({
+            state: editorView().state,
+            dispatch: (transaction) => editorView().dispatch(transaction),
         })
-
-        const data = await resp.json()
-
-        setOutput(data['result'])
     }
 
-    const format = () => {}
+    /**
+     * EDITOR ACTION: load space
+     */
+    const loadSpace = async (token: string): Promise<void> => {
+        try {
+            const resp = await fetch(`${BACKEND_URL}/tokens`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: token,
+                },
+            })
 
+            const data = await resp.json()
+
+            const self = data.find((t: Token) => t.code === token)
+
+            if (self) {
+                setToken(self)
+                setNamespace(self.namespace)
+                setAvailableTokens(data)
+
+                toast(`Successfully loaded space '${self.namespace}'`)
+            } else {
+                toast(`Failed to load space`)
+            }
+        } catch (e) {
+            console.error(e)
+            toast(`Failed to load space using token ${token}`)
+        }
+    }
+
+    /**
+     * EDITOR ACTION: fullscreen mode
+     */
+    const switchFullscreen = async (): Promise<void> => {
+        if (isFullscreen()) {
+            await document.exitFullscreen()
+            setIsFullscreen(false)
+        } else {
+            await mettaEditor.requestFullscreen()
+            setIsFullscreen(true)
+        }
+    }
+
+    // TODO: remove hljs
     hljs.registerLanguage('metta', () => ({
         name: 'metta',
         case_insensitive: true,
@@ -452,37 +487,6 @@ const App: Component = () => {
             },
         ],
     }))
-
-    const fetchTokens = async (root: string): Promise<Token[]> => {
-        try {
-            const resp = await fetch(`${BACKEND_URL}/tokens`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: root,
-                },
-            })
-
-            const data = await resp.json()
-
-            setAvailableTokens(data)
-
-            const self = data.find((t) => t.code === root)
-
-            if (self) {
-                setToken(self)
-                setNamespace(self.namespace)
-                toast(
-                    `Successfully loaded space corresponding to namespace ${self.namespace}`
-                )
-            } else {
-                toast(`Failed to load space`)
-            }
-        } catch (e) {
-            console.error(e)
-            return []
-        }
-    }
 
     return (
         <>
@@ -499,7 +503,7 @@ const App: Component = () => {
             </header>
             <main class={styles.Main}>
                 <div></div>
-                <div class={styles.EditorWrapper}>
+                <div ref={mettaEditor} class={styles.EditorWrapper}>
                     <Show when={editorMode() === EditorMode.DEFAULT}>
                         <div class={styles.NewSessionDiv}>
                             <button
@@ -531,6 +535,34 @@ const App: Component = () => {
                     </Show>
                     <Show when={editorMode() !== EditorMode.DEFAULT}>
                         <div class={styles.MettaInputActionsWrapper}>
+                            <div class={styles.MettaEditorActions}>
+                                <button
+                                    onClick={() => loadSpaceModal.showModal()}
+                                >
+                                    Load
+                                </button>
+                                <button
+                                    onClick={() => importFileModal.showModal()}
+                                >
+                                    Import
+                                </button>
+                                <button onclick={() => indent()}>Indent</button>
+                                <button onclick={() => switchFullscreen()}>
+                                    {isFullscreen()
+                                        ? 'Exit Fullscreen'
+                                        : 'Fullscreen'}
+                                </button>
+                                <button onclick={() => exportMetta()}>
+                                    Export
+                                </button>
+                                <div style={{ 'flex-grow': 1 }}></div>
+                                <button onclick={() => run()}>
+                                    <VsRunAll
+                                        class={styles.RunIcon}
+                                        size={22}
+                                    />
+                                </button>
+                            </div>
                             <form
                                 class={styles.EditorRootTokenForm}
                                 onsubmit={(e) => e.preventDefault()}
@@ -561,42 +593,13 @@ const App: Component = () => {
                                     disabled={editorMode() !== EditorMode.EDIT}
                                 />
                             </form>
-                            <div class={styles.MettaEditorActions}>
-                                <button
-                                    onClick={() => loadSpaceModal.showModal()}
-                                >
-                                    Load
-                                </button>
-                                <button
-                                    onClick={() => importFileModal.showModal()}
-                                >
-                                    Import
-                                </button>
-                                <button onclick={() => format()}>Format</button>
-                                <button onclick={() => downloadMettaContent()}>
-                                    Export
-                                </button>
-                                <button onclick={() => run()}>
-                                    <VsRunAll
-                                        class={styles.RunIcon}
-                                        size={22}
-                                    />
-                                </button>
-                            </div>
                         </div>
                         <div
                             class={styles.MettaInput}
-                            ref={(el) => {
-                                mettaEditor = el
+                            ref={(ref) => {
+                                mettaInput = ref
 
-                                setEditorView(
-                                    new EditorView({
-                                        state: editorState,
-                                        parent: el,
-                                    })
-                                )
-
-                                updateMettaContents()
+                                initializeEditor()
                             }}
                         ></div>
                         <pre class={styles.Console}>
@@ -638,7 +641,7 @@ const App: Component = () => {
                                                 e.target
                                                     .value as ImportCSVDirection
                                             )
-                                            translate()
+                                            translateToMetta()
                                         }}
                                     >
                                         <option value={'Row'}>Row</option>
@@ -658,7 +661,7 @@ const App: Component = () => {
                                             setImportCSVDelimiter(
                                                 e.target.value
                                             )
-                                            translate()
+                                            translateToMetta()
                                         }}
                                     >
                                         <option value={'\u0020'}>
@@ -701,7 +704,7 @@ const App: Component = () => {
                         ref={importFileFormInput!}
                         type="file"
                         required
-                        onchange={(e) => handleFileSelect(e)}
+                        onchange={(e) => handleImportFileSelect(e)}
                     />
                     <div class={styles.ModalButtonBar}>
                         <button

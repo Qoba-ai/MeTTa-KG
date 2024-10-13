@@ -1,4 +1,4 @@
-@import 'Common.module';
+@import 'styles/Common.module';
 
 // using class .Main for HTML main elements to prevent applying these styles to main elements on other pages
 // sass requires you to use class and id selectors
@@ -34,9 +34,10 @@
 .MettaInputActionsWrapper {
     width: 100%;
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     justify-content: center;
-    align-items: center;
+    align-items: start;
+    gap: 8px;
     background: var(--rp-moon-surface);
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
@@ -109,7 +110,7 @@
 
 .Console {
     width: 100%;
-    height: 90px;
+    height: 120px;
     border-top: solid 1px var(--rp-highlight-high);
     border-bottom-left-radius: 20px;
     border-bottom-right-radius: 20px;
@@ -117,6 +118,21 @@
     box-sizing: border-box;
     background: transparent;
     margin: 0;
+    overflow-y: auto;
+}
+
+.Console::-webkit-scrollbar {
+    background: transparent;
+    width: 5px;
+    height: 5px;
+}
+
+.Console::-webkit-scrollbar-thumb {
+    background-color: var(--rp-highlight-med);
+}
+
+.Console::-webkit-scrollbar-corner {
+    background-color: transparent;
 }
 
 #ImportParametersForm {
@@ -147,6 +163,7 @@
 }
 
 .MettaEditorActions {
+    width: 100%;
     display: flex;
     gap: 8px;
 

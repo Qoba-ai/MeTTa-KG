@@ -7,7 +7,6 @@ import styles from './Tokens.module.scss'
 import toast, { Toaster } from 'solid-toast'
 import { Token } from './types'
 
-
 enum SortableColumns {
     TIMESTAMP,
     NAMESPACE,
