@@ -7,8 +7,6 @@ use std::fs;
 use std::process::Command;
 use uuid::Uuid;
 
-// TODO: support formats other than csv
-
 #[derive(FromFormField, Copy, Clone)]
 pub enum CSVParseDirection {
     Row = 1,

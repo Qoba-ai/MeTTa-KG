@@ -2,10 +2,10 @@
 import { render } from "solid-js/web";
 import { Route, Router } from "@solidjs/router";
 
-import App from "./App";
+import Editor from "./Editor";
 import Tokens from "./Tokens";
 
-import './global.scss';
+import './styles/global.scss';
 
 const root = document.getElementById("root");
 
@@ -18,7 +18,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 render(
   () => (
     <Router>
-      <Route path="/" component={App} />
+      <Route path="/" component={Editor} />
       <Route path="/tokens" component={Tokens} />
     </Router>
   ),
