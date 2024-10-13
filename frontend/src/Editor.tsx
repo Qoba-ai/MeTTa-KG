@@ -242,10 +242,6 @@ const App: Component = () => {
             loadSpaceModal.close()
         }
 
-        // TODO: delete
-        loadSpace('5ad1773c-36af-4483-bde3-9b84a69c138f')
-        setEditorMode(EditorMode.EDIT)
-
         // clear file input after closing modal
         importFileModal.addEventListener('close', function (event) {
             importFileFormInput.value = ''
