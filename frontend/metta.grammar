@@ -1,0 +1,145 @@
+
+@top Space { Atom* }
+
+Atom {
+    Symbol | Expression | Variable
+}
+
+Symbol {
+    StringLiteral |
+    BooleanLiteral |
+    IntegerLiteral |
+    FloatLiteral |
+    Identifier | 
+    SpaceReference |
+    GroundedFunction |
+    GroundedType
+}
+
+StringLiteral { STRING_LITERAL }
+
+BooleanLiteral { BOOLEAN_LITERAL }
+
+IntegerLiteral { INTEGER_LITERAL }
+
+FloatLiteral { FLOAT_LITERAL }
+
+Identifier {
+    IDENTIFIER
+}
+
+SpaceReference { 
+    SPACE_REFERENCE 
+}
+
+GroundedFunction {
+    GroundedArithmeticFunction | GroundedBooleanFunction | GroundedComparisonFunction | OtherGroundedFunction
+}
+
+GroundedArithmeticFunction {
+    @specialize<IDENTIFIER, "*"> | 
+    @specialize<IDENTIFIER, "/"> |
+    @specialize<IDENTIFIER, "+"> |
+    @specialize<IDENTIFIER, "-"> |
+    @specialize<IDENTIFIER, "%">
+}
+
+GroundedBooleanFunction {
+    @specialize<IDENTIFIER, "and"> |
+    @specialize<IDENTIFIER, "or"> |
+    @specialize<IDENTIFIER, "not">
+}
+
+GroundedComparisonFunction {
+    @specialize<IDENTIFIER, "<"> |
+    @specialize<IDENTIFIER, ">"> |
+    @specialize<IDENTIFIER, "<="> |
+    @specialize<IDENTIFIER, ">="> |
+    @specialize<IDENTIFIER, "==">
+}
+
+OtherGroundedFunction {
+    @specialize<IDENTIFIER, "if"> |
+    @specialize<IDENTIFIER, "match"> |
+    @specialize<IDENTIFIER, "empty"> |
+    @specialize<IDENTIFIER, "case"> |
+    @specialize<IDENTIFIER, "let"> |
+    @specialize<IDENTIFIER, "let*"> |
+    @specialize<IDENTIFIER, "get-type"> |
+    @specialize<IDENTIFIER, "get-metatype"> |
+    @specialize<IDENTIFIER, ":"> |
+    @specialize<IDENTIFIER, "->"> |
+    @specialize<IDENTIFIER, "="> |
+    @specialize<IDENTIFIER, "case"> |
+    @specialize<IDENTIFIER, "unify"> |
+    @specialize<IDENTIFIER, "import!"> |
+    @specialize<IDENTIFIER, "bind!"> |
+    @specialize<IDENTIFIER, "new-space"> |
+    @specialize<IDENTIFIER, "add-atom"> |
+    @specialize<IDENTIFIER, "remove-atom"> |
+    @specialize<IDENTIFIER, "pragma!"> |
+    @specialize<IDENTIFIER, "println!"> |
+    @specialize<IDENTIFIER, "trace!"> |
+    @specialize<IDENTIFIER, "nop"> |
+    @specialize<IDENTIFIER, "new-state"> |
+    @specialize<IDENTIFIER, "get-state"> |
+    @specialize<IDENTIFIER, "change-state"> |
+    @specialize<IDENTIFIER, "car-atom"> |
+    @specialize<IDENTIFIER, "cdr-atom"> |
+    @specialize<IDENTIFIER, "cons-atom"> |
+    @specialize<IDENTIFIER, "assertEqual"> |
+    @specialize<IDENTIFIER, "assertEqualToResult"> |
+    @specialize<IDENTIFIER, "collapse"> |
+    @specialize<IDENTIFIER, "superpose"> |
+    @specialize<IDENTIFIER, "load-ascii"> |
+    @specialize<IDENTIFIER, "call"> |
+    @specialize<IDENTIFIER, "regex"> |
+    @specialize<IDENTIFIER, "quote"> |
+    @specialize<IDENTIFIER, "add-reduct"> |
+    @specialize<IDENTIFIER, "!">
+}
+
+GroundedType {
+    @specialize<IDENTIFIER, "Number"> |
+    @specialize<IDENTIFIER, "Bool"> |
+    @specialize<IDENTIFIER, "String">
+}
+
+Expression { 
+    "(" ExpressionAtoms ")" 
+}
+
+ExpressionAtoms { Atom* }
+
+Variable { 
+    VARIABLE
+}
+
+@tokens {
+    BOOLEAN_LITERAL { "True" | "False" }
+    INTEGER_LITERAL { "-"? $[0-9]+  }
+    FLOAT_LITERAL { "-"? ($[0-9])+ "." ($[0-9])+ }
+    STRING_LITERAL { '"' !["]* '"' }
+
+    IDENTIFIER { $[A-Za-z_\-0-9,\!=:?]+ }
+
+    SPACE_REFERENCE { "&" IDENTIFIER }
+
+    VARIABLE { "$" IDENTIFIER }
+
+    LINE_COMMENT { ";" ![\n]* }
+
+    SPACE { @whitespace+ }
+
+    @precedence { 
+        SPACE,
+        BOOLEAN_LITERAL,
+        FLOAT_LITERAL,         
+        INTEGER_LITERAL, 
+        IDENTIFIER
+    }
+}
+
+@skip { SPACE | LINE_COMMENT }
+
+@detectDelim
