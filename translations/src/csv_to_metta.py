@@ -4,13 +4,15 @@ import numpy as np
 
 from io import StringIO
 
-from hyperon import ValueObject, GroundedAtom
-
 
 def csv_to_matrix(filename, delimiter=",", quotechar='"') -> list[list[str]]:
     with open(filename, mode="r") as f:
         r = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
         lines = [row for row in r]
+    line_len = len(lines[0])
+    for e, l in enumerate(lines):
+        if not len(l) == line_len:
+            raise ValueError("The rows of the csv file don't all have equal length. First row with different length is row " + str(e + 1) + ".")
     return lines
 
 
@@ -24,7 +26,7 @@ def matrix_to_csv_str(m: list[list[str]]) -> str:
 
 def csv_to_dict(filename, delimiter=",", quotechar='"') -> list[dict[str, str]]:
     with open(filename, mode="r") as f:
-        r = csv.DictReader(f, delimiter=delimiter, quotechar=quotechar)
+        r: csv.DictReader = csv.DictReader(f, delimiter=delimiter, quotechar=quotechar)
         lines = [d for d in r]
     return lines
 
