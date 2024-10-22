@@ -24,6 +24,8 @@ class ReadCSV(unittest.TestCase):
         self.assertEqual(self.customers_matrix,
                          csv_to_matrix("customers-3.csv"))
 
+        self.assertRaises(ValueError, csv_to_matrix, "customers-3.csv", " ")
+
     def test_to_dict(self):
         self.assertEqual(self.customers_dict,
                          csv_to_dict("customers-3.csv"))
