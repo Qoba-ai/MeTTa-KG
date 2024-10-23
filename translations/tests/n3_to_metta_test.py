@@ -10,11 +10,11 @@ import re
 
 class TranslateN3(unittest.TestCase):
     def setUp(self) -> None:
-        with open("check_list.n3") as f:
+        with open("test_files/n3_files/check_list.n3") as f:
             self.g_check_list, self.url_check_list = n3_to_graph(f)
-        with open("gedcom_relations.n3") as f:
+        with open("test_files/n3_files/gedcom_relations.n3") as f:
             self.g_relations, self.url_relations = n3_to_graph(f)
-        with open("intersection.n3") as f:
+        with open("test_files/n3_files/intersection.n3") as f:
             self.g_intersection, self.url_intersection = n3_to_graph(f)
 
         self.mettastr_check_list = ('((Graph 0) ((uriref (check_list.n3 taskB1)) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns type)) (uriref (check_list.n3 Completed))))\n'

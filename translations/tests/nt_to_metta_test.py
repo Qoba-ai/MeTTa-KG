@@ -6,7 +6,7 @@ from translations.src.csv_to_metta import parse_metta
 
 class ReadNT(unittest.TestCase):
     def test_graph_to_metta(self):
-        graph, bnodes = parse_nt("wiki_example.nt")
+        graph, bnodes = parse_nt("test_files/nt_files/wiki_example.nt")
 
         self.assertSetEqual(set(('((uriref http://www.w3.org/2001/sw/RDFCore/ntriples/) (uriref http://xmlns.com/foaf/0.1/maker) (bnode "art"))\n'
                           '((bnode "art") (uriref http://xmlns.com/foaf/0.1/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Art Barstow"))\n'
