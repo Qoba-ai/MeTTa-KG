@@ -1,6 +1,6 @@
 # https://github.com/eyereasoner/Notation3-By-Example/blob/main/graph/intersection.n3
 
-@prefix : <urn:example:> .
+@prefix : <urn:example#> .
 @prefix graph: <http://www.w3.org/2000/10/swap/graph#> .
 @prefix log: <http://www.w3.org/2000/10/swap/log#> .
 
