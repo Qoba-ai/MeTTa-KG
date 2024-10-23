@@ -3,6 +3,9 @@ import rdflib
 from io import StringIO
 import os
 
+from rdflib import URIRef
+from rdflib.graph import QuotedGraph
+
 
 # ((graph 0) (subject1, predicate1, object1))
 # ((graph 0) (subject2, predicate2, (graph 122)))
@@ -11,16 +14,16 @@ import os
 # ...
 
 
-def n3_to_graph(f) -> rdflib.Graph:
+def n3_to_graph(f) -> (rdflib.Graph, str):
     g = rdflib.Graph()
     g.parse(f, format="n3")
-    home = rdflib.Namespace('file://' + os.path.dirname(os.path.abspath(__file__)) + '/' + f.name + '#')
-    g.namespace_manager.bind('', home, override=False, replace=False)
+    home = rdflib.Namespace('file://' + os.path.abspath(f.name) + '#')
+    g.namespace_manager.bind("local", home, override=True, replace=False)
 
-    return g
+    return g, home
 
 
-def graph_to_mettastr(graph: rdflib.Graph(), translate_namespaces: bool = True) -> str:
+def graph_to_mettastr(graph: rdflib.Graph(), local_url, translate_namespaces: bool = True) -> str:
 
     """
         take an RDFlib graph and convert straight away to MeTTa strings
@@ -53,14 +56,22 @@ def graph_to_mettastr(graph: rdflib.Graph(), translate_namespaces: bool = True) 
                     triple_to_atom(triple, t.identifier.title())
                 return f'(Graph {t.identifier.title()})'
             case rdflib.term.BNode(b):
-                return '(bnode ' + b + ')'
+                return f'(bnode {b})'
+            case rdflib.term.URIRef(u):
+                # TODO only works if # is between url and frag
+                url, frag = rdflib.term.urldefrag(u)
+                if local_url == url + "#":
+                    # url = [k for k, v in dict(graph.namespaces()).items() if str(v) == local_url][0]
+                    url = os.path.split(str(local_url))[-1].removesuffix("#")
+                return f'(uriref ({url} {frag}))'
             case x:
                 return f'({trans[type(x)]} {x})'
 
     for trip in graph:
         triple_to_atom(trip, 0)
 
-    namespace_atoms = [f'(Namespace ("{label}" "{url}"))' for label, url in graph.namespaces()]
+    namespace_atoms = [f'(Namespace ("{label}" "{url}"))' if not label == "local"
+                       else f'(Namespace ("local" "{os.path.split(str(local_url))[-1]}"))' for label, url in graph.namespaces()]
 
     return '\n'.join(quads) + ('\n' + '\n'.join(namespace_atoms) if translate_namespaces else '')
 
@@ -72,7 +83,7 @@ def atom_name(a: hyperon.Atom):
         case hyperon.atoms.SymbolAtom() as sa:
             return sa.get_name()
         case _:
-            raise NotImplementedError
+            raise NotImplementedError(type(a))
 
 
 def metta_to_graph(m: hyperon.MeTTa) -> rdflib.Graph:
@@ -94,7 +105,14 @@ def metta_to_graph(m: hyperon.MeTTa) -> rdflib.Graph:
                     case "variable":
                         return rdflib.term.Variable(r.get_children()[1].get_name())
                     case "uriref":
-                        return rdflib.term.URIRef(r.get_children()[1].get_name())
+                        tup = r.get_children()[1].get_children()
+                        if len(tup) == 2:
+                            u, frag = str(tup[0]), str(tup[1])
+                        else:
+                            u, frag = tup[0].get_name(), ""
+                        # return rdflib.term.URIRef(r.get_children()[1].get_name())
+                        return rdflib.term.URIRef(u + "#" + frag)
+                        # return rdflib.term.URIRef(frag)
                     case "Graph":
                         return q_graphs[r.get_children()[1].get_name()]
             case hyperon.ExpressionAtom():
