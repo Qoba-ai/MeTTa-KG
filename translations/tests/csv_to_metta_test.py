@@ -22,13 +22,13 @@ class ReadCSV(unittest.TestCase):
 
     def test_to_matrix(self):
         self.assertEqual(self.customers_matrix,
-                         csv_to_matrix("customers-3.csv"))
+                         csv_to_matrix("test_files/csv_files/customers-3.csv"))
 
-        self.assertRaises(ValueError, csv_to_matrix, "customers-3.csv", " ")
+        self.assertRaises(ValueError, csv_to_matrix, "test_files/csv_files/customers-3.csv", " ")
 
     def test_to_dict(self):
         self.assertEqual(self.customers_dict,
-                         csv_to_dict("customers-3.csv"))
+                         csv_to_dict("test_files/csv_files/customers-3.csv"))
 
     def test_from_dict(self):
         self.assertEqual(self.customers_csv, dict_to_csv(self.customers_dict))
@@ -36,8 +36,8 @@ class ReadCSV(unittest.TestCase):
 
 class CSVToMetta(unittest.TestCase):
     def setUp(self):
-        self.m = csv_to_matrix("customers-3.csv")
-        self.d = csv_to_dict("customers-3.csv")
+        self.m = csv_to_matrix("test_files/csv_files/customers-3.csv")
+        self.d = csv_to_dict("test_files/csv_files/customers-3.csv")
 
     def test_row_based_without_header(self):
         self.assertEqual('(0 ("Index" "Name" "Phone" "Website"))\n'
