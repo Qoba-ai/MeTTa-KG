@@ -5,9 +5,9 @@ import numpy as np
 from io import StringIO
 
 
-def csv_to_matrix(filename, delimiter=",", quotechar='"') -> list[list[str]]:
+def csv_to_matrix(filename: str, delimiter: str=",", quotechar: str='"', lineterminator:str ="\r\n") -> list[list[str]]:
     with open(filename, mode="r") as f:
-        r = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
+        r = csv.reader(f, delimiter=delimiter, quotechar=quotechar, lineterminator=lineterminator)
         lines = [row for row in r]
     line_len = len(lines[0])
     for e, l in enumerate(lines):
