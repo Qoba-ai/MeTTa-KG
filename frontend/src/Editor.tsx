@@ -88,16 +88,7 @@ const App: Component = () => {
 
     const [token, setToken] = createSignal<Token>()
 
-    const [editorContent, setEditorContent] = createSignal<string>(`  "hoi"
-
-hoi
-( hoi )
-( (    
-hoi
-))
-( "hoi
-h" )
-`)
+    const [editorContent, setEditorContent] = createSignal<string>()
     const [editorOutput, setEditorOutput] = createSignal('')
     const [editorView, setEditorView] = createSignal<EditorView>()
     const [editorMode, setEditorMode] = createSignal<EditorMode>(
