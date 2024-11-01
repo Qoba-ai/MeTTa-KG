@@ -1,12 +1,14 @@
 import { foldInside, foldNodeProp, HighlightStyle, indentNodeProp, LanguageSupport, LRLanguage, syntaxTree, TreeIndentContext } from '@codemirror/language'
 import { parser } from './parser/parser'
 import { styleTags, tags as t } from '@lezer/highlight'
+import { IterMode } from '@lezer/common'
 import { tags } from '@lezer/highlight'
 import { SyntaxNodeRef } from "@lezer/common"
 import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view'
 import { CompletionContext } from '@codemirror/autocomplete'
 import { linter } from '@codemirror/lint'
 import { Extension } from '@codemirror/state'
+import { Atom, CLOSING_PARENTHESIS, Expression, OPENING_PARENTHESIS, Space } from './parser/parser.terms'
 
 /**
  * TODO Editor functionality/bugs:
@@ -33,35 +35,27 @@ const parserWithMetadata = parser.configure({
             GroundedArithmeticFunction: t.arithmeticOperator,
             GroundedBooleanFunction: t.logicOperator,
             GroundedComparisonFunction: t.compareOperator,
-            OtherGroundedFunction: t.keyword,
-            '( )': t.paren,
+            OtherGroundedFunction: t.keyword
         }),
         indentNodeProp.add({
-            ExpressionAtoms: (ctx) => {
-                return ctx.continue()
-            },
-            Atom: (ctx) => {
-                return ctx.continue()
-            },
             Expression: (ctx) => {
-                const base = ctx.continue()
+                const base = ctx.continue() ?? 0;
 
-                if (ctx.lineAt(ctx.pos).text.trim().startsWith(')')) {
-                    return ctx.column(ctx.node.parent.parent.firstChild.from)
+                const next = ctx.node.childAfter(ctx.pos);
+
+                if (next?.type?.id === CLOSING_PARENTHESIS) {
+                    return base;
                 }
 
-                if (ctx.lineAt(ctx.pos).text.trim().startsWith('(')) {
-                    return base + ctx.unit
-                }
-
-                return base + ctx.unit
-            },
+                return base + ctx.unit;
+            }
         }),
         foldNodeProp.add({
             Expression: foldInside,
         }),
     ],
-})
+});
+
 
 const mettaLanguage = LRLanguage.define({
     name: 'MeTTa',

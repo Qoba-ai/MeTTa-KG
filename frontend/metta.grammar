@@ -106,10 +106,8 @@ GroundedType {
 }
 
 Expression { 
-    "(" ExpressionAtoms ")" 
+    OPENING_PARENTHESIS Atom* CLOSING_PARENTHESIS
 }
-
-ExpressionAtoms { Atom* }
 
 Variable { 
     VARIABLE
@@ -127,12 +125,14 @@ Variable {
 
     VARIABLE { "$" IDENTIFIER }
 
+    OPENING_PARENTHESIS { "(" }
+    CLOSING_PARENTHESIS { ")" }
+
     LINE_COMMENT { ";" ![\n]* }
 
-    SPACE { @whitespace+ }
+    ws { $[ \t]+ }
 
     @precedence { 
-        SPACE,
         BOOLEAN_LITERAL,
         FLOAT_LITERAL,         
         INTEGER_LITERAL, 
@@ -140,6 +140,6 @@ Variable {
     }
 }
 
-@skip { SPACE | LINE_COMMENT }
+@skip { LINE_COMMENT | ws  }
 
 @detectDelim

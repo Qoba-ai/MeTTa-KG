@@ -414,7 +414,7 @@ const Tokens: Component = () => {
             <main class={styles.Main}>
                 <form
                     class={styles.RootTokenForm}
-                    ref={rootTokenForm}
+                    ref={rootTokenForm!}
                     role="search"
                 >
                     <h2>Manage Access</h2>
@@ -488,7 +488,18 @@ const Tokens: Component = () => {
                     </label>
                     <div class={styles.NewTokenPermissions}>
                         <fieldset>
-                            <legend>Permissions</legend>
+                            <legend>
+                                <span>Permissions</span>
+                                <Show when={!newTokenReadEnabled()}>
+                                    <span
+                                        class={
+                                            styles.NewTokenNoPermissionsWarningSmall
+                                        }
+                                    >
+                                        Token has no permissions!
+                                    </span>
+                                </Show>
+                            </legend>
                             <label>
                                 Read
                                 <input
@@ -582,9 +593,9 @@ const Tokens: Component = () => {
                     </div>
                     <input type="submit" value={'Create'} />
                     <Show when={!newTokenReadEnabled()}>
-                        <div class={styles.NewTokenNoPermissionsWarning}>
-                            <span>Token has no permissions!</span>
-                        </div>
+                        <span class={styles.NewTokenNoPermissionsWarningLarge}>
+                            Token has no permissions!
+                        </span>
                     </Show>
                 </form>
                 <div class={styles.TokenTableWrapper}>
@@ -1199,7 +1210,10 @@ const Tokens: Component = () => {
                     </div>
                 </form>
             </dialog>
-            <Toaster toastOptions={{ className: styles.Toaster }} />
+            <Toaster
+                toastOptions={{ className: styles.Toaster }}
+                containerStyle={{ 'margin-top': '60px' }}
+            />
         </>
     )
 }
