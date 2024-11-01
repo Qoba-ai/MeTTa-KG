@@ -7,7 +7,7 @@ from translations.src.csv_to_metta import parse_metta
 
 class TranslateJSONLD(unittest.TestCase):
     def test_JSONLD_to_graph(self):
-        with open("wiki_example.jsonld") as f:
+        with open("test_files/jsonld_files/wiki_example.jsonld") as f:
             g = jsonld_to_graph(f)
         self.assertEqual(3, len(g))
         self.assertSetEqual({(rdflib.term.URIRef('https://me.example.com'), rdflib.term.URIRef('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'), rdflib.term.URIRef('http://xmlns.com/foaf/0.1/Person')),
@@ -16,7 +16,7 @@ class TranslateJSONLD(unittest.TestCase):
                             {(s, p, o) for s, p, o in g})
 
     def test_graph_to_mettastr(self):
-        with open("wiki_example.jsonld") as f:
+        with open("test_files/jsonld_files/wiki_example.jsonld") as f:
             g = jsonld_to_graph(f)
         self.assertSetEqual({'((uriref https://me.example.com) (uriref http://xmlns.com/foaf/0.1/workplaceHomepage) (uriref https://www.example.com/))',
                              '((uriref https://me.example.com) (uriref http://xmlns.com/foaf/0.1/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "John Smith"))',
@@ -25,9 +25,9 @@ class TranslateJSONLD(unittest.TestCase):
 
 
     def test_graph_to_mettastr_with_context(self):
-        with open("wiki_example.jsonld") as f:
+        with open("test_files/jsonld_files/wiki_example.jsonld") as f:
             g = jsonld_to_graph(f)
-        with open("wiki_example.jsonld") as f:
+        with open("test_files/jsonld_files/wiki_example.jsonld") as f:
             c = read_context(f)     # context is not explicitly saved using the rdflib library
 
         self.assertSetEqual({'((uriref https://me.example.com) (uriref http://xmlns.com/foaf/0.1/workplaceHomepage) (uriref https://www.example.com/))',
@@ -65,7 +65,7 @@ class TranslateJSONLD(unittest.TestCase):
     def test_back_forth(self):
         # works, but context disappears -> try to fix
 
-        with open("wiki_example.jsonld") as f:
+        with open("test_files/jsonld_files/wiki_example.jsonld") as f:
             g = jsonld_to_graph(f)
 
         # graph is the same when translated to MeTTa and back
@@ -80,7 +80,7 @@ class TranslateJSONLD(unittest.TestCase):
         self.assertEqual(set(m.split('\n')), set(graph_to_mettastr(metta_to_graph(parse_metta(m))[0]).split('\n')))
 
     def test_serialize(self):
-        with open("wiki_example.jsonld") as f:
+        with open("test_files/jsonld_files/wiki_example.jsonld") as f:
             g = jsonld_to_graph(f)
 
         context = {
@@ -108,11 +108,11 @@ class TranslateJSONLD(unittest.TestCase):
                             '}'), g.serialize(format="json-ld", context=context))
 
     def test_json_to_json_wiki_example(self):
-        with open("wiki_example.jsonld") as f:
+        with open("test_files/jsonld_files/wiki_example.jsonld") as f:
             json1 = f.readlines()
-        with open("wiki_example.jsonld") as f:
+        with open("test_files/jsonld_files/wiki_example.jsonld") as f:
             g = jsonld_to_graph(f)
-        with open("wiki_example.jsonld") as f:
+        with open("test_files/jsonld_files/wiki_example.jsonld") as f:
             c = read_context(f)
 
 
@@ -146,10 +146,10 @@ class TranslateJSONLD(unittest.TestCase):
                             set([s.replace(' ', '').replace(',', '') for s in json1.split('\n')]))
 
     def test_person_1_example(self):
-        self.from_json_to_json("person1.jsonld")
+        self.from_json_to_json("test_files/jsonld_files/person1.jsonld")
 
     def test_person_2_example(self):
-        self.from_json_to_json("person2.jsonld")
+        self.from_json_to_json("test_files/jsonld_files/person2.jsonld")
 
 
 if __name__ == '__main__':
