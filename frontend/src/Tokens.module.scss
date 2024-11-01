@@ -179,7 +179,8 @@
     }
 }
 
-.NewTokenNoPermissionsWarning {
+.NewTokenNoPermissionsWarningSmall,
+.NewTokenNoPermissionsWarningLarge {
     color: var(--rp-gold);
 }
 
@@ -207,6 +208,10 @@
 
     .TokenTableWrapper {
         width: 95%;
+    }
+
+    .NewTokenNoPermissionsWarningLarge {
+        display: none;
     }
 }
 
@@ -242,6 +247,12 @@
             fieldset > label > input {
                 margin: 8px;
             }
+
+            legend {
+                display: flex;
+                flex-direction: row;
+                gap: 12px;
+            }
         }
     }
 
@@ -252,6 +263,10 @@
         display: flex;
         justify-content: safe center;
         align-items: safe center;
+    }
+
+    .NewTokenNoPermissionsWarningLarge {
+        display: none;
     }
 }
 
@@ -306,5 +321,9 @@
                 margin: 8px;
             }
         }
+    }
+
+    .NewTokenNoPermissionsWarningSmall {
+        display: none;
     }
 }
