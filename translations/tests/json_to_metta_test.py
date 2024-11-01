@@ -37,7 +37,7 @@ class JSONToMeTTa(unittest.TestCase):
                                          "(outer (bar (y 5)))\n")
 
     def test_jsonld_playground(self):
-        with open("contexts_person.jsonld") as f:
+        with open("test_files/jsonld_files/contexts_person.jsonld") as f:
             data = json.load(f)
         print(data)
         out = StringIO()

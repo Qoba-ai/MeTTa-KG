@@ -2,7 +2,7 @@ import hyperon
 import rdflib
 import json
 
-from csv_to_metta import parse_metta
+# from csv_to_metta import parse_metta
 
 
 def jsonld_to_graph(f):
@@ -13,6 +13,7 @@ def jsonld_to_graph(f):
 
 
 def read_context(f):
+    #FIXME multiple contexts
     return json.load(f)['@context']
 
 
