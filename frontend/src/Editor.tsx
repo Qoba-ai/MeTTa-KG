@@ -207,9 +207,6 @@ const App: Component = () => {
             importFileModal.close()
         }
 
-        loadSpace('5ad1773c-36af-4483-bde3-9b84a69c138f')
-        setEditorMode(EditorMode.EDIT)
-
         loadSpaceForm.onsubmit = (event) => {
             // prevent page refresh on submit
             event.preventDefault()
