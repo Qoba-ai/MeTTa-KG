@@ -532,7 +532,7 @@ const Tokens: Component = () => {
                                     ref={newTokenWriteCheckbox!}
                                     onchange={(e) => {
                                         if (e.target.checked) {
-                                            newTokenReadCheckbox.checked = true
+                                            setNewTokenReadEnabled(true)
                                         } else {
                                             newTokenShareWriteCheckbox.checked =
                                                 false
@@ -553,7 +553,7 @@ const Tokens: Component = () => {
                                     ref={newTokenShareReadCheckbox!}
                                     onchange={(e) => {
                                         if (e.target.checked) {
-                                            newTokenReadCheckbox.checked = true
+                                            setNewTokenReadEnabled(true)
                                         } else {
                                             newTokenShareWriteCheckbox.checked =
                                                 false
@@ -574,7 +574,7 @@ const Tokens: Component = () => {
                                     ref={newTokenShareWriteCheckbox!}
                                     onchange={(e) => {
                                         if (e.target.checked) {
-                                            newTokenReadCheckbox.checked = true
+                                            setNewTokenReadEnabled(true)
                                             newTokenWriteCheckbox.checked = true
                                             newTokenShareReadCheckbox.checked =
                                                 true
