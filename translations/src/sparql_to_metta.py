@@ -109,32 +109,54 @@ print(to_metta_with_filter_expressions(filter_algebra))
 
 
 print("--------------------------------------------------")
-def to_metta(algebra):
+def to_metta(algebra, filter = None):
     match algebra.name:
         case "SelectQuery":
             p = algebra["p"]
             datasetClause = algebra["datasetClause"]
             PV = algebra["PV"]
-            vars = algebra["_vars"]
+            vs = algebra["_vars"]
             # print(f"(let* {to_metta(p)} ({' '.join(['$' + v.title() for v in PV])}))")
-            return f"(let* ({to_metta(p)}) ({' '.join(['$' + v.title() for v in PV])}))"
+            # return f"(let* ({to_metta(p)}) ({' '.join(['$' + v.title() for v in PV])}))"
+            return f"({to_metta(p)} ({' '.join(['$' + v.title() for v in PV])}))"
+
         case "Project":
             p = algebra["p"]
             PV = algebra["PV"]
-            vars = algebra["_vars"]
+            vs = algebra["_vars"]
             print("p", p)
             return to_metta(p)
         case "BGP":
             triples = algebra["triples"]
-            vars = algebra["_vars"]
+            vs = algebra["_vars"]
             parts = []
+            meat = " ".join([f"({item_to_metta(s)} {item_to_metta(p)} {item_to_metta(o)})" for s, p, o in triples])
+            var_list = " ".join([item_to_metta(v) for v in vs])
+            if not filter:
+                return f"let ({var_list}) (match &self (, {meat}) ({var_list}))"
+            if filter:
+                return f"let ({var_list}) (match &self (, {meat}) (if {to_metta(filter)} ({var_list}) ({' '.join(['Empty' for _ in vs])})))"
+
             for s, p, o in triples:
-                current_vars = [v for v in vars if v in [s, p, o]]
+                current_vars = [v for v in vs if v in [s, p, o]]
                 var_ids = " ".join([item_to_metta(v) for v in current_vars])
                 match_part = f"(match &self ({item_to_metta(s)} {item_to_metta(p)} {item_to_metta(o)}) ({var_ids}))"
                 parts.append(f"(({var_ids}) {match_part})")
+
             print(" ".join(parts))
             return " ".join(parts)
+        case "Filter":
+            expr = algebra["expr"]
+            p = algebra["p"]
+            vs = algebra["_vars"]
+            vs_str = ' '.join([item_to_metta(v) for v in vs])
+            return to_metta(p, expr)
+        case "RelationalExpression":
+            expr = algebra["expr"]
+            op = algebra["op"]
+            other = algebra["other"]
+            vs = algebra["_vars"]
+            return f"({op} {item_to_metta(expr)} {item_to_metta(other)})"
         case _:
             print("unmatched")
             print(type(algebra))
@@ -150,6 +172,8 @@ def item_to_metta(i):
                 url, frag = os.path.split(i.title())
             return f"(URI {frag})"
         case Literal():
+            if i.isnumeric():
+                return f'{i.title()}'
             return f'"{i.title()}"'
 
 
@@ -161,5 +185,11 @@ print("basic patterns", to_metta(q_basic_alg.algebra))
 q_q_node = parser.parseQuery(StringIO(examples.basic_pattern_qnode))
 q_q_node_alg = algebra.translateQuery(q_q_node)
 print("basic patterns qnode", to_metta(q_q_node_alg.algebra))
+
+print("---")
+
+q_filter = parser.parseQuery(StringIO(examples.filter_example_2))
+q_filter_alg = algebra.translateQuery(q_filter)
+print("filter", to_metta(q_filter_alg.algebra))
 
 print("---")
