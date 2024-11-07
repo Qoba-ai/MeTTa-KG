@@ -1,13 +1,29 @@
+# PLAYGROUND FILE!!!!!
+# UNFINISHED!!!!!
+import os.path
+from io import StringIO
+
 import rdflib
+from rdflib import Variable, URIRef, Literal
 from rdflib.plugins.sparql import parser, algebra
 from pprint import pprint
+
+from rdflib.plugins.sparql.parser import SelectQuery
+from rdflib.plugins.sparql.sparql import Query
+
+import sparql_algebra_examples as examples
 
 with open("wiki_example.sparql") as f:
     q = parser.parseQuery(f)
     q_alg = algebra.translateQuery(q)
 
 # print([k for k in q_alg.algebra.keys()])
-# algebra.pprintAlgebra(q_alg)
+print("wiki example")
+algebra.pprintAlgebra(q_alg)
+print("start")
+q.pprint()
+
+print("-------------------")
 
 
 # (match &self ($person (URI http://www.w3.org/1999/02/22-rdf-syntax-ns#type) (URI http://xmlns.com/foaf/0.1/Person)))
@@ -90,3 +106,60 @@ def to_metta_with_filter_expressions(alg):
     select = alg.algebra["PV"]
 
 print(to_metta_with_filter_expressions(filter_algebra))
+
+
+print("--------------------------------------------------")
+def to_metta(algebra):
+    match algebra.name:
+        case "SelectQuery":
+            p = algebra["p"]
+            datasetClause = algebra["datasetClause"]
+            PV = algebra["PV"]
+            vars = algebra["_vars"]
+            # print(f"(let* {to_metta(p)} ({' '.join(['$' + v.title() for v in PV])}))")
+            return f"(let* ({to_metta(p)}) ({' '.join(['$' + v.title() for v in PV])}))"
+        case "Project":
+            p = algebra["p"]
+            PV = algebra["PV"]
+            vars = algebra["_vars"]
+            print("p", p)
+            return to_metta(p)
+        case "BGP":
+            triples = algebra["triples"]
+            vars = algebra["_vars"]
+            parts = []
+            for s, p, o in triples:
+                current_vars = [v for v in vars if v in [s, p, o]]
+                var_ids = " ".join([item_to_metta(v) for v in current_vars])
+                match_part = f"(match &self ({item_to_metta(s)} {item_to_metta(p)} {item_to_metta(o)}) ({var_ids}))"
+                parts.append(f"(({var_ids}) {match_part})")
+            print(" ".join(parts))
+            return " ".join(parts)
+        case _:
+            print("unmatched")
+            print(type(algebra))
+
+
+def item_to_metta(i):
+    match i:
+        case Variable():
+            return f"${i.title()}"
+        case URIRef():
+            url, frag = rdflib.term.urldefrag(i.title())
+            if not frag:
+                url, frag = os.path.split(i.title())
+            return f"(URI {frag})"
+        case Literal():
+            return f'"{i.title()}"'
+
+
+print(to_metta(q_alg.algebra))
+q_basic = parser.parseQuery(StringIO(examples.basic_patterns))
+q_basic_alg = algebra.translateQuery(q_basic)
+print("basic patterns", to_metta(q_basic_alg.algebra))
+
+q_q_node = parser.parseQuery(StringIO(examples.basic_pattern_qnode))
+q_q_node_alg = algebra.translateQuery(q_q_node)
+print("basic patterns qnode", to_metta(q_q_node_alg.algebra))
+
+print("---")
