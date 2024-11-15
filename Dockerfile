@@ -9,9 +9,6 @@ COPY ./api/ ./api/
 COPY ./translations/ ./translations/
 COPY ./Rocket.toml ./
 
-RUN eval `ssh-agent -s` && \
-ssh-add -L
-
 RUN python3 -m venv ./venv
 RUN ./venv/bin/pip install -r translations/requirements.txt
 RUN cargo install --path ./api/
