@@ -3,8 +3,6 @@ name = "api"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 serde = { version = "1.0.204", features = ["derive"] }
 rocket = { version = "0.5.1", features = ["json"] }
@@ -17,3 +15,9 @@ uuid = { version = "1.10.0", features = ["v4"] }
 rocket_cors = "0.6.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 regex = "1.10.6"
+mork-frontend = { git = "https://github.com/trueagi-io/MORK.git", branch = "zipper_head" }
+mork-bytestring = { git = "https://github.com/trueagi-io/MORK.git", branch = "zipper_head" }
+pathmap = { path = "../../PathMap" }
+
+[patch.'https://github.com/trueagi-io/MORK.git']
+pathmap = { path = "../../PathMap" }

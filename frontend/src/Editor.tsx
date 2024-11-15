@@ -9,7 +9,7 @@ import { createMemo, createSignal, onMount, Show } from 'solid-js'
 import styles from './Editor.module.scss'
 import { A } from '@solidjs/router'
 import toast, { Toaster } from 'solid-toast'
-import { BACKEND_URL } from './urls'
+import { BACKEND_URL, TOKEN } from './urls'
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/panda-syntax-dark.css'
 import {
@@ -53,7 +53,10 @@ import {
     highlightStyle,
     languageSupport,
     mettaLinter,
+    toJSON,
 } from './mettaLanguageSupport'
+import { parser } from './parser/parser'
+import { Expression, Symbol, Variable } from './parser/parser.terms'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.')[1]
@@ -85,10 +88,14 @@ const App: Component = () => {
     let loadSpaceModal: HTMLDialogElement
     let loadSpaceForm: HTMLFormElement
     let loadSpaceFormInput: HTMLInputElement
+    let loadSubspaceForm: HTMLFormElement
 
     const [token, setToken] = createSignal<Token>()
 
-    const [editorContent, setEditorContent] = createSignal<string>()
+    const [namespaces, setNamespaces] = createSignal<string[]>([])
+    const [selectedNamespace, setSelectedNamespace] = createSignal<string>()
+
+    const [editorContent, setEditorContent] = createSignal<string>('')
     const [editorOutput, setEditorOutput] = createSignal('')
     const [editorView, setEditorView] = createSignal<EditorView>()
     const [editorMode, setEditorMode] = createSignal<EditorMode>(
@@ -146,7 +153,9 @@ const App: Component = () => {
                 ...lintKeymap,
             ]),
             EditorView.updateListener.of((update) => {
-                setEditorContent(update.state.doc.toString())
+                if (update.docChanged) {
+                    setEditorContent(update.state.doc.toString())
+                }
             }),
             EditorView.domEventHandlers({
                 drop: (event, view) => {
@@ -207,6 +216,11 @@ const App: Component = () => {
             importFileModal.close()
         }
 
+        if (TOKEN) {
+            loadSpace(TOKEN)
+            setEditorMode(EditorMode.EDIT)
+        }
+
         loadSpaceForm.onsubmit = (event) => {
             // prevent page refresh on submit
             event.preventDefault()
@@ -240,6 +254,15 @@ const App: Component = () => {
                 parent: mettaInput,
             })
         )
+    }
+
+    const initializeLoadSubspaceForm = (): void => {
+        loadSubspaceForm.onsubmit = (event) => {
+            // prevent page refresh on submit
+            event.preventDefault()
+
+            read(token())
+        }
     }
 
     const handleImportFileSelect = (
@@ -327,7 +350,6 @@ const App: Component = () => {
                     },
                 })
             )
-
         } catch (e) {
             console.error(e)
             // TODO: specific error messages
@@ -397,7 +419,7 @@ const App: Component = () => {
         if (!view) {
             console.error('Failed to indent: editorView was undefined')
             toast('Failed to indent code (unknown error).')
-            return;
+            return
         }
 
         indentSelection({
@@ -411,7 +433,7 @@ const App: Component = () => {
      */
     const loadSpace = async (token: string): Promise<void> => {
         try {
-            const resp = await fetch(`${BACKEND_URL}/tokens`, {
+            const resp = await fetch(`${BACKEND_URL}/token`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -419,13 +441,12 @@ const App: Component = () => {
                 },
             })
 
-            const data = await resp.json()
-
-            const self = data.find((t: Token) => t.code === token)
+            const self: Token = await resp.json()
 
             if (self) {
                 setToken(self)
-                setAvailableTokens(data)
+                setSelectedNamespace('')
+                await read(self)
 
                 toast(`Successfully loaded space '${self.namespace}'`)
             } else {
@@ -465,6 +486,63 @@ const App: Component = () => {
             },
         ],
     }))
+
+    /**
+     * EDITOR ACTION: read space
+     */
+    const read = async (token?: Token) => {
+        const resp = await fetch(
+            `${BACKEND_URL}/spaces${token?.namespace}${selectedNamespace()}`,
+            {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: token?.code ?? '',
+                },
+            }
+        )
+
+        const metta: { space: string[]; paths: string[][] } = await resp.json()
+
+        const view = editorView()
+
+        if (!view) {
+            throw new Error('Failed to translate: editorView was undefined')
+        }
+
+        setNamespaces(metta.paths.map((p) => '/' + p.join('/') + '/'))
+
+        view.dispatch(
+            view.state.update({
+                changes: {
+                    from: 0,
+                    to: view.state.doc.length,
+                    insert: metta.space.join('\n').replace('\r', ''),
+                },
+            })
+        )
+    }
+
+    /**
+     * EDITOR ACTION: write space
+     */
+    const write = async () => {
+        const content = editorContent()
+
+        await fetch(
+            `${BACKEND_URL}/spaces${token()?.namespace}${selectedNamespace()}`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: token()?.code ?? '',
+                },
+                body: content,
+            }
+        )
+
+        await read(token())
+    }
 
     return (
         <>
@@ -525,6 +603,7 @@ const App: Component = () => {
                                     Import
                                 </button>
                                 <button onclick={() => indent()}>Indent</button>
+                                <button onclick={() => write()}>Write</button>
                                 <button onclick={() => switchFullscreen()}>
                                     {isFullscreen()
                                         ? 'Exit Fullscreen'
@@ -541,35 +620,48 @@ const App: Component = () => {
                                     />
                                 </button>
                             </div>
-                            <form
-                                class={styles.EditorRootTokenForm}
-                                onsubmit={(e) => e.preventDefault()}
-                            >
-                                <input
+                            <div class={styles.EditorRootTokenFormWrapper}>
+                                <p>{token()?.namespace}</p>
+                                <form
                                     ref={(e) => {
-                                        rootTokenFormInput = e
+                                        loadSubspaceForm = e
+                                        initializeLoadSubspaceForm()
                                     }}
-                                    id="root-token"
-                                    type="search"
-                                    placeholder="Namespace"
-                                    role="search"
-                                    autocomplete={'off'}
-                                    oninvalid={() =>
-                                        rootTokenFormInput.setCustomValidity(
-                                            "Namespaces start with '/' followed by 2 or more alphanumeric characters and end with '/'."
-                                        )
-                                    }
-                                    value={token()?.namespace ?? ''}
-                                    onchange={(e) => {
-                                        rootTokenFormInput.setCustomValidity('')
-                                    }}
-                                    list={'available-namespaces'}
-                                    pattern={
-                                        '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$'
-                                    }
-                                    disabled={editorMode() !== EditorMode.EDIT}
-                                />
-                            </form>
+                                    class={styles.EditorRootTokenForm}
+                                    onsubmit={(e) => e.preventDefault()}
+                                >
+                                    <input
+                                        ref={(e) => {
+                                            rootTokenFormInput = e
+                                        }}
+                                        id="root-token"
+                                        type="search"
+                                        placeholder="Namespace"
+                                        role="search"
+                                        autocomplete={'off'}
+                                        oninvalid={() =>
+                                            rootTokenFormInput.setCustomValidity(
+                                                "Namespaces start with '/' followed by 2 or more alphanumeric characters and end with '/'."
+                                            )
+                                        }
+                                        value={selectedNamespace() ?? ''}
+                                        onchange={(e) => {
+                                            setSelectedNamespace(e.target.value)
+                                            rootTokenFormInput.setCustomValidity(
+                                                ''
+                                            )
+                                        }}
+                                        list={'available-namespaces'}
+                                        pattern={
+                                            '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$'
+                                        }
+                                        disabled={
+                                            editorMode() !== EditorMode.EDIT
+                                        }
+                                    />
+                                    <input type="submit" />
+                                </form>
+                            </div>
                         </div>
                         <div
                             class={styles.MettaInput}
@@ -746,13 +838,14 @@ const App: Component = () => {
                     </div>
                 </form>
             </dialog>
-            <Toaster toastOptions={{ className: styles.Toaster }} containerStyle={{ "margin-top": "60px" }}/>
+            <Toaster
+                toastOptions={{ className: styles.Toaster }}
+                containerStyle={{ 'margin-top': '60px' }}
+            />
             <datalist id="available-namespaces">
-                {[...new Set(availableTokens().map((t) => t.namespace))].map(
-                    (n) => (
-                        <option value={n}></option>
-                    )
-                )}
+                {namespaces().map((n) => (
+                    <option value={n}></option>
+                ))}
             </datalist>
         </>
     )
