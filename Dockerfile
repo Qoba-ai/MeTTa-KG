@@ -5,6 +5,8 @@ WORKDIR /usr/src/mettakg
 RUN apt-get update
 RUN apt-get install -y python3-pip python3.11-venv
 
+RUN eval `ssh-agent -s` && ssh-add -l
+
 COPY ./api/ ./api/
 COPY ./translations/ ./translations/
 COPY ./Rocket.toml ./
