@@ -17,7 +17,7 @@ chrono = { version = "0.4.38", features = ["serde"] }
 regex = "1.10.6"
 mork-frontend = { git = "https://github.com/trueagi-io/MORK.git", branch = "zipper_head" }
 mork-bytestring = { git = "https://github.com/trueagi-io/MORK.git", branch = "zipper_head" }
-pathmap = { git = "ssh://git@github.com/Adam-Vandervorst/PathMap.git", branch = "zipper_head" }
+pathmap = { git = "ssh://git@github.com/Adam-Vandervorst/PathMap.git", branch = "cleanup_to_release" }
 
 [patch.'https://github.com/trueagi-io/MORK.git']
-pathmap = { git = "ssh://git@github.com/Adam-Vandervorst/PathMap.git", branch = "zipper_head" }
+pathmap = { git = "ssh://git@github.com/Adam-Vandervorst/PathMap.git", branch = "cleanup_to_release" }
