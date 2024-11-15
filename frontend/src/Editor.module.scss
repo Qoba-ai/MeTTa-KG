@@ -47,13 +47,31 @@
         0px 1px 8px 0px rgba(0, 0, 0, 0.12);
     padding: 8px;
 
-    .EditorRootTokenForm {
+    .EditorRootTokenFormWrapper {
         width: 100%;
 
-        input {
-            width: 100%;
-            border-radius: 12px;
-            padding: 12px 20px;
+        padding: 0 16px;
+        display: flex;
+        justify-content: row;
+        align-items: center;
+        gap: 16px;
+
+        .EditorRootTokenForm {
+            flex: 1;
+
+            display: flex;
+            justify-content: row;
+            align-items: center;
+            gap: 8px;
+
+            input[type="search"] {
+                flex: 1;
+            }
+
+            input {
+                border-radius: 12px;
+                padding: 12px 20px;
+            }
         }
     }
 }

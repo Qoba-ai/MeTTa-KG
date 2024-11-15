@@ -9,6 +9,7 @@ use rocket::{
 };
 use serde::{Deserialize, Serialize};
 
+pub mod spaces;
 pub mod tokens;
 pub mod translations;
 
@@ -25,6 +26,22 @@ impl<'r> FromRequest<'r> for Token {
     #[must_use]
     async fn from_request(request: &'r Request<'_>) -> request::Outcome<Token, Self::Error> {
         use crate::schema::tokens::dsl::*;
+
+        /*
+        
+        return Outcome::Success(Token {
+            id: 0,
+            code: "aaa".to_string(),
+            description: "".to_string(),
+            namespace: "".to_string(),
+            creation_timestamp: Utc::now().naive_utc(),
+            permission_read: true,
+            permission_write: true,
+            permission_share_share: true,
+            permission_share_read: true,
+            permission_share_write: true,
+            parent: None,
+        }); */
 
         let token = match request.headers().get_one("authorization") {
             Some(token) => token,
