@@ -19,6 +19,3 @@ mork-frontend = { git = "https://github.com/trueagi-io/MORK.git", branch = "zipp
 mork-bytestring = { git = "https://github.com/trueagi-io/MORK.git", branch = "zipper_head" }
 pathmap = { git = "ssh://git@github.com/Adam-Vandervorst/PathMap.git", branch = "zipper_head" }
 
-[patch.'https://github.com/trueagi-io/MORK.git']
-pathmap = { path = "../../PathMap" }
-
