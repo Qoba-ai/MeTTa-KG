@@ -81,7 +81,7 @@ jobs:
       - name: Build and push Docker image
         id: build-and-push
         env: 
-          CARGO_NET_GIT_FETCH_WITH_CLI: false
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
           DOCKER_BUILDKIT: 1
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
