@@ -11,7 +11,7 @@ COPY ./Rocket.toml ./
 
 RUN python3 -m venv ./venv
 RUN ./venv/bin/pip install -r translations/requirements.txt
-RUN cargo install --path ./api/
+RUN --mount=type=ssh,id=default cargo install --path ./api/
 
 EXPOSE 8000
 
