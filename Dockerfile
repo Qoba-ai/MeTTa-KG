@@ -9,6 +9,7 @@ COPY ./api/ ./api/
 COPY ./translations/ ./translations/
 COPY ./Rocket.toml ./
 
+RUN eval `ssh-agent -s`
 RUN ssh-add -L
 
 RUN python3 -m venv ./venv
