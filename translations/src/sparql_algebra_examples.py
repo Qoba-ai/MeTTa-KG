@@ -14,13 +14,10 @@ def print_example(name: str, query:str):
     algebra.pprintAlgebra(q_alg)
     print("-" * 100)
 
-print("BASIC PATTERNS")
-
 basic_patterns = """SELECT ?x ?fname
 
 WHERE {?x  <http://www.w3.org/2001/vcard-rdf/3.0#FN>  ?fname}"""
 
-print_example("basic pattern example", basic_patterns)
 
 basic_pattern_qnode = """PREFIX vcard:  	<http://www.w3.org/2001/vcard-rdf/3.0#>
 
@@ -31,9 +28,7 @@ WHERE
  }
 """
 
-print_example("Basic Patterns: QNames / Blank Nodes", basic_pattern_qnode)
 
-print("FILTERS")
 
 filter_example = """PREFIX vcard: <http://www.w3.org/2001/vcard-rdf/3.0#>
 
@@ -53,10 +48,6 @@ WHERE
   }
 """
 
-print_example("Filters: String matching", filter_example)
-print_example("Filters: Testing Values", filter_example_2)
-
-print("OPTIONAL INFORMATION")
 optionals = """PREFIX info:	<http://somewhere/peopleInfo#>
 PREFIX vcard:   <http://www.w3.org/2001/vcard-rdf/3.0#>
 
@@ -102,13 +93,6 @@ WHERE
 }
 """
 
-print_example("Optional information: OPTIONALs", optionals)
-print_example("Optional information: OPTIONALs with FILTERs", optionals_filter)
-print_example("Optional information: OPTIONALs with FILTERs 2", optionals_filter_2)
-print_example("Optional information: OPTIONALs and Order Dependent Queries", optional_dependent)
-
-
-print("UNION")
 union1 = """PREFIX foaf: <http://xmlns.com/foaf/0.1/>
 PREFIX vCard: <http://www.w3.org/2001/vcard-rdf/3.0#>
 
@@ -153,11 +137,6 @@ WHERE
 }
 """
 
-print_example("UNION - two ways to the same data", union1)
-print_example("UNION - two ways to the same data 2", union2)
-print_example("UNION - remembering where the data was found.", union3)
-print_example("UNION - OPTIONAL and UNION", union4)
-
 
 limit = """PREFIX GOT: <https://tutorial.linked.data.world/d/sparqltutorial/>
 SELECT ?ID ?FName ?LName
@@ -170,4 +149,47 @@ WHERE {
 LIMIT 5
 """
 
+
+
+optional_dependent2 = """PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+PREFIX vCard: <http://www.w3.org/2001/vcard-rdf/3.0#>
+
+SELECT ?name
+WHERE
+{
+  OPTIONAL { ?x foaf:name ?name }
+  OPTIONAL { ?x vCard:FN  ?name }
+  ?x a foaf:Person .
+}
+"""
+
+print_example("hsqoghqr", optional_dependent2)
+
+
+
+
+
+
+print("BASIC PATTERNS")
+print_example("basic pattern example", basic_patterns)
+print_example("Basic Patterns: QNames / Blank Nodes", basic_pattern_qnode)
+
+print("FILTERS")
+print_example("Filters: String matching", filter_example)
+print_example("Filters: Testing Values", filter_example_2)
+
+print("OPTIONAL INFORMATION")
+print_example("Optional information: OPTIONALs", optionals)
+print_example("Optional information: OPTIONALs with FILTERs", optionals_filter)
+print_example("Optional information: OPTIONALs with FILTERs 2", optionals_filter_2)
+print_example("Optional information: OPTIONALs and Order Dependent Queries", optional_dependent)
+
+
+print("UNION")
+print_example("UNION - two ways to the same data", union1)
+print_example("UNION - two ways to the same data 2", union2)
+print_example("UNION - remembering where the data was found.", union3)
+print_example("UNION - OPTIONAL and UNION", union4)
+
 print_example("Retrieving a specific number of results", limit)
+
