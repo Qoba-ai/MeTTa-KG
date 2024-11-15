@@ -20,4 +20,4 @@ mork-bytestring = { git = "https://github.com/trueagi-io/MORK.git", branch = "zi
 pathmap = { git = "ssh://git@github.com/Adam-Vandervorst/PathMap.git", branch = "zipper_head" }
 
 [patch.'https://github.com/trueagi-io/MORK.git']
-pathmap = { git = "ssh://git@github.com/Adam-Vandervorst/PathMap.git", branch = "zipper_head" }
+pathmap = { git = "ssh://Adam-Vandervorst@github.com/Adam-Vandervorst/PathMap.git", branch = "zipper_head" }
