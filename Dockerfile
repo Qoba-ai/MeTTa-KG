@@ -2,6 +2,8 @@ FROM rust:1.81
 
 WORKDIR /usr/src/mettakg
 
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true 
+
 RUN apt-get update
 RUN apt-get install -y python3-pip python3.11-venv
 
