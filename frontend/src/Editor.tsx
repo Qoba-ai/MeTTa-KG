@@ -572,21 +572,6 @@ const App: Component = () => {
                                 />
                                 <span>Load</span>
                             </button>
-                            <div>
-                                <div></div>
-                                <span>Or</span>
-                                <div></div>
-                            </div>
-                            <button
-                                onClick={() => importFileModal.showModal()}
-                                class={styles.ImportButton}
-                            >
-                                <AiFillFileMarkdown
-                                    class={styles.Icon}
-                                    size={28}
-                                />
-                                <span>Import</span>
-                            </button>
                         </div>
                     </Show>
                     <Show when={editorMode() !== EditorMode.DEFAULT}>

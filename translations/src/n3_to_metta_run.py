@@ -5,9 +5,9 @@ if __name__ == '__main__':
     filename = sys.argv[1]
    
     with open(f"{filename}.n3", "r") as f:
-        g = n3_to_graph(f)
+        g, urls = n3_to_graph(f)
 
-    metta = graph_to_mettastr(g)
+    metta = graph_to_mettastr(g, urls)
 
     with open(f"{filename}-output.metta", "w+") as f:
         f.write(metta)
