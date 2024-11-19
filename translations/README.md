@@ -1,5 +1,11 @@
-## CSV Translations
+# Translations to MeTTa
+    - CSV
+    - Notation 3
+    - N Triples
+    - JSON LD
 
+
+## CSV Translations
 
 ### Row based
 - For csv files that are structured per row
@@ -148,6 +154,25 @@ e.g. distances
 ```
 
 ## N3 Translations
+e.g.
+
+N3 file:
+```
+@prefix log: <http://www.w3.org/2000/10/swap/log#> .
+
+:LordOfTheRings a :Trilogy ;
+    :member :TheFellowshipOfTheRing ;
+    :member :TheTwoTowers ;
+	:member :TheReturnOfTheKing .
+:TheFellowshipOfTheRing a :Read .
+:TheTwoTowers a :Read .
+:TheReturnOfTheKing a :Read .
+
+{ ?b a :Trilogy .
+  ({ ?b :member ?b1 } { ?b1 a :Read }) log:forAllIn _:x .
+
+} => { ?b a :Read } .
+```
 ### Using RDF triples
  - Downsides:
    - A lot of the readability is lost 
@@ -155,15 +180,151 @@ e.g. distances
  - Upsides
    - Same MeTTa syntax as NT
 
+
+
+MeTTa translation:
+
+```
+((Graph 0) ((uriref (books.n3 TheTwoTowers)) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns type)) (uriref (books.n3 Read))))
+((Graph 0) ((uriref (books.n3 TheFellowshipOfTheRing)) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns type)) (uriref (books.n3 Read))))
+((Graph 0) ((uriref (books.n3 LordOfTheRings)) (uriref (books.n3 member)) (uriref (books.n3 TheReturnOfTheKing))))
+((Graph 0) ((uriref (books.n3 LordOfTheRings)) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns type)) (uriref (books.n3 Trilogy))))
+((Graph _:Formula402) ((variable b) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns type)) (uriref (books.n3 Trilogy))))
+((Graph _:Formula402) ((bnode fb3af1f10182946f39d17d057bb3036f4b1) (uriref (http://www.w3.org/2000/10/swap/log forAllIn)) (bnode fb3af1f10182946f39d17d057bb3036f4b3)))
+((Graph _:Formula402) ((bnode fb3af1f10182946f39d17d057bb3036f4b1) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns rest)) (bnode fb3af1f10182946f39d17d057bb3036f4b2)))
+((Graph _:Formula404) ((variable b1) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns type)) (uriref (books.n3 Read))))
+((Graph _:Formula402) ((bnode fb3af1f10182946f39d17d057bb3036f4b2) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns first)) (Graph _:Formula404)))
+((Graph _:Formula403) ((variable b) (uriref (books.n3 member)) (variable b1)))
+((Graph _:Formula402) ((bnode fb3af1f10182946f39d17d057bb3036f4b1) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns first)) (Graph _:Formula403)))
+((Graph _:Formula402) ((bnode fb3af1f10182946f39d17d057bb3036f4b2) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns rest)) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns nil))))
+((Graph _:Formula405) ((variable b) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns type)) (uriref (books.n3 Read))))
+((Graph 0) ((Graph _:Formula402) (uriref (http://www.w3.org/2000/10/swap/log implies)) (Graph _:Formula405)))
+((Graph 0) ((uriref (books.n3 LordOfTheRings)) (uriref (books.n3 member)) (uriref (books.n3 TheFellowshipOfTheRing))))
+((Graph 0) ((uriref (books.n3 TheReturnOfTheKing)) (uriref (http://www.w3.org/1999/02/22-rdf-syntax-ns type)) (uriref (books.n3 Read))))
+((Graph 0) ((uriref (books.n3 LordOfTheRings)) (uriref (books.n3 member)) (uriref (books.n3 TheTwoTowers))))
+(Namespace ("log" "http://www.w3.org/2000/10/swap/log#"))
+(Namespace ("local" "books.n3#"))
+```
+
 ### Syntactic translation
+Future work!
+
+ - Downsides:
+   - Harder to implement
+   - Not confirm with translations of other RDF languages
+   - We might need another parse library for this
+ - Upsides:
+   - More readable
+   - Probably easier to work with
+
+```
+(prefix log <http://www.w3.org/2000/10/swap/log#>)
+
+(tripleN3 (LordOfTheRings a Trilogy))
+(tripleN3 (LordOfTheRings member TheFellowshipOfTheRing))
+(tripleN3 (LordOfTheRings member TheTwoTowers))
+(tripleN3 (LordOfTheRings member TheReturnOfTheKing))
+
+(tripleN3 (TheFellowshipOfTheRing a Read))
+(tripleN3 (TheTwoTowers a Read))
+(tripleN3 (TheReturnOfTheKing a Read))
+
+
+(tripleN3 ((list (tripleN3 (b a trilogy)) (tripleN3 (list (tripleN3 (b member b1)) (tripleN3 (b1 a Read))) 
+                                                     forAllIn 
+                                                     x)) 
+           implies 
+           (tripleN3 (b a read)))
+
+```
 
 ## NTriples Translations
+```
+_:a <http://xmlns.com/foaf/0.1/name> "Alice" .
+_:a <http://xmlns.com/foaf/0.1/age> "25"^^<http://www.w3.org/2001/XMLSchema#integer> .
+_:a <http://xmlns.com/foaf/0.1/knows> _:b .
+_:a <http://xmlns.com/foaf/0.1/interest> "Reading books"@en .
+
+_:b <http://xmlns.com/foaf/0.1/name> "Bob" .
+_:b <http://xmlns.com/foaf/0.1/age> "30"^^<http://www.w3.org/2001/XMLSchema#integer> .
+_:b <http://xmlns.com/foaf/0.1/knows> _:a .
+_:b <http://xmlns.com/foaf/0.1/interest> "Hiking"@en .
+```
+
+```
+((bnode "b") (uriref http://xmlns.com/foaf/0.1/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Bob"))
+((bnode "b") (uriref http://xmlns.com/foaf/0.1/interest) ((literal (http://www.w3.org/1999/02/22-rdf-syntax-ns#langString en)) "Hiking"))
+((bnode "b") (uriref http://xmlns.com/foaf/0.1/knows) (bnode "a"))
+((bnode "a") (uriref http://xmlns.com/foaf/0.1/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Alice"))
+((bnode "b") (uriref http://xmlns.com/foaf/0.1/age) ((literal (http://www.w3.org/2001/XMLSchema#integer)) "30"))
+((bnode "a") (uriref http://xmlns.com/foaf/0.1/age) ((literal (http://www.w3.org/2001/XMLSchema#integer)) "25"))
+((bnode "a") (uriref http://xmlns.com/foaf/0.1/interest) ((literal (http://www.w3.org/1999/02/22-rdf-syntax-ns#langString en)) "Reading books"))
+((bnode "a") (uriref http://xmlns.com/foaf/0.1/knows) (bnode "b"))
+```
 
 ## JSONLD Translations
+example:
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Person",
+  "name": "Frodo Baggins",
+  "jobTitle": "Ring-Bearer",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "Bag End, Hobbiton",
+    "addressLocality": "The Shire",
+    "addressRegion": "Middle-earth"
+  },
+  "birthPlace": "The Shire, Middle-earth",
+  "sameAs": [
+    "https://en.wikipedia.org/wiki/Frodo_Baggins",
+    "https://lotr.fandom.com/wiki/Frodo_Baggins"
+  ],
+  "image": "frodobaggins.jpg"
+}
+```
+
 ### Using RDF triples
  - No context: context is not parsed by RDFlib library, we can parse it separately using JSON, but it gets overly complicated to match what rdf triples correspond to what part of the JSON-parsed context (although we think it is possible). 
+
+```
+((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://schema.org/birthPlace) ((literal (http://www.w3.org/2001/XMLSchema#string)) "The Shire, Middle-earth"))
+((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://schema.org/sameAs) (uriref https://en.wikipedia.org/wiki/Frodo_Baggins))
+((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://schema.org/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Frodo Baggins"))
+((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://schema.org/sameAs) (uriref https://lotr.fandom.com/wiki/Frodo_Baggins))
+((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://schema.org/image) (uriref file:///home/anneline/PycharmProjects/MeTTa-KG/translations/tests/frodobaggins.jpg))
+((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://schema.org/address) (bnode N485c157962df4c8ea8ce03abc371eec1))
+((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#type) (uriref http://schema.org/Person))
+((bnode N485c157962df4c8ea8ce03abc371eec1) (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#type) (uriref http://schema.org/PostalAddress))
+((bnode N485c157962df4c8ea8ce03abc371eec1) (uriref http://schema.org/addressLocality) ((literal (http://www.w3.org/2001/XMLSchema#string)) "The Shire"))
+((bnode N485c157962df4c8ea8ce03abc371eec1) (uriref http://schema.org/addressRegion) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Middle-earth"))
+((bnode N485c157962df4c8ea8ce03abc371eec1) (uriref http://schema.org/streetAddress) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Bag End, Hobbiton"))
+((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://schema.org/jobTitle) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Ring-Bearer"))
+```
+
 ### Using JSON parsing
- - TODO: add keywords to the parser
+ - TODO: add keywords to the parser 
+ - downsides:
+   - different format than other RDF languages
+   - not all triples
+ - upsides:
+   - easier to read
+
+```
+(@context "https://schema.org")
+(@type "Person")
+(name "Frodo Baggins")
+(jobTitle "Ring-Bearer")
+(address (@type "PostalAddress"))
+(address (streetAddress "Bag End, Hobbiton"))
+(address (addressLocality "The Shire"))
+(address (addressRegion "Middle-earth"))
+(birthPlace "The Shire, Middle-earth")
+(sameAs 0 "https://en.wikipedia.org/wiki/Frodo_Baggins")
+(sameAs 1 "https://lotr.fandom.com/wiki/Frodo_Baggins")
+(image "frodobaggins.jpg")
+```
 
 
 
