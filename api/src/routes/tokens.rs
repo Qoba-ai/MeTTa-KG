@@ -1,6 +1,6 @@
 use chrono::Utc;
 use diesel::sql_types::Integer;
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use regex::Regex;
 use rocket::http::Status;
 use rocket::serde::json::Json;
@@ -11,8 +11,6 @@ use crate::{db::establish_connection, model::Token, model::TokenInsert};
 
 #[get("/tokens")]
 pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
-    use crate::schema::tokens::dsl::*;
-
     let conn = &mut establish_connection();
 
     // get all tokens recursively
@@ -44,6 +42,11 @@ pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
         Ok(results) => Ok(Json(results)),
         Err(_) => Err(Status::InternalServerError),
     }
+}
+
+#[get("/token")]
+pub fn get(token: Token) -> Result<Json<Token>, Status> {
+    return Ok(Json(token));
 }
 
 #[post("/tokens", data = "<new_token>")]

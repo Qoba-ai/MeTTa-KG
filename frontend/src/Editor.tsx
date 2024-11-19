@@ -1,54 +1,37 @@
 import type { Component } from 'solid-js'
 import {
-    AiFillCaretDown,
     AiFillFileMarkdown,
     AiFillFolderOpen,
     AiOutlineGithub,
-    AiOutlineImport,
 } from 'solid-icons/ai'
 import { VsRunAll } from 'solid-icons/vs'
-import { createSignal, onMount, Show } from 'solid-js'
+import { createMemo, createSignal, onMount, Show } from 'solid-js'
 import styles from './Editor.module.scss'
 import { A } from '@solidjs/router'
 import toast, { Toaster } from 'solid-toast'
-import { BACKEND_URL } from './urls'
+import { BACKEND_URL, TOKEN } from './urls'
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/panda-syntax-dark.css'
 import {
     bracketMatching,
     foldGutter,
-    foldInside,
     foldKeymap,
-    foldNodeProp,
-    indentNodeProp,
-    indentOnInput,
-    indentService,
-    indentUnit,
-    LanguageSupport,
-    LRLanguage,
     syntaxHighlighting,
-    syntaxTree,
-    TreeIndentContext,
 } from '@codemirror/language'
-import { EditorState, Extension } from '@codemirror/state'
+import { EditorState } from '@codemirror/state'
 import {
-    crosshairCursor,
     drawSelection,
     dropCursor,
     EditorView,
     highlightActiveLine,
     highlightActiveLineGutter,
-    highlightSpecialChars,
     keymap,
-    lineNumbers,
-    rectangularSelection,
 } from '@codemirror/view'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import {
     defaultKeymap,
     historyKeymap,
     history,
-    indentWithTab,
     indentSelection,
 } from '@codemirror/commands'
 import { lintKeymap } from '@codemirror/lint'
@@ -58,36 +41,24 @@ import {
     closeBracketsKeymap,
     completionKeymap,
 } from '@codemirror/autocomplete'
-import { Token } from './types'
+import {
+    EditorMode,
+    ImportCSVDirection,
+    ImportFormat,
+    ParserParameters,
+    Token,
+} from './types'
 import {
     editorTheme,
     highlightStyle,
     languageSupport,
     mettaLinter,
+    toJSON,
 } from './mettaLanguageSupport'
+import { parser } from './parser/parser'
+import { Expression, Symbol, Variable } from './parser/parser.terms'
 
-enum EditorMode {
-    DEFAULT,
-    IMPORT,
-    EDIT,
-}
-
-enum ImportFormat {
-    CSV = 'csv',
-    N3 = 'n3',
-    JSONLD = 'jsonld',
-    NTRIPLES = 'nt',
-}
-
-enum ImportCSVDirection {
-    ROW = 'Row',
-    COLUMN = 'Column',
-    CELL_LABELED = 'CellLabeled',
-    CELL_UNLABELED = 'CellUnlabeled',
-}
-
-const extensionToImportFormat = (file: File) => {
-    // TODO: handle case where files have no extension
+const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.')[1]
 
     switch (extension) {
@@ -117,21 +88,36 @@ const App: Component = () => {
     let loadSpaceModal: HTMLDialogElement
     let loadSpaceForm: HTMLFormElement
     let loadSpaceFormInput: HTMLInputElement
+    let loadSubspaceForm: HTMLFormElement
 
-    const [availableTokens, setAvailableTokens] = createSignal<Token[]>([])
-    const [mettaContent, setMettaContent] = createSignal(``)
-    const [fileToImport, setFileToImport] = createSignal<File | null>(null)
-    const [fileToImportFormat, setFileToImportFormat] =
-        createSignal<ImportFormat | null>(null)
+    const [token, setToken] = createSignal<Token>()
+
+    const [namespaces, setNamespaces] = createSignal<string[]>([])
+    const [selectedNamespace, setSelectedNamespace] = createSignal<string>()
+
+    const [editorContent, setEditorContent] = createSignal<string>('')
+    const [editorOutput, setEditorOutput] = createSignal('')
+    const [editorView, setEditorView] = createSignal<EditorView>()
     const [editorMode, setEditorMode] = createSignal<EditorMode>(
         EditorMode.DEFAULT
     )
-    const [output, setOutput] = createSignal('')
+
+    const [activeImportFile, setActiveImportFile] = createSignal<File>()
+    const activeImportFileFormat = createMemo<ImportFormat | undefined>(() => {
+        const file = activeImportFile()
+
+        if (file) {
+            return extensionToImportFormat(file)
+        }
+    })
+
+    // TODO: replace tokens with namespaces to obtain tree-view of space
+    const [availableTokens, setAvailableTokens] = createSignal<Token[]>([])
+
+    const [isFullscreen, setIsFullscreen] = createSignal<boolean>(false)
+
+    // controlled value of form input: move to separate component
     const [tokenToOpen, setTokenToOpen] = createSignal('')
-    const [token, setToken] = createSignal<Token | null>(null)
-    const [namespace, setNamespace] = createSignal('')
-    const [isFullscreen, setIsFullscreen] = createSignal(false)
-    const [editorView, setEditorView] = createSignal<EditorView>()
 
     // CSV-specific import parameters
     const [importCSVDirection, setImportCSVDirection] =
@@ -140,6 +126,7 @@ const App: Component = () => {
         createSignal<string>('\u002C')
 
     const editorState = EditorState.create({
+        doc: editorContent(),
         extensions: [
             editorTheme,
             languageSupport,
@@ -166,25 +153,23 @@ const App: Component = () => {
                 ...lintKeymap,
             ]),
             EditorView.updateListener.of((update) => {
-                setMettaContent(update.state.doc.toString())
+                if (update.docChanged) {
+                    setEditorContent(update.state.doc.toString())
+                }
             }),
             EditorView.domEventHandlers({
                 drop: (event, view) => {
-                    // translate files dropped into the editor (csv, jsonld,...)
-                    [...event.dataTransfer.items].forEach(async (item, i) => {
-                        if (item.kind === 'file') {
-                            const file = item.getAsFile()
-
-                            setFileToImport(file)
-                            setFileToImportFormat(extensionToImportFormat(file))
-
-                            await translateToMetta()
-
-                            setEditorMode(EditorMode.IMPORT)
-                        }
-                    })
-
+                    // prevent pasting the original content along with its translation
                     event.preventDefault()
+
+                    // translate files dropped into the editor (csv, jsonld,...)
+                    const draggedFile = event.dataTransfer?.files?.item(0)
+
+                    if (draggedFile) {
+                        setActiveImportFile(draggedFile)
+
+                        translateToMetta()
+                    }
                 },
             }),
         ],
@@ -229,7 +214,11 @@ const App: Component = () => {
             await translateToMetta()
 
             importFileModal.close()
-            setEditorMode(EditorMode.IMPORT)
+        }
+
+        if (TOKEN) {
+            loadSpace(TOKEN)
+            setEditorMode(EditorMode.EDIT)
         }
 
         loadSpaceForm.onsubmit = (event) => {
@@ -247,6 +236,7 @@ const App: Component = () => {
             importFileFormInput.value = ''
         })
 
+        // update fullscreen status when user exits fullscreen using ESC key
         document.onfullscreenchange = async (event) => {
             if (!document.fullscreenElement) {
                 setIsFullscreen(false)
@@ -254,25 +244,25 @@ const App: Component = () => {
         }
     })
 
-    const initializeEditor = () => {
-        const newEditorView = new EditorView({
-            state: editorState,
-            parent: mettaInput,
-        })
+    // called right before mettaInput is added to the DOM
+    // the HTML element is not added to the DOM when the component is mounted,
+    // so we cannot initialize the editor in onMount
+    const initializeEditor = (): void => {
+        setEditorView(
+            new EditorView({
+                state: editorState,
+                parent: mettaInput,
+            })
+        )
+    }
 
-        setEditorView(newEditorView)
+    const initializeLoadSubspaceForm = (): void => {
+        loadSubspaceForm.onsubmit = (event) => {
+            // prevent page refresh on submit
+            event.preventDefault()
 
-        newEditorView.setTabFocusMode(true)
-
-        const transaction = newEditorView.state.update({
-            changes: {
-                from: 0,
-                to: editorView().state.doc.length,
-                insert: mettaContent(),
-            },
-        })
-
-        editorView().dispatch(transaction)
+            read(token())
+        }
     }
 
     const handleImportFileSelect = (
@@ -284,13 +274,12 @@ const App: Component = () => {
         const file = e.target?.files?.[0]
 
         if (file) {
-            setFileToImport(file)
-            setFileToImportFormat(extensionToImportFormat(file))
+            setActiveImportFile(file)
         }
     }
 
-    const getParserParameters = () => {
-        switch (fileToImportFormat()) {
+    const getParserParameters = (): ParserParameters => {
+        switch (activeImportFileFormat()) {
             case ImportFormat.CSV: {
                 return {
                     direction: importCSVDirection(),
@@ -322,8 +311,8 @@ const App: Component = () => {
      * EDITOR ACTION: import, translate
      */
     const translateToMetta = async (): Promise<void> => {
-        const file = fileToImport()
-        const fileFormat = fileToImportFormat()
+        const file = activeImportFile()
+        const fileFormat = activeImportFileFormat()
 
         if (!fileFormat) {
             return
@@ -343,11 +332,20 @@ const App: Component = () => {
 
             const mettaTranslation = await resp.json()
 
+            const view = editorView()
+
+            if (!view) {
+                throw new Error('Failed to translate: editorView was undefined')
+            }
+
+            // switch to import mode to allow modification of import parameters
+            setEditorMode(EditorMode.IMPORT)
+
             // insert translated MeTTa code at cursor location
-            editorView().dispatch(
-                editorView().state.update({
+            view.dispatch(
+                view.state.update({
                     changes: {
-                        from: editorView().state.selection.main.head,
+                        from: view.state.selection.main.head,
                         insert: mettaTranslation,
                     },
                 })
@@ -365,13 +363,12 @@ const App: Component = () => {
      * EDITOR ACTION: export
      */
     const exportMetta = (): void => {
-        const fileName = fileToImport()?.name.split('.')[0]
-
-        const blob = URL.createObjectURL(new Blob([mettaContent()]))
+        // TODO: include namespace back in filename
+        const blob = URL.createObjectURL(new Blob([editorContent()]))
 
         const anchor = document.createElement('a')
 
-        anchor.setAttribute('download', `${fileName}-${Date.now()}.metta`)
+        anchor.setAttribute('download', `$metta-${Date.now()}.metta`)
         anchor.setAttribute('href', blob)
 
         document.body.appendChild(anchor)
@@ -395,7 +392,7 @@ const App: Component = () => {
                     referrer: 'https://metta-lang.dev/',
                     referrerPolicy: 'strict-origin-when-cross-origin',
                     body: JSON.stringify({
-                        code: mettaContent(),
+                        code: editorContent(),
                     }),
                     method: 'POST',
                     mode: 'cors',
@@ -405,7 +402,7 @@ const App: Component = () => {
 
             const data = await resp.json()
 
-            setOutput(data['result'])
+            setEditorOutput(data['result'])
         } catch (e) {
             console.error(e)
             // TODO: specific error messages
@@ -417,9 +414,17 @@ const App: Component = () => {
      * EDITOR ACTION: indent
      */
     const indent = (): void => {
+        const view = editorView()
+
+        if (!view) {
+            console.error('Failed to indent: editorView was undefined')
+            toast('Failed to indent code (unknown error).')
+            return
+        }
+
         indentSelection({
-            state: editorView().state,
-            dispatch: (transaction) => editorView().dispatch(transaction),
+            state: view.state,
+            dispatch: (transaction) => view.dispatch(transaction),
         })
     }
 
@@ -428,7 +433,7 @@ const App: Component = () => {
      */
     const loadSpace = async (token: string): Promise<void> => {
         try {
-            const resp = await fetch(`${BACKEND_URL}/tokens`, {
+            const resp = await fetch(`${BACKEND_URL}/token`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -436,14 +441,12 @@ const App: Component = () => {
                 },
             })
 
-            const data = await resp.json()
-
-            const self = data.find((t: Token) => t.code === token)
+            const self: Token = await resp.json()
 
             if (self) {
                 setToken(self)
-                setNamespace(self.namespace)
-                setAvailableTokens(data)
+                setSelectedNamespace('')
+                await read(self)
 
                 toast(`Successfully loaded space '${self.namespace}'`)
             } else {
@@ -484,6 +487,63 @@ const App: Component = () => {
         ],
     }))
 
+    /**
+     * EDITOR ACTION: read space
+     */
+    const read = async (token?: Token) => {
+        const resp = await fetch(
+            `${BACKEND_URL}/spaces${token?.namespace}${selectedNamespace()}`,
+            {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: token?.code ?? '',
+                },
+            }
+        )
+
+        const metta: { space: string[]; paths: string[][] } = await resp.json()
+
+        const view = editorView()
+
+        if (!view) {
+            throw new Error('Failed to translate: editorView was undefined')
+        }
+
+        setNamespaces(metta.paths.map((p) => '/' + p.join('/') + '/'))
+
+        view.dispatch(
+            view.state.update({
+                changes: {
+                    from: 0,
+                    to: view.state.doc.length,
+                    insert: metta.space.join('\n').replace('\r', ''),
+                },
+            })
+        )
+    }
+
+    /**
+     * EDITOR ACTION: write space
+     */
+    const write = async () => {
+        const content = editorContent()
+
+        await fetch(
+            `${BACKEND_URL}/spaces${token()?.namespace}${selectedNamespace()}`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: token()?.code ?? '',
+                },
+                body: content,
+            }
+        )
+
+        await read(token())
+    }
+
     return (
         <>
             <header>
@@ -499,7 +559,7 @@ const App: Component = () => {
             </header>
             <main class={styles.Main}>
                 <div></div>
-                <div ref={mettaEditor} class={styles.EditorWrapper}>
+                <div ref={mettaEditor!} class={styles.EditorWrapper}>
                     <Show when={editorMode() === EditorMode.DEFAULT}>
                         <div class={styles.NewSessionDiv}>
                             <button
@@ -511,21 +571,6 @@ const App: Component = () => {
                                     size={28}
                                 />
                                 <span>Load</span>
-                            </button>
-                            <div>
-                                <div></div>
-                                <span>Or</span>
-                                <div></div>
-                            </div>
-                            <button
-                                onClick={() => importFileModal.showModal()}
-                                class={styles.ImportButton}
-                            >
-                                <AiFillFileMarkdown
-                                    class={styles.Icon}
-                                    size={28}
-                                />
-                                <span>Import</span>
                             </button>
                         </div>
                     </Show>
@@ -543,6 +588,7 @@ const App: Component = () => {
                                     Import
                                 </button>
                                 <button onclick={() => indent()}>Indent</button>
+                                <button onclick={() => write()}>Write</button>
                                 <button onclick={() => switchFullscreen()}>
                                     {isFullscreen()
                                         ? 'Exit Fullscreen'
@@ -559,36 +605,48 @@ const App: Component = () => {
                                     />
                                 </button>
                             </div>
-                            <form
-                                class={styles.EditorRootTokenForm}
-                                onsubmit={(e) => e.preventDefault()}
-                            >
-                                <input
+                            <div class={styles.EditorRootTokenFormWrapper}>
+                                <p>{token()?.namespace}</p>
+                                <form
                                     ref={(e) => {
-                                        rootTokenFormInput = e
+                                        loadSubspaceForm = e
+                                        initializeLoadSubspaceForm()
                                     }}
-                                    id="root-token"
-                                    type="search"
-                                    placeholder="Namespace"
-                                    role="search"
-                                    autocomplete={'off'}
-                                    oninvalid={() =>
-                                        rootTokenFormInput.setCustomValidity(
-                                            "Namespaces start with '/' followed by 2 or more alphanumeric characters and end with '/'."
-                                        )
-                                    }
-                                    value={namespace() ?? ''}
-                                    onchange={(e) => {
-                                        setNamespace(e.target.value)
-                                        rootTokenFormInput.setCustomValidity('')
-                                    }}
-                                    list={'available-namespaces'}
-                                    pattern={
-                                        '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$'
-                                    }
-                                    disabled={editorMode() !== EditorMode.EDIT}
-                                />
-                            </form>
+                                    class={styles.EditorRootTokenForm}
+                                    onsubmit={(e) => e.preventDefault()}
+                                >
+                                    <input
+                                        ref={(e) => {
+                                            rootTokenFormInput = e
+                                        }}
+                                        id="root-token"
+                                        type="search"
+                                        placeholder="Namespace"
+                                        role="search"
+                                        autocomplete={'off'}
+                                        oninvalid={() =>
+                                            rootTokenFormInput.setCustomValidity(
+                                                "Namespaces start with '/' followed by 2 or more alphanumeric characters and end with '/'."
+                                            )
+                                        }
+                                        value={selectedNamespace() ?? ''}
+                                        onchange={(e) => {
+                                            setSelectedNamespace(e.target.value)
+                                            rootTokenFormInput.setCustomValidity(
+                                                ''
+                                            )
+                                        }}
+                                        list={'available-namespaces'}
+                                        pattern={
+                                            '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$'
+                                        }
+                                        disabled={
+                                            editorMode() !== EditorMode.EDIT
+                                        }
+                                    />
+                                    <input type="submit" />
+                                </form>
+                            </div>
                         </div>
                         <div
                             class={styles.MettaInput}
@@ -602,7 +660,7 @@ const App: Component = () => {
                             <code
                                 class={'language-metta'}
                                 innerHTML={
-                                    hljs.highlight(output(), {
+                                    hljs.highlight(editorOutput(), {
                                         language: 'metta',
                                     }).value
                                 }
@@ -626,7 +684,10 @@ const App: Component = () => {
                                 finalizing your import.
                             </p>
                             <Show
-                                when={fileToImportFormat() === ImportFormat.CSV}
+                                when={
+                                    activeImportFileFormat() ===
+                                    ImportFormat.CSV
+                                }
                             >
                                 <label>
                                     Scheme
@@ -713,7 +774,7 @@ const App: Component = () => {
                         <div style={{ 'flex-grow': 1 }}></div>
                         <button
                             class={styles.Button}
-                            disabled={fileToImport() === null}
+                            disabled={activeImportFile() === null}
                         >
                             Import
                         </button>
@@ -762,13 +823,14 @@ const App: Component = () => {
                     </div>
                 </form>
             </dialog>
-            <Toaster toastOptions={{ className: styles.Toaster }} />
+            <Toaster
+                toastOptions={{ className: styles.Toaster }}
+                containerStyle={{ 'margin-top': '60px' }}
+            />
             <datalist id="available-namespaces">
-                {[...new Set(availableTokens().map((t) => t.namespace))].map(
-                    (n) => (
-                        <option value={n}></option>
-                    )
-                )}
+                {namespaces().map((n) => (
+                    <option value={n}></option>
+                ))}
             </datalist>
         </>
     )

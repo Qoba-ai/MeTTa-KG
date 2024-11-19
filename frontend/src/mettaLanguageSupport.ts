@@ -1,12 +1,14 @@
 import { foldInside, foldNodeProp, HighlightStyle, indentNodeProp, LanguageSupport, LRLanguage, syntaxTree, TreeIndentContext } from '@codemirror/language'
 import { parser } from './parser/parser'
 import { styleTags, tags as t } from '@lezer/highlight'
+import { IterMode, Tree } from '@lezer/common'
 import { tags } from '@lezer/highlight'
 import { SyntaxNodeRef } from "@lezer/common"
 import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view'
 import { CompletionContext } from '@codemirror/autocomplete'
 import { linter } from '@codemirror/lint'
 import { Extension } from '@codemirror/state'
+import { Atom, CLOSING_PARENTHESIS, Expression, Identifier, OPENING_PARENTHESIS, Space, Symbol, Variable } from './parser/parser.terms'
 
 /**
  * TODO Editor functionality/bugs:
@@ -33,35 +35,139 @@ const parserWithMetadata = parser.configure({
             GroundedArithmeticFunction: t.arithmeticOperator,
             GroundedBooleanFunction: t.logicOperator,
             GroundedComparisonFunction: t.compareOperator,
-            OtherGroundedFunction: t.keyword,
-            '( )': t.paren,
+            OtherGroundedFunction: t.keyword
         }),
         indentNodeProp.add({
-            ExpressionAtoms: (ctx) => {
-                return ctx.continue()
-            },
-            Atom: (ctx) => {
-                return ctx.continue()
-            },
             Expression: (ctx) => {
-                const base = ctx.continue()
+                const base = ctx.continue() ?? 0;
 
-                if (ctx.lineAt(ctx.pos).text.trim().startsWith(')')) {
-                    return ctx.column(ctx.node.parent.parent.firstChild.from)
+                const next = ctx.node.childAfter(ctx.pos);
+
+                if (next?.type?.id === CLOSING_PARENTHESIS) {
+                    return base;
                 }
 
-                if (ctx.lineAt(ctx.pos).text.trim().startsWith('(')) {
-                    return base + ctx.unit
-                }
-
-                return base + ctx.unit
-            },
+                return base + ctx.unit;
+            }
         }),
         foldNodeProp.add({
             Expression: foldInside,
         }),
     ],
-})
+});
+
+export const enter = (n: SyntaxNodeRef, parent: any[], doc: string): any[] | undefined => {
+    if (n.type.id === Expression || n.type.id === Space) {
+        const child: [] = [];
+
+        parent.push(child)
+
+        return child;
+    }
+
+    if (n.type.id === Symbol) {
+        if (n.node.firstChild?.type.id === Identifier) {
+            const c = {
+                type: 'Identifier',
+                value: doc.slice(n.from, n.to)
+            };
+
+            parent.push(c)
+        } else {
+            const c = {
+                type: 'Literal',
+                value: doc.slice(n.from, n.to)
+            };
+
+            parent.push(c)
+        }
+
+        return parent;
+    }
+
+    return parent;
+}
+
+export const toJSON = (doc: string) => {
+    const trie = toTrie(doc);
+
+    const reconstruction = reconstruct(trie);
+
+    console.log(trie)
+    console.log(reconstruction)
+}
+
+export const toTrie = (doc: string) => {
+    const tree = parser.parse(doc)
+
+    const result = {};
+    const expressionIndices: number[] = [];
+    const stack: any[] = [result];
+
+    tree.iterate({
+        enter: (n) => {
+            if (n.type.id === Symbol || n.type.id === Variable) {
+                const text = doc.slice(n.from, n.to);
+
+                if (stack[stack.length - 1][text]) {
+                    stack.push(stack[stack.length - 1][text])
+                } else {
+                    const child = {}
+
+                    stack[stack.length - 1][text] = child;
+                    stack.push(child);
+                }
+            }
+
+            if (n.type.id === Expression) {
+                expressionIndices.push(stack.length - 1);
+            }
+
+            if (n.type.id === OPENING_PARENTHESIS) {
+                const child = {}
+
+                stack[stack.length - 1]['('] = child;
+                stack.push(child);
+            }
+
+            if (n.type.id === CLOSING_PARENTHESIS) {
+                const child = {}
+
+                stack[stack.length - 1][')'] = child;
+                stack.push(child);
+            }
+
+            return true;
+        },
+        leave: (n) => {
+            if (n.type.id === Expression) {
+                const expr = expressionIndices.pop() as number;
+
+                stack.splice(expr + 2)
+            }
+        }
+    });
+
+    return result;
+}
+
+const reconstruct = (trie: any): any => {
+    const keys = Object.keys(trie);
+
+    if (keys.length === 0) {
+        return []
+    }
+
+    if (keys.length === 1) {
+        return [keys[0], ...reconstruct(trie[keys[0]])]
+    }
+
+    return keys.flatMap(k => {
+        const vs = trie[k];
+
+        return Object.entries(vs).map(([k2, v]) => [k, k2, ...reconstruct(v)])
+    })
+}
 
 const mettaLanguage = LRLanguage.define({
     name: 'MeTTa',

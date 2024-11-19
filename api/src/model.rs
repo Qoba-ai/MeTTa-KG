@@ -1,4 +1,4 @@
-use crate::schema::tokens;
+use crate::{schema::spaces, schema::tokens};
 use chrono::NaiveDateTime;
 use diesel::{QueryableByName, Insertable, Queryable, Selectable};
 use rocket::serde::{Deserialize, Serialize};
@@ -32,4 +32,11 @@ pub struct Token {
     pub permission_share_read: bool,
     pub permission_share_write: bool,
     pub parent: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize, Queryable, Selectable, Clone, QueryableByName)]
+#[diesel(table_name = spaces)]
+pub struct Space {
+    pub id: i32,
+    pub metta: String,
 }

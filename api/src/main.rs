@@ -34,10 +34,13 @@ fn rocket() -> Rocket<Build> {
                 routes::translations::create_from_jsonld,
                 routes::translations::create_from_n3,
                 routes::tokens::get_all,
+                routes::tokens::get,
                 routes::tokens::create,
                 routes::tokens::update,
                 routes::tokens::delete,
-                routes::tokens::delete_batch
+                routes::tokens::delete_batch,
+                routes::spaces::write,
+                routes::spaces::get
             ],
         )
         .mount("/", rocket_cors::catch_all_options_routes())
