@@ -1,8 +1,28 @@
 # Translations to MeTTa
-    - CSV
-    - Notation 3
-    - N Triples
-    - JSON LD
+    ## Table of Contents
+
+- [CSV Translations](#csv-translations)
+  - [Row based](#row-based)
+    - [Row based without header](#row-based-without-header)
+    - [Row based with header](#row-based-with-header)
+      - [Naive](#naive)
+      - [Struct based](#struct-based)
+      - [Field based](#field-based)
+      - [Functional](#functional)
+  - [Column based](#column-based)
+    - [Column based without header](#column-based-without-header)
+    - [Column based with header/without column numbers](#column-based-with-header/without-column-numbers)
+  - [Cell based](#cell-based)
+    - [Cell based unlabeled](#cell-based-unlabeled)
+    - [Cell based labeled](#cell-based-labeled)
+- [N3 Translations](#n3-translations)
+  - [Using RDF triples](#using-rdf-triples)
+  - [Syntactic translation - not yet implemented](#syntactic-translation---not-yet-implemented)
+- [NTriples Translations](#ntriples-translations)
+- [JSONLD Translations](#jsonld-translations)
+  - [Using RDF triples](#using-rdf-triples)
+  - [Using JSON parsing](#using-json-parsing)
+
 
 
 ## CSV Translations
