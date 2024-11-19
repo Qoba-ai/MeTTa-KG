@@ -7,6 +7,8 @@ import Tokens from "./Tokens";
 
 import './styles/global.scss';
 
+import 'solid-devtools'
+
 const root = document.getElementById("root");
 
 if (import.meta.env.DEV && !(root instanceof HTMLElement)) {

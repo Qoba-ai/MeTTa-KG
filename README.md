@@ -16,10 +16,10 @@ Spaces support two operations, read and write. As the name suggests, a read oper
 
 A namespace should:
 
-- starts with '/'
-- ends with '/'
-- consists of segments separated by '/' that:
-  - contains only alphanumeric characters, '-', '\_'
+- start with '/'
+- end with '/'
+- consist of segments separated by '/' that:
+  - contain only alphanumeric characters, '-', '\_'
   - start with an alphanumeric character
   - end with an alphanumeric character
 
