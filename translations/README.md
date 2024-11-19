@@ -1,5 +1,5 @@
 # Translations to MeTTa
-    ## Table of Contents
+## Table of Contents
 
 - [CSV Translations](#csv-translations)
   - [Row based](#row-based)
