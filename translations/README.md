@@ -154,7 +154,7 @@ e.g. distances
 ```
 
 ## N3 Translations
-e.g.
+The following N3 file describes the Lord of The Rings trilogy. If all books in the trilogy are read, the whole trilogy is read. 
 
 N3 file:
 ```
@@ -173,13 +173,14 @@ N3 file:
 
 } => { ?b a :Read } .
 ```
+
+We have two translations to MeTTa:
 ### Using RDF triples
+ - Upsides
+   - Same MeTTa syntax as other RDF triples
  - Downsides:
    - A lot of the readability is lost 
    - Keywords like "forall" are represented as long IRI's
- - Upsides
-   - Same MeTTa syntax as NT
-
 
 
 MeTTa translation:
@@ -206,16 +207,17 @@ MeTTa translation:
 (Namespace ("local" "books.n3#"))
 ```
 
-### Syntactic translation
+### Syntactic translation - not yet implemented
 Future work!
 
+ - Upsides:
+   - Easier to read
+   - Probably easier to work with
  - Downsides:
    - Harder to implement
    - Not confirm with translations of other RDF languages
-   - We might need another parse library for this
- - Upsides:
-   - More readable
-   - Probably easier to work with
+   - We might need another library to parse the N3 files
+
 
 ```
 (prefix log <http://www.w3.org/2000/10/swap/log#>)
@@ -239,6 +241,9 @@ Future work!
 ```
 
 ## NTriples Translations
+The following NT example describes Alice and Bob.
+
+NT file:
 ```
 _:a <http://xmlns.com/foaf/0.1/name> "Alice" .
 _:a <http://xmlns.com/foaf/0.1/age> "25"^^<http://www.w3.org/2001/XMLSchema#integer> .
@@ -251,6 +256,7 @@ _:b <http://xmlns.com/foaf/0.1/knows> _:a .
 _:b <http://xmlns.com/foaf/0.1/interest> "Hiking"@en .
 ```
 
+MeTTa translation:
 ```
 ((bnode "b") (uriref http://xmlns.com/foaf/0.1/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Bob"))
 ((bnode "b") (uriref http://xmlns.com/foaf/0.1/interest) ((literal (http://www.w3.org/1999/02/22-rdf-syntax-ns#langString en)) "Hiking"))
@@ -263,7 +269,7 @@ _:b <http://xmlns.com/foaf/0.1/interest> "Hiking"@en .
 ```
 
 ## JSONLD Translations
-example:
+example JSON-LD file:
 ```json
 {
   "@context": "https://schema.org",
@@ -286,8 +292,14 @@ example:
 ```
 
 ### Using RDF triples
- - No context: context is not parsed by RDFlib library, we can parse it separately using JSON, but it gets overly complicated to match what rdf triples correspond to what part of the JSON-parsed context (although we think it is possible). 
+- upsides:
+  - consistent with translations of other rdf formats
+- downsides:
+  - No context (in this example "https://schema.org"): context is not parsed by RDFlib library, we can parse it separately using JSON, but it gets overly complicated to match what rdf triples correspond to what part of the JSON-parsed context (although we think it is possible). 
+    - This is easily fixed when only one context is present, as in this example. But in examples where multiple contexts are present (e.g. in "translations/tests/test_files/jsonld_files/multiple_contexts.jsonld"), this is much more difficult.
+  - less readable
 
+MeTTa translation:
 ```
 ((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://schema.org/birthPlace) ((literal (http://www.w3.org/2001/XMLSchema#string)) "The Shire, Middle-earth"))
 ((bnode Nde9b20334f5e4986865e48252fe5834d) (uriref http://schema.org/sameAs) (uriref https://en.wikipedia.org/wiki/Frodo_Baggins))
@@ -304,13 +316,14 @@ example:
 ```
 
 ### Using JSON parsing
- - TODO: add keywords to the parser 
+ - TODO: add keywords to the parser
+ - upsides:
+   - easier to read
  - downsides:
    - different format than other RDF languages
    - not all triples
- - upsides:
-   - easier to read
 
+MeTTa translation:
 ```
 (@context "https://schema.org")
 (@type "Person")
