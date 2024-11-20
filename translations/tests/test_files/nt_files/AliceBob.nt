@@ -1,0 +1,8 @@
+_:a <http://xmlns.com/foaf/0.1/name> "Alice" .
+_:a <http://xmlns.com/foaf/0.1/age> "25"^^<http://www.w3.org/2001/XMLSchema#integer> .
+_:a <http://xmlns.com/foaf/0.1/knows> _:b .
+_:a <http://xmlns.com/foaf/0.1/interest> "Reading books"@en .
+_:b <http://xmlns.com/foaf/0.1/name> "Bob" .
+_:b <http://xmlns.com/foaf/0.1/age> "30"^^<http://www.w3.org/2001/XMLSchema#integer> .
+_:b <http://xmlns.com/foaf/0.1/knows> _:a .
+_:b <http://xmlns.com/foaf/0.1/interest> "Hiking"@en .
