@@ -7,8 +7,8 @@ from io import StringIO
 
 def csv_to_matrix(filename: str, delimiter: str=",", quotechar: str='"', lineterminator:str ="\r\n") -> list[list[str]]:
     with open(filename, mode="r") as f:
-        r = csv.reader(f, delimiter=delimiter, quotechar=quotechar, lineterminator=lineterminator)
-        lines = [row for row in r]
+        r = csv.reader(f, delimiter=delimiter, quotechar=quotechar, lineterminator=lineterminator, strict=True)
+        lines = [row for row in r if len(row) > 0]
     line_len = len(lines[0])
     for e, l in enumerate(lines):
         if not len(l) == line_len:
