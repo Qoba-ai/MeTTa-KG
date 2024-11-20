@@ -26,9 +26,17 @@ class ReadCSV(unittest.TestCase):
 
         self.assertRaises(ValueError, csv_to_matrix, "test_files/csv_files/customers-3.csv", " ")
 
+        # test file containing emtpy lines
+        self.assertEqual([['Foo', '1', 'Belgium'], ['Bar', '2', 'Netherlands'], ['Baz', '3', 'Germany']],
+                          csv_to_matrix("test_files/csv_files/test.csv"))
+
     def test_to_dict(self):
         self.assertEqual(self.customers_dict,
                          csv_to_dict("test_files/csv_files/customers-3.csv"))
+
+        # test file containing empty lines
+        self.assertEqual([{'Foo': 'Bar', '1': '2', 'Belgium': 'Netherlands'}, {'Foo': 'Baz', '1': '3', 'Belgium': 'Germany'}],
+                         csv_to_dict("test_files/csv_files/test.csv"))
 
     def test_from_dict(self):
         self.assertEqual(self.customers_csv, dict_to_csv(self.customers_dict))
@@ -303,7 +311,7 @@ class MeTTaToCSV(unittest.TestCase):
 
         self.assertEqual(sort_matrix(matrix),
                          sort_matrix(from_metta))
-            
+
 
 
 if __name__ == '__main__':
