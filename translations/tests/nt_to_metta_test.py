@@ -1,4 +1,6 @@
 import unittest
+from io import StringIO
+
 from translations.src.nt_to_metta import *
 from rdflib.term import URIRef, Literal
 from translations.src.csv_to_metta import parse_metta
@@ -17,6 +19,33 @@ class ReadNT(unittest.TestCase):
                           '((bnode "dave") (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#type) (uriref http://xmlns.com/foaf/0.1/Person))\n'
                           '((bnode "art") (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#type) (uriref http://xmlns.com/foaf/0.1/Person))').split('\n')),
                          set((graph_to_mettastr(graph, bnodes)).split('\n')))
+
+        graph2, bnodes2 = parse_nt("test_files/nt_files/jena_res.nt")
+        self.assertEqual(
+            {'((uriref http://example/b) (uriref http://xmlns.com/foaf/0.1/knows) (uriref http://example/a))',
+             '((uriref http://example/book) (uriref http://purl.org/dc/elements/1.1/author) (bnode "BX2Dc2b3371X3A13cf8faaf53X3AX2D7ffe"))',
+             '((uriref http://example/a) (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#type) (uriref http://xmlns.com/foaf/0.1/Person))',
+             '((bnode "BX2Dc2b3371X3A13cf8faaf53X3AX2D7fff") (uriref http://xmlns.com/foaf/0.1/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Bob"))',
+             '((uriref http://example/a) (uriref http://xmlns.com/foaf/0.1/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Alice"))',
+             '((bnode "BX2Dc2b3371X3A13cf8faaf53X3AX2D7ffe") (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#rest) (bnode "BX2Dc2b3371X3A13cf8faaf53X3AX2D7ffd"))',
+             '((bnode "BX2Dc2b3371X3A13cf8faaf53X3AX2D7ffe") (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#first) (uriref http://example/a))',
+             '((uriref http://example/a) (uriref http://xmlns.com/foaf/0.1/knows) (bnode "BX2Dc2b3371X3A13cf8faaf53X3AX2D7fff"))',
+             '((bnode "BX2Dc2b3371X3A13cf8faaf53X3AX2D7ffd") (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#rest) (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#nil))',
+             '((bnode "BX2Dc2b3371X3A13cf8faaf53X3AX2D7ffd") (uriref http://www.w3.org/1999/02/22-rdf-syntax-ns#first) (uriref http://example/b))'},
+            set(graph_to_mettastr(graph2, bnodes2).split('\n')))
+
+        graph3, bnodes3 = parse_nt("test_files/nt_files/AliceBob.nt")
+
+        self.assertEqual({'((bnode "a") (uriref http://xmlns.com/foaf/0.1/interest) ((literal (http://www.w3.org/1999/02/22-rdf-syntax-ns#langString en)) "Reading books"))',
+                            '((bnode "a") (uriref http://xmlns.com/foaf/0.1/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Alice"))',
+                            '((bnode "b") (uriref http://xmlns.com/foaf/0.1/interest) ((literal (http://www.w3.org/1999/02/22-rdf-syntax-ns#langString en)) "Hiking"))',
+                            '((bnode "b") (uriref http://xmlns.com/foaf/0.1/name) ((literal (http://www.w3.org/2001/XMLSchema#string)) "Bob"))',
+                            '((bnode "b") (uriref http://xmlns.com/foaf/0.1/age) ((literal (http://www.w3.org/2001/XMLSchema#integer)) "30"))',
+                            '((bnode "a") (uriref http://xmlns.com/foaf/0.1/knows) (bnode "b"))',
+                            '((bnode "b") (uriref http://xmlns.com/foaf/0.1/knows) (bnode "a"))',
+                            '((bnode "a") (uriref http://xmlns.com/foaf/0.1/age) ((literal (http://www.w3.org/2001/XMLSchema#integer)) "25"))'},
+                         set(graph_to_mettastr(graph3, bnodes3).split('\n')))
+
 
     def test_metta_to_graph(self):
         metta = parse_metta(('((uriref http://www.w3.org/2001/sw/RDFCore/ntriples/) (uriref http://xmlns.com/foaf/0.1/maker) (bnode "art"))\n'
