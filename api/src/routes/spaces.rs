@@ -224,7 +224,7 @@ pub fn write(token: Token, path: PathBuf, space: String) -> Result<Json<bool>, S
     wz.join(&subspace_pathmap.read_zipper());
 
     // TODO: figure out better way to go back to the root
-    wz.ascend(100);
+    wz.reset();
 
     let serialized = serialize(wz.fork_read_zipper());
 
