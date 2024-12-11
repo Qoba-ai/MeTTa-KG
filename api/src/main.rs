@@ -43,7 +43,6 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::get
             ],
         )
-        .mount("/", rocket_cors::catch_all_options_routes())
         .attach(cors.clone())
         .manage(cors)
 }
