@@ -39,7 +39,7 @@ pub struct SpaceExt {
 
 impl Parser for DataParser {
     fn tokenizer<'r>(&mut self, s: &[u8]) -> &'r [u8] {
-        return unsafe { std::mem::transmute(s) };
+        // return unsafe { std::mem::transmute(s) };
         if s.len() == 0 {
             return Self::EMPTY;
         }
