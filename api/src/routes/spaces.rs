@@ -153,6 +153,7 @@ fn get_paths<'a, V: Clone + Send + Sync>(z: &mut ReadZipperUntracked<V>) -> Vec<
 
         let unique_paths: HashSet<Vec<String>> = paths.drain(..).collect();
         paths.extend(unique_paths);
+        /*
         paths.sort_by(|a, b| {
             if a.starts_with(b) {
                 return Ordering::Greater;
@@ -161,7 +162,7 @@ fn get_paths<'a, V: Clone + Send + Sync>(z: &mut ReadZipperUntracked<V>) -> Vec<
             }
 
             return Ordering::Equal;
-        });
+        }); */
     }
 
     return paths;
