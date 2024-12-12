@@ -1166,7 +1166,8 @@ const Tokens: Component = () => {
                     <div class={styles.ModalButtonBar}>
                         <button
                             class={styles.Button}
-                            onclick={() => {
+                            onclick={(ev) => {
+                                ev.preventDefault()
                                 handleRefreshTokensButtonClick()
                                 refreshTokensModel.close()
                             }}
@@ -1193,7 +1194,8 @@ const Tokens: Component = () => {
                     <div class={styles.ModalButtonBar}>
                         <button
                             class={styles.Button}
-                            onclick={() => {
+                            onclick={(ev) => {
+                                ev.preventDefault()
                                 handleDeleteTokensButtonClick()
                                 deleteTokensModal.close()
                             }}
