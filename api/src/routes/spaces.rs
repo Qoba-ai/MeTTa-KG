@@ -39,7 +39,7 @@ pub struct SpaceExt {
 
 impl Parser for DataParser {
     fn tokenizer<'r>(&mut self, s: &[u8]) -> &'r [u8] {
-        // return unsafe { std::mem::transmute(s) };
+        return unsafe { std::mem::transmute(s) };
         if s.len() == 0 {
             return Self::EMPTY;
         }
@@ -237,6 +237,6 @@ pub fn write(token: Token, path: PathBuf, space: String) -> Result<Json<bool>, S
 
     match update_result {
         Ok(_) => Ok(Json(true)),
-        Err(_) => Err(Status::InternalServerError),
+        Err(_)=> Err(Status::InternalServerError),
     }
 }
