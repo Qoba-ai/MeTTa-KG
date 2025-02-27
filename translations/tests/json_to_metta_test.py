@@ -44,6 +44,42 @@ class JSONToMeTTa(unittest.TestCase):
         dict_to_metta(out, data)
         print(out.getvalue())
 
+    def test_jsonld(self):
+        s = """{
+              "@context": "https://schema.org",
+              "@type": "Person",
+              "name": "Frodo Baggins",
+              "jobTitle": "Ring-Bearer",
+              "address": {
+                "@type": "PostalAddress",
+                "streetAddress": "Bag End, Hobbiton",
+                "addressLocality": "The Shire",
+                "addressRegion": "Middle-earth"
+              },
+              "birthPlace": "The Shire, Middle-earth",
+              "sameAs": [
+                "https://en.wikipedia.org/wiki/Frodo_Baggins",
+                "https://lotr.fandom.com/wiki/Frodo_Baggins"
+              ],
+              "image": "frodobaggins.jpg"
+            }"""
+        out = StringIO()
+        data = json.load(StringIO(s))
+        dict_to_metta(out, data)
+        self.assertEqual(out.getvalue(), "(@context \"https://schema.org\")\n"
+                                         "(@type \"Person\")\n"
+                                         "(name \"Frodo Baggins\")\n"
+                                         "(jobTitle \"Ring-Bearer\")\n"
+                                         "(address (@type \"PostalAddress\"))\n"
+                                         "(address (streetAddress \"Bag End, Hobbiton\"))\n"
+                                         "(address (addressLocality \"The Shire\"))\n"
+                                         "(address (addressRegion \"Middle-earth\"))\n"
+                                         "(birthPlace \"The Shire, Middle-earth\")\n"
+                                         "(sameAs 0 \"https://en.wikipedia.org/wiki/Frodo_Baggins\")\n"
+                                         "(sameAs 1 \"https://lotr.fandom.com/wiki/Frodo_Baggins\")\n"
+                                         "(image \"frodobaggins.jpg\")\n")
+
+
 
 
 if __name__ == '__main__':
