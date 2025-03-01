@@ -14,13 +14,20 @@
 
 ; ------- TRANSFORM COMMENTS FILE ---------------------------------------------------
 
-; !(import! &self data_comments)
-; !(transform_ (,(json $i ($k $v)) (json $i (comment_id $id))) ((comment $id) $k $v))
+(import! &self data_comments)
+
+; ---- transform that keeps comments ----
+; ---- ATTENTION: since comments are long, only part is printed without last quotation marks, if put into MeTTa file, the file is corrupt
+; (transform_ (,(json $i ($k $v)) (json $i (comment_id $id))) ((comment $id) $k $v))
+
+; ---- transform that removes comments ----
+; ---- prevents MeTTa file from being corrupt due to partially printed comments
+(match &self (,(json $i ($k $v)) (json $i (comment_id $id))) (if (not (== $k content)) ((comment $id) $k $v) ("it happened")))
 
 
 ; ------- TRANSFORM COMMENT_VOTES FILE ----------------------------------------------
 
-!(import! &self data_comment_votes)
+(import! &self data_comment_votes)
 ; !(transform_ (,(json $i ($k $v)) (json $i (comment_id $id)) (json $i (voter_id $id2))) ((vote $id $id2) $k $v))
 ;;; OR
 ; !(transform_ (json $i ($k $v)) ((vote $i) $k $v))
