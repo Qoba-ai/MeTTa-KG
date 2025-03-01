@@ -96,7 +96,6 @@ class DFData:
     def write_comments(self, filename="data_comments.metta") -> None:
         with open(filename, "w") as f:
             comms: list[dict] = self.get_all_comments()
-            comms = [{k: v.replace('"', '') for k, v in c.items()} for c in comms]
             dict_list_to_metta(f, comms)
 
     def write_comment_votes(self, filename="data_comment_votes.metta") -> None:
@@ -158,7 +157,10 @@ class DFData:
 
 # pprint(request("get", "https://deepfunding.ai/wp-json/deepfunding/v1/comment_votes"))
 
+def all_data_to_metta():
+    df = DFData()
+    df.write_comments()
 
 
-df = DFData()
-df.write_comments()
+if __name__ == '__main__':
+    all_data_to_metta()
