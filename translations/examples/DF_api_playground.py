@@ -70,6 +70,7 @@ class DFData:
         comments_ = []
         for c in comments:
             c["user_id"] = int(c["user_id"])
+            c["comment_votes"] = 0 if c["comment_votes"] == "" else int(c["comment_votes"])
             comments_.append(c)
         return comments
 
