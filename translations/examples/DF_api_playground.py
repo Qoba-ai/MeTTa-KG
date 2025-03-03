@@ -4,7 +4,6 @@ from requests import request
 
 from translations.src.json_to_metta import dict_list_to_metta
 
-# TODO replace "" in the comments
 # get all users of page
 # pprint(request("get", "https://deepfunding.ai/wp-json/deepfunding/v1/users?page=2").json())
 
@@ -74,6 +73,10 @@ class DFData:
 
     def write_users(self, filename="data_users.metta", max_pages = 100):
         users = self.get_all_users(max_pages)
+        # in MeTTa "id" is a built-in function
+        for u in users:
+            u["user_id"] = u.pop("id")
+
         with open(filename, "w") as f:
           dict_list_to_metta(f, users)
 
@@ -159,7 +162,9 @@ class DFData:
 
 def all_data_to_metta():
     df = DFData()
-    df.write_comments()
+    df.write_users()
+    # df.write_comments()
+    # df.write_comment_votes()
 
 
 if __name__ == '__main__':

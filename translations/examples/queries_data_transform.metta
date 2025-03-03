@@ -3,13 +3,13 @@
 
 
 ; ------- TRANSFORM USERS FILE ------------------------------------------------------
-; !(import! &self data_users)
+!(import! &self data_users)
 
-; !(transform_ (,
-;          (json $i ($k $v))
-;          (json $i (Id $id)))
-;      ((user $id) $k $v)
-; )
+!(transform_ (,
+         (json $i ($k $v))
+         (json $i (user_id $id)))
+     ((user $id) $k $v)
+)
 
 
 ; ------- TRANSFORM COMMENTS FILE ---------------------------------------------------
