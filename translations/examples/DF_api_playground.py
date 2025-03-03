@@ -66,7 +66,12 @@ class DFData:
         pass
 
     def get_all_comments(self, max_pages = 100):
-        return self.get_with_pages("comments", max_pages)
+        comments = self.get_with_pages("comments", max_pages)
+        comments_ = []
+        for c in comments:
+            c["user_id"] = int(c["user_id"])
+            comments_.append(c)
+        return comments
 
     def get_all_comment_votes(self, max_pages = 100):
         return self.get_with_pages("comment_votes", max_pages, "votes")
@@ -162,8 +167,8 @@ class DFData:
 
 def all_data_to_metta():
     df = DFData()
-    df.write_users()
-    # df.write_comments()
+    # df.write_users()
+    df.write_comments()
     # df.write_comment_votes()
 
 

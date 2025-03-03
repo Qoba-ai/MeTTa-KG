@@ -1,11 +1,14 @@
+; Don't forget to put exclamation marks before the statements you want to run!
+
+
 (= (transform_ $pattern $query) (match &self $pattern (let $_ (add-atom &self $query) $query)))
 (= (transform $pattern $query) (match &self $pattern $query))
 
 
 ; ------- TRANSFORM USERS FILE ------------------------------------------------------
-!(import! &self data_users)
+(import! &self data_users)
 
-!(transform_ (,
+(transform_ (,
          (json $i ($k $v))
          (json $i (user_id $id)))
      ((user $id) $k $v)
@@ -14,7 +17,7 @@
 
 ; ------- TRANSFORM COMMENTS FILE ---------------------------------------------------
 
-(import! &self data_comments)
+!(import! &self data_comments)
 
 ; ---- transform that keeps comments ----
 ; ---- ATTENTION: since comments are long, only part is printed without last quotation marks, if put into MeTTa file, the file is corrupt
@@ -22,7 +25,7 @@
 
 ; ---- transform that removes comments ----
 ; ---- prevents MeTTa file from being corrupt due to partially printed comments
-(match &self (,(json $i ($k $v)) (json $i (comment_id $id))) (if (not (== $k content)) ((comment $id) $k $v) ("it happened")))
+!(match &self (,(json $i ($k $v)) (json $i (comment_id $id))) (if (not (== $k content)) ((comment $id) $k $v) Empty))
 
 
 ; ------- TRANSFORM COMMENT_VOTES FILE ----------------------------------------------
