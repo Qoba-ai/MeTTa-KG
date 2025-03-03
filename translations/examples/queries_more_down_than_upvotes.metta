@@ -1,6 +1,6 @@
-!(import! &self users_transformed)
-!(import! &self comments_transformed)
-!(import! &self comment_votes_transformed)
+!(import! &self transformed_users)
+!(import! &self transformed_comments)
+!(import! &self transformed_comment_votes)
 
 
 ---------------------------------- UTILITY FUNCTIONS --------------------------------------
@@ -27,8 +27,8 @@
 
 ----- GET IDS -----
 ; all ids of user who received more downvotes than upvotes on their comments
-(match &self ((user $i) Id $id) (if (< (get_up_votes $id) (get_down_votes $id)) $id Empty))
+!(match &self ((user $i) user_id $id) (if (< (get_up_votes $id) (get_down_votes $id)) $id Empty))
 
 ----- GET NAMES -----
 ; name of users who received downvotes than upvotes on their comments
-(match &self ((user $i) Id $id) (if (< (get_up_votes $id) (get_down_votes $id)) (match &self (, ((user $x) Id $id) ((user $x) user_name $name)) $name) Empty))
+(match &self ((user $i) user_id $id) (if (< (get_up_votes $id) (get_down_votes $id)) (match &self (, ((user $x) user_id $id) ((user $x) user_name $name)) $name) Empty))
