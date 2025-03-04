@@ -5,7 +5,7 @@
 (= (transform $pattern $query) (match &self $pattern $query))
 
 
-; ------- TRANSFORM USERS FILE ------------------------------------------------------
+; ----------------------------------------------- TRANSFORM USERS FILE -------------------------------------------------
 (import! &self data_users)
 
 (transform_ (,
@@ -15,9 +15,9 @@
 )
 
 
-; ------- TRANSFORM COMMENTS FILE ---------------------------------------------------
+; --------------------------------------------- TRANSFORM COMMENTS FILE ------------------------------------------------
 
-!(import! &self data_comments)
+(import! &self data_comments)
 
 ; ---- transform that keeps comments ----
 ; ---- ATTENTION: since comments are long, only part is printed without last quotation marks, if put into MeTTa file, the file is corrupt
@@ -25,10 +25,10 @@
 
 ; ---- transform that removes comments ----
 ; ---- prevents MeTTa file from being corrupt due to partially printed comments
-!(match &self (,(json $i ($k $v)) (json $i (comment_id $id))) (if (not (== $k content)) ((comment $id) $k $v) Empty))
+(match &self (,(json $i ($k $v)) (json $i (comment_id $id))) (if (not (== $k content)) ((comment $id) $k $v) Empty))
 
 
-; ------- TRANSFORM COMMENT_VOTES FILE ----------------------------------------------
+; ------------------------------------------- TRANSFORM COMMENT_VOTES FILE ---------------------------------------------
 
 (import! &self data_comment_votes)
 ; !(transform_ (,(json $i ($k $v)) (json $i (comment_id $id)) (json $i (voter_id $id2))) ((vote $id $id2) $k $v))
@@ -46,3 +46,10 @@
 
 (transform_ (, (json $i (voter_id $vid)) (json $i (comment_id $cid)) (json $i (vote_type $vt)) (json $i (created_at $date)))
                 (superpose (($vt $vid $cid) (created_at ($vt $vid $cid) $date))))
+
+
+; ---------------------------------------------- TRANSFORM REVIEWS FILE ------------------------------------------------
+
+!(import! &self data_reviews)
+
+!(transform (json $i ($k $v)) ((review $i) $k $v))
