@@ -52,4 +52,5 @@
 
 !(import! &self data_reviews)
 
+; don't use review ids because not every review has an id
 !(transform (json $i ($k $v)) ((review $i) $k $v))
