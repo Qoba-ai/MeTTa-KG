@@ -1,4 +1,6 @@
 ; Don't forget to put exclamation marks before the statements you want to run!
+; You can't import all files together, because the data of each file looks similar
+; To solve this, we either need to make a different space for each file, or write the query for each file in a different file
 
 
 (= (transform_ $pattern $query) (match &self $pattern (let $_ (add-atom &self $query) $query)))
@@ -50,7 +52,20 @@
 
 ; ---------------------------------------------- TRANSFORM REVIEWS FILE ------------------------------------------------
 
-!(import! &self data_reviews)
+(import! &self data_reviews)
 
-; don't use review ids because not every review has an id
-!(transform (json $i ($k $v)) ((review $i) $k $v))
+; don't use review ids as identifiers because not every review has an id
+(transform (json $i ($k $v)) ((review $i) $k $v))
+
+
+
+; --------------------------------------------- TRANSFORM PROPOSALS FILE -----------------------------------------------
+
+!(import! &self data_proposals)
+
+!(match &self (,
+         (json $i ($k $v))
+         (json $i (proposal_id $id)))
+     ((proposal $id) $k $v)
+)
+
