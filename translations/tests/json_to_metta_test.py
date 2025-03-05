@@ -49,6 +49,14 @@ class JSONToMeTTa(unittest.TestCase):
         self.assertEqual(out2.getvalue(), '(json 0 (k "this is a \\"quote\\""))\n'
                                          '(json 0 (l "\\"this\\" is also a quote"))\n')
 
+    def test_backslashes(self):
+        out = StringIO()
+        d = {"k1": 'item1\\item2', "k2": "item3\\"}
+        dict_to_metta(out, d)
+
+        print(out.getvalue())
+        self.assertEqual(out.getvalue(), '(k1 "item1\\\\item2")\n'
+                                         '(k2 "item3\\\\")\n')
 
     def test_jsonld_playground(self):
         with open("test_files/jsonld_files/contexts_person.jsonld") as f:
