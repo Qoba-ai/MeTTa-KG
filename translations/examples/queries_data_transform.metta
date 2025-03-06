@@ -63,9 +63,16 @@
 
 !(import! &self data_proposals)
 
-!(match &self (,
+; ---- transform that keeps comments ----
+(match &self (,
          (json $i ($k $v))
          (json $i (proposal_id $id)))
      ((proposal $id) $k $v)
 )
 
+; ---- prevents MeTTa file from being corrupt due to partially printed comments
+!(match &self (,
+         (json $i ($k $v))
+         (json $i (proposal_id $id)))
+     (if (not (== $k content)) ((proposal $id) $k $v) Empty)
+)
