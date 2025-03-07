@@ -61,7 +61,7 @@
 
 ; --------------------------------------------- TRANSFORM PROPOSALS FILE -----------------------------------------------
 
-!(import! &self data_proposals)
+(import! &self data_proposals)
 
 ; ---- transform that keeps comments ----
 (match &self (,
@@ -71,8 +71,27 @@
 )
 
 ; ---- prevents MeTTa file from being corrupt due to partially printed comments
-!(match &self (,
+(match &self (,
          (json $i ($k $v))
          (json $i (proposal_id $id)))
      (if (not (== $k content)) ((proposal $id) $k $v) Empty)
+)
+
+
+; ----------------------------------------------- TRANSFORM ROUNDS FILE ------------------------------------------------
+!(import! &self data_rounds)
+
+!(match &self (,
+         (json $i ($k $v))
+         (json $i (round_id $id)))
+     ((round $id) $k $v)
+)
+
+; --- ATTENTION the following works exactly because an atom containing a pool id looks like (json 1 (pool_id 0 (id 108)))
+; --- which is reduced to (json 1 (pool_id 0 108)), because id is also an identity function
+; --- TODO change id to a more suitable keyword
+!(match &self (,
+         (json $i (round_id $id))
+         (json $i (pool_id $j $pool_id)))
+     ((round $id) pool_id $pool_id)
 )
