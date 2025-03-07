@@ -2,6 +2,7 @@
 !(import! &self transformed_comments)
 !(import! &self transformed_comment_votes)
 !(import! &self transformed_comment_votes2)
+!(import! &self transformed_proposals)
 
 
 ; ------------------------ GENERATE DATA SNIPPETS --------------------------------------
@@ -30,3 +31,11 @@
 !(COMMENT VOTES 2)
 !(match &self (, ($vote_type $voter_id "801") (created_at ($vote_type $voter_id "801") $date)) (superpose (($vote_type $voter_id "1") (created_at ($vote_type $voter_id "1") $date))))
 !(match &self (, ($vote_type $voter_id "234") (created_at ($vote_type $voter_id "234") $date)) (superpose (($vote_type $voter_id "1") (created_at ($vote_type $voter_id "1") $date))))
+
+
+; --- PROPOSALS -------------------------------------------------------------------------
+!(PROPOSALS)
+!(match &self ((proposal 5923) $x $y) ((proposal 5923) $x $y))
+!(match &self ((proposal 3062) $x $y) ((proposal 3062) $x $y))
+!(match &self ((proposal 8957) $x $y) ((proposal 8957) $x $y))
+!(match &self ((proposal 3128) $x $y) ((proposal 3128) $x $y))
