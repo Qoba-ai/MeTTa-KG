@@ -1,6 +1,6 @@
-!(import! &self transformed_users)
+(import! &self transformed_users)
 !(import! &self transformed_comments)
-!(import! &self transformed_comment_votes)
+(import! &self transformed_comment_votes)
 
 
 ---------------------------------- UTILITY FUNCTIONS --------------------------------------
@@ -32,3 +32,13 @@
 ----- GET NAMES -----
 ; name of users who received downvotes than upvotes on their comments
 (match &self ((user $i) user_id $id) (if (< (get_up_votes $id) (get_down_votes $id)) (match &self (, ((user $x) user_id $id) ((user $x) user_name $name)) $name) Empty))
+
+
+-------------------- USERS WITH MORE DOWN- THAN UP-VOTES ON THEIR COMMENTS - METHOD 2 ----------------
+
+(= (sum $l) (foldl-atom $l 0 $x $y (+ $x $y)))
+
+(= (users_with_comments) (unique (match &self ((comment $c) user_id $user_id) $user_id)))
+
+!(let $user_id (users_with_comments)
+    (if (< (sum (collapse (match &self (, ((comment $cid) user_id $user_id) ((comment $cid) comment_votes $cv)) $cv))) 0) $user_id Empty))
