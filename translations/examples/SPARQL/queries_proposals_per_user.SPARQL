@@ -1,0 +1,19 @@
+PREFIX ex: <http://example.org/>
+PREFIX prop: <http://example.org/property/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?name ?round_id (COUNT(?proposal) AS ?n_proposals)
+WHERE
+# comment test
+
+  {
+    ?proposal a ex:Proposal .
+    ?proposal prop:proposer_id ?user_id .
+    ?proposal prop:round_id ?round_id .
+
+    ?user a ex:User .
+    ?user prop:user_id ?user_id .
+    ?user prop:name ?name .
+  }
+
+GROUPBY ?name ?round_id

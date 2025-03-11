@@ -60,3 +60,22 @@ ex:vote204 rdf:type ex:Vote ;
 ex:vote205 rdf:type ex:Vote ;
            prop:comment_id "104" ;
            prop:vote_type "upvote" .
+
+
+# Proposals
+
+ex:proposal1 rdf:type ex:Proposal ;
+             prop:proposer_id "1" ;
+             prop:round_id 1 .
+
+ex:proposal2 rdf:type ex:Proposal ;
+             prop:proposer_id "1" ;
+             prop:round_id 1 .
+
+ex:proposal3 rdf:type ex:Proposal ;
+             prop:proposer_id "1" ;
+             prop:round_id 2 .
+
+ex:proposal4 rdf:type ex:Proposal ;
+             prop:proposer_id "2" ;
+             prop:round_id 2 .
