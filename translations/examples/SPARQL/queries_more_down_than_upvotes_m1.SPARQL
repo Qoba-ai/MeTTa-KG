@@ -1,0 +1,27 @@
+PREFIX ex: <http://example.org/>
+PREFIX prop: <http://example.org/property/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?name
+WHERE
+  {
+    ?comment a ex:Comment .
+    ?comment prop:user_id ?user_id .
+    ?comment prop:comment_id ?cid .
+
+    ?user a ex:User .
+    ?user prop:user_id ?user_id .
+    ?user prop:name ?name .
+
+    OPTIONAL {
+    ?upvote a ex:Vote .
+    ?upvote prop:comment_id ?cid .
+    ?upvote prop:vote_type "upvote".}
+
+    ?downvote a ex:Vote .
+    ?downvote prop:comment_id ?cid .
+    ?downvote prop:vote_type "downvote".
+  }
+
+GROUPBY ?name
+HAVING (COUNT(DISTINCT ?downvote) > COUNT(DISTINCT ?upvote))

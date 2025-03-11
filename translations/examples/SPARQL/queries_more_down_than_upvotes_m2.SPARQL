@@ -1,0 +1,18 @@
+PREFIX ex: <http://example.org/>
+PREFIX prop: <http://example.org/property/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?name
+WHERE
+  {
+    ?comment a ex:Comment .
+    ?comment prop:user_id ?user_id .
+    ?comment prop:comment_votes ?vote_score .
+
+    ?user a ex:User .
+    ?user prop:user_id ?user_id .
+    ?user prop:name ?name .
+  }
+
+GROUPBY ?name
+HAVING (SUM(?vote_score) < 0)

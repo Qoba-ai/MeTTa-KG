@@ -1,0 +1,62 @@
+@prefix ex: <http://example.org/> .
+@prefix prop: <http://example.org/property/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# Users
+ex:user1 rdf:type ex:User ;
+         prop:name "Alice" ;
+         prop:user_id "1" .
+
+ex:user2 rdf:type ex:User ;
+         prop:name "Bob" ;
+         prop:user_id "2" .
+
+ex:user3 rdf:type ex:User ;
+         prop:name "Charlie" ;
+         prop:user_id "3" .
+
+# Comments
+ex:comment101 rdf:type ex:Comment ;
+              prop:comment_id "101" ;
+              prop:user_id "1" ;
+              prop:comment_votes -1.
+
+ex:comment102 rdf:type ex:Comment ;
+              prop:comment_id "102" ;
+              prop:user_id "2" ;
+              prop:comment_votes -1.
+
+ex:comment103 rdf:type ex:Comment ;
+              prop:comment_id "103" ;
+              prop:user_id "3" ;
+              prop:comment_votes 1.
+
+ex:comment104 rdf:type ex:Comment ;
+              prop:comment_id "104" ;
+              prop:user_id "3" ;
+              prop:comment_votes 1.
+
+# Votes
+ex:vote201 rdf:type ex:Vote ;
+           prop:comment_id "101" ;
+           prop:vote_type "upvote" .
+
+ex:vote202 rdf:type ex:Vote ;
+           prop:comment_id "101" ;
+           prop:vote_type "downvote" .
+
+ex:vote206 rdf:type ex:Vote ;
+           prop:comment_id "101" ;
+           prop:vote_type "downvote" .
+
+ex:vote203 rdf:type ex:Vote ;
+           prop:comment_id "102" ;
+           prop:vote_type "downvote" .
+
+ex:vote204 rdf:type ex:Vote ;
+           prop:comment_id "103" ;
+           prop:vote_type "upvote" .
+
+ex:vote205 rdf:type ex:Vote ;
+           prop:comment_id "104" ;
+           prop:vote_type "upvote" .
