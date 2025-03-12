@@ -1,0 +1,21 @@
+PREFIX ex: <http://example.org/>
+PREFIX prop: <http://example.org/property/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?proposal_id (ABS(AVG(?com_rating) - AVG(?exp_rating)) as ?diff)
+WHERE {
+  ?proposal a ex:Proposal ;
+            prop:proposal_id ?proposal_id .
+
+  ?com_review a ex:Review ;
+          prop:proposal_id ?proposal_id ;
+          prop:overall_rating ?com_rating ;
+          prop:review_type "community" .
+
+  ?exp_review a ex:Review ;
+          prop:proposal_id ?proposal_id ;
+          prop:overall_rating ?exp_rating ;
+          prop:review_type "expert" .
+
+}
+GROUPBY ?proposal_id
