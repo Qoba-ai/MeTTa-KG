@@ -1,0 +1,18 @@
+# ATTENTION if multiple users have the same number of awarded proposals, only one is returned
+
+PREFIX ex: <http://example.org/>
+PREFIX prop: <http://example.org/property/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?user_name (COUNT(?proposal_id) AS ?n_proposals)
+WHERE {
+  ?proposal a ex:Proposal ;
+            prop:proposer_id ?user_id ;
+            prop:proposal_id ?proposal_id .
+
+  ?user a ex:User ;
+        prop:user_id ?user_id ;
+        prop:name ?user_name .
+}
+GROUP BY ?user_name
+ORDER BY DESC(COUNT(?proposal_id))

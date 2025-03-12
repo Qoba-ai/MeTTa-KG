@@ -62,27 +62,31 @@ ex:vote205 rdf:type ex:Vote ;
            prop:vote_type "upvote" .
 
 
-# proposals
+# Proposals
 
 ex:proposal1 rdf:type ex:Proposal ;
              prop:proposer_id "1" ;
              prop:proposal_id "1" ;
-             prop:round_id 1 .
+             prop:round_id 1 ;
+             prop:awarded true .
 
 ex:proposal2 rdf:type ex:Proposal ;
              prop:proposer_id "1" ;
              prop:proposal_id "2" ;
-             prop:round_id 1 .
+             prop:round_id 1 ;
+             prop:awarded false .
 
 ex:proposal3 rdf:type ex:Proposal ;
              prop:proposer_id "1" ;
              prop:proposal_id "3" ;
-             prop:round_id 2 .
+             prop:round_id 2 ;
+             prop:awarded true .
 
 ex:proposal4 rdf:type ex:Proposal ;
              prop:proposer_id "2" ;
              prop:proposal_id "4" ;
-             prop:round_id 2 .
+             prop:round_id 2 ;
+             prop:awarded true .
 
 # Reviews
 ex:review301 rdf:type ex:Review ;
