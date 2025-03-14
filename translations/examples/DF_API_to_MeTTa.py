@@ -1,12 +1,18 @@
 from pprint import pprint
 
 from requests import request
+from datetime import datetime, timezone
 
 from translations.examples.API_URL import HEADERS, API_URL
 from translations.src.json_to_metta import dict_list_to_metta
 
 # get all users of page
 # pprint(request("get", API_URL + "/users?page=2").json())
+
+def convert_df_date(date: str):
+    dt = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
+    dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp())
 
 class DFData:
     url = API_URL
@@ -45,6 +51,10 @@ class DFData:
             for p in props:
                 p["round_id"] = r_id
                 p["proposal_id"] = p.pop("id")
+                if p["created_at"] == "":
+                    p.pop("created_at")
+                else:
+                    p["created_at"] = convert_df_date(p["created_at"])
             # pprint(request("get", f"{self.url}/rounds/{r_id}/proposals").json()["proposals"])
             proposals += props
         self.proposal_ids = [p["proposal_id"] for p in proposals]
@@ -74,7 +84,10 @@ class DFData:
             r["viability_rating"] = float(r["viability_rating"])
             r["desirability_rating"] = float(r["desirability_rating"])
             r["usefulness_rating"] = float(r["usefulness_rating"])
-
+            if r["created_at"] == "":
+                r.pop("created_at")
+            else:
+                r["created_at"] = convert_df_date(r["created_at"])
             r["proposal_id"] = int(r["proposal_id"])    # some proposal_ids are int and others are strings
             reviews_.append(r)
         return reviews_
@@ -85,11 +98,27 @@ class DFData:
         for c in comments:
             c["user_id"] = int(c["user_id"])
             c["comment_votes"] = 0 if c["comment_votes"] == "" else int(c["comment_votes"])
+            if c["created_at"] == "":
+                c.pop("created_at")
+            else:
+                c["created_at"] = convert_df_date(c["created_at"])
+            if c["updated_at"] == "":
+                c.pop("updated_at")
+            else:
+                c["updated_at"] = convert_df_date(c["updated_at"])
             comments_.append(c)
         return comments
 
     def get_all_comment_votes(self, max_pages = 100):
-        return self.get_with_pages("comment_votes", max_pages, "votes")
+        votes = self.get_with_pages("comment_votes", max_pages, "votes")
+        votes_ = []
+        for v in votes:
+            if v["created_at"] == "":
+                v.pop("created_at")
+            else:
+                v["created_at"] = convert_df_date(v["created_at"])
+            votes_.append(v)
+        return votes_
 
     def write_users(self, filename="data_users.metta", max_pages = 100):
         users = self.get_all_users(max_pages)
@@ -195,14 +224,14 @@ def all_data_to_metta():
     filename = lambda x: "data_" + x + ".metta"
 
     df = DFData()
-    df.write_users(filename("users"))
-    df.write_comments(filename("comments"))
-    df.write_comment_votes(filename("comment_votes"))
+    # df.write_users(filename("users"))
+    # df.write_comments(filename("comments"))
+    # df.write_comment_votes(filename("comment_votes"))
     df.write_reviews(filename("reviews"))
-    df.write_proposals(filename("proposals"))
-    df.write_rounds(filename("rounds"))
-    df.write_milestones(filename("milestones"))
-    df.write_pools(filename("pools"))
+    # df.write_proposals(filename("proposals"))
+    # df.write_rounds(filename("rounds"))
+    # df.write_milestones(filename("milestones"))
+    # df.write_pools(filename("pools"))
 
 
 if __name__ == '__main__':
