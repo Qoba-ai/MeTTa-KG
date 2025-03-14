@@ -1,0 +1,25 @@
+PREFIX ex: <http://example.org/>
+PREFIX prop: <http://example.org/property/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?round ?pool ?proposal_id (AVG(?rating) as ?avg_rating) ?awarded
+WHERE {
+  ?round a ex:Round ;
+         round_id ?round_id .
+
+  ?pool a ex:Pool ;
+         round_id ?round_id ;
+         pool_id ?pool_id .
+
+  ?proposal a ex:Proposal ;
+            prop:proposal_id ?proposal_id ;
+            round_id ?round_id ;
+            pool_id ?pool_id ;
+            is_awarded ?awarded .
+
+  ?com_review a ex:Review ;
+          prop:proposal_id ?proposal_id ;
+          prop:overall_rating ?rating .
+
+}
+GROUPBY ?round ?pool ?proposal_id
