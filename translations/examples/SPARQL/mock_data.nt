@@ -15,124 +15,131 @@ ex:user3 rdf:type ex:User ;
          prop:name "Charlie" ;
          prop:user_id "3" .
 
-# Comments
-ex:comment101 rdf:type ex:Comment ;
-              prop:comment_id "101" ;
-              prop:user_id "1" ;
-              prop:comment_votes -1.
+# Rounds
+ex:round1 rdf:type ex:Round ;
+          prop:round_id 1 .
 
-ex:comment102 rdf:type ex:Comment ;
-              prop:comment_id "102" ;
-              prop:user_id "2" ;
-              prop:comment_votes -1.
+ex:round2 rdf:type ex:Round ;
+          prop:round_id 2 .
 
-ex:comment103 rdf:type ex:Comment ;
-              prop:comment_id "103" ;
-              prop:user_id "3" ;
-              prop:comment_votes 1.
+# Pools
+ex:poolA rdf:type ex:Pool ;
+         prop:pool_id "A" ;
+         prop:round_id 1 .
 
-ex:comment104 rdf:type ex:Comment ;
-              prop:comment_id "104" ;
-              prop:user_id "3" ;
-              prop:comment_votes 1.
+ex:poolB rdf:type ex:Pool ;
+         prop:pool_id "B" ;
+         prop:round_id 1 .
 
-# Votes
-ex:vote201 rdf:type ex:Vote ;
-           prop:comment_id "101" ;
-           prop:vote_type "upvote" .
-
-ex:vote202 rdf:type ex:Vote ;
-           prop:comment_id "101" ;
-           prop:vote_type "downvote" .
-
-ex:vote206 rdf:type ex:Vote ;
-           prop:comment_id "101" ;
-           prop:vote_type "downvote" .
-
-ex:vote203 rdf:type ex:Vote ;
-           prop:comment_id "102" ;
-           prop:vote_type "downvote" .
-
-ex:vote204 rdf:type ex:Vote ;
-           prop:comment_id "103" ;
-           prop:vote_type "upvote" .
-
-ex:vote205 rdf:type ex:Vote ;
-           prop:comment_id "104" ;
-           prop:vote_type "upvote" .
-
+ex:poolC rdf:type ex:Pool ;
+         prop:pool_id "C" ;
+         prop:round_id 2 .
 
 # Proposals
-
 ex:proposal1 rdf:type ex:Proposal ;
              prop:proposer_id "1" ;
              prop:proposal_id "1" ;
              prop:round_id 1 ;
-             prop:awarded true .
+             prop:pool_id "A" ;
+             prop:is_awarded true .
 
 ex:proposal2 rdf:type ex:Proposal ;
              prop:proposer_id "1" ;
              prop:proposal_id "2" ;
              prop:round_id 1 ;
-             prop:awarded false .
+             prop:pool_id "B" ;
+             prop:is_awarded false .
 
 ex:proposal3 rdf:type ex:Proposal ;
              prop:proposer_id "1" ;
              prop:proposal_id "3" ;
              prop:round_id 2 ;
-             prop:awarded true .
+             prop:pool_id "C" ;
+             prop:is_awarded true .
 
 ex:proposal4 rdf:type ex:Proposal ;
              prop:proposer_id "2" ;
              prop:proposal_id "4" ;
              prop:round_id 2 ;
-             prop:awarded true .
+             prop:pool_id "C" ;
+             prop:is_awarded true .
+
+ex:proposal5 rdf:type ex:Proposal ;
+             prop:proposer_id "3" ;
+             prop:proposal_id "5" ;
+             prop:round_id 2 ;
+             prop:pool_id "B" ;
+             prop:is_awarded false .
 
 # Reviews
 ex:review301 rdf:type ex:Review ;
              prop:review_id "301" ;
              prop:proposal_id "1" ;
              prop:review_type "community" ;
-             prop:overall_rating 4.
+             prop:overall_rating 4 .
 
 ex:review302 rdf:type ex:Review ;
              prop:review_id "302" ;
              prop:proposal_id "1" ;
              prop:review_type "expert" ;
-             prop:overall_rating 2.
+             prop:overall_rating 2 .
 
 ex:review303 rdf:type ex:Review ;
              prop:review_id "303" ;
              prop:proposal_id "1" ;
              prop:review_type "expert" ;
-             prop:overall_rating 3.  # Second expert review for proposal 1
+             prop:overall_rating 3 .
 
 ex:review304 rdf:type ex:Review ;
              prop:review_id "304" ;
              prop:proposal_id "2" ;
              prop:review_type "community" ;
-             prop:overall_rating 5.
+             prop:overall_rating 5 .
 
 ex:review305 rdf:type ex:Review ;
              prop:review_id "305" ;
              prop:proposal_id "2" ;
              prop:review_type "community" ;
-             prop:overall_rating 4.  # Second community review for proposal 2
+             prop:overall_rating 4 .
 
 ex:review306 rdf:type ex:Review ;
              prop:review_id "306" ;
              prop:proposal_id "2" ;
              prop:review_type "expert" ;
-             prop:overall_rating 3.
+             prop:overall_rating 3 .
 
 ex:review307 rdf:type ex:Review ;
              prop:review_id "307" ;
              prop:proposal_id "3" ;
              prop:review_type "community" ;
-             prop:overall_rating 1.
+             prop:overall_rating 1 .
 
 ex:review308 rdf:type ex:Review ;
              prop:review_id "308" ;
              prop:proposal_id "3" ;
              prop:review_type "expert" ;
-             prop:overall_rating 4.
+             prop:overall_rating 4 .
+
+ex:review309 rdf:type ex:Review ;
+             prop:review_id "309" ;
+             prop:proposal_id "4" ;
+             prop:review_type "community" ;
+             prop:overall_rating 3 .
+
+ex:review310 rdf:type ex:Review ;
+             prop:review_id "310" ;
+             prop:proposal_id "4" ;
+             prop:review_type "expert" ;
+             prop:overall_rating 4 .
+
+ex:review311 rdf:type ex:Review ;
+             prop:review_id "311" ;
+             prop:proposal_id "5" ;
+             prop:review_type "community" ;
+             prop:overall_rating 2 .
+
+ex:review312 rdf:type ex:Review ;
+             prop:review_id "312" ;
+             prop:proposal_id "5" ;
+             prop:review_type "expert" ;
+             prop:overall_rating 3 .
