@@ -143,7 +143,7 @@ class DFData:
         self.write_with_time(filename, self.get_all_users(max_pages=max_pages))
 
     def write_rounds(self, filename="data_rounds.metta") -> None:
-        self.write_with_time(filename, self.get_all_pools())
+        self.write_with_time(filename, self.get_all_rounds())
 
     def write_pools(self, filename="data_pools.metta") -> None:
         self.write_with_time(filename, self.get_all_pools())
@@ -219,20 +219,30 @@ class DFData:
 # pprint(request("get", API_URL + "/comment_votes"))
 
 def test_API_requests():
-    pprint(request("get", API_URL + "/rounds/16/proposals", headers=HEADERS).json())
+    # pprint(request("get", API_URL + "/rounds/16/proposals", headers=HEADERS).json())
+    pprint(request("get", f"{API_URL}/comment_votes?page=6", headers=HEADERS).json())
+
 
 def all_data_to_metta():
     filename = lambda x: "data_" + x + ".metta"
 
     df = DFData()
-    # df.write_users(filename("users"))
+    df.write_users(filename("users"))
+    print("USERS DONE")
     df.write_comments(filename("comments"))
+    print("COMMENTS DONE")
     df.write_comment_votes(filename("comment_votes"))
+    print("COMMENT VOTES DONE")
     df.write_reviews(filename("reviews"))
+    print("REVIEWS DONE")
     df.write_proposals(filename("proposals"))
+    print("PROPOSALS DONE")
     df.write_rounds(filename("rounds"))
+    print("ROUNDS DONE")
     df.write_milestones(filename("milestones"))
+    print("MILESTONES DONE")
     df.write_pools(filename("pools"))
+    print("POOLS DONE")
 
 
 if __name__ == '__main__':
