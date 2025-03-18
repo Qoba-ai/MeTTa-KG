@@ -1,4 +1,5 @@
 from pprint import pprint
+import io
 
 from requests import request
 from datetime import datetime, timezone
@@ -15,9 +16,12 @@ def convert_df_date(date: str):
     return int(dt.timestamp())
 
 class DFData:
-    url = API_URL
-    round_ids = None
-    proposal_ids = None
+    def __init__(self):
+        self.time = int(datetime.timestamp(datetime.now()))
+        self.url = API_URL
+        self.round_ids = None
+        self.proposal_ids = None
+
     def get_with_pages(self, item_name: str, max_pages: int = 100, dict_key = None) -> list[dict[str, any]]:
         if not dict_key:
             dict_key = item_name
@@ -31,13 +35,19 @@ class DFData:
                 return items
 
     def get_all_users(self, max_pages = 100) -> list[dict[str, any]]:
-        return self.get_with_pages("users", max_pages)
+        users = self.get_with_pages("users", max_pages)
+        for u in users:
+            u["user_id"] = u.pop("id")
+        return users
 
     def get_all_rounds(self) -> list[dict[str, any]]:
-        r = request("get", f"{self.url}/rounds", headers=HEADERS).json()
-        self.round_ids = [k["id"] for k in r]
+        rounds = request("get", f"{self.url}/rounds", headers=HEADERS).json()
+        self.round_ids = [k["id"] for k in rounds]
 
-        return r
+        for r in rounds:
+            r["round_id"] = r.pop("id")
+
+        return rounds
 
     def get_all_pools(self) -> list[dict[str, any]]:
         return request("get", f"{self.url}/pools", headers=HEADERS).json()
@@ -120,47 +130,38 @@ class DFData:
             votes_.append(v)
         return votes_
 
-    def write_users(self, filename="data_users.metta", max_pages = 100):
-        users = self.get_all_users(max_pages)
-        # in MeTTa "id" is a built-in function
-        for u in users:
-            u["user_id"] = u.pop("id")
-
+    def write_with_time(self, filename: str, to_write: list[dict]) -> None:
         with open(filename, "w") as f:
-          dict_list_to_metta(f, users)
+            dict_list_to_metta(f, to_write)
+        with open(filename, "r+") as f:
+            lines = f.readlines()
+            modified_lines = [f"(time_accessed {self.time} {line.strip()})\n" for line in lines]
+            f.seek(0)
+            f.writelines(modified_lines)
+
+    def write_users(self, filename="data_users.metta", max_pages = 100):
+        self.write_with_time(filename, self.get_all_users(max_pages=max_pages))
 
     def write_rounds(self, filename="data_rounds.metta") -> None:
-        rounds = self.get_all_rounds()
-        # in MeTTa "id" is a built-in function
-        for r in rounds:
-            r["round_id"] = r.pop("id")
-        with open(filename, "w") as f:
-            dict_list_to_metta(f, rounds)
+        self.write_with_time(filename, self.get_all_pools())
 
     def write_pools(self, filename="data_pools.metta") -> None:
-        with open(filename, "w") as f:
-            dict_list_to_metta(f, self.get_all_pools())
+        self.write_with_time(filename, self.get_all_pools())
 
     def write_proposals(self, filename="data_proposals.metta") -> None:
-        with open(filename, "w") as f:
-            dict_list_to_metta(f, self.get_all_proposals())
+        self.write_with_time(filename, self.get_all_proposals())
 
     def write_milestones(self, filename="data_milestones.metta") -> None:
-        with open(filename, "w") as f:
-            dict_list_to_metta(f, self.get_all_milestones())
+        self.write_with_time(filename, self.get_all_milestones())
 
     def write_comments(self, filename="data_comments.metta") -> None:
-        with open(filename, "w") as f:
-            comms: list[dict] = self.get_all_comments()
-            dict_list_to_metta(f, comms)
+        self.write_with_time(filename, self.get_all_comments())
 
     def write_comment_votes(self, filename="data_comment_votes.metta") -> None:
-        with open(filename, "w") as f:
-            dict_list_to_metta(f, self.get_all_comment_votes())
+        self.write_with_time(filename, self.get_all_comment_votes())
 
     def write_reviews(self, filename="data_reviews.metta") -> None:
-        with open(filename, "w") as f:
-            dict_list_to_metta(f, self.get_all_reviews())
+        self.write_with_time(filename, self.get_all_reviews())
 
 # users = get_all_users()
 # with open("data_users.metta", "w") as f:
@@ -225,13 +226,13 @@ def all_data_to_metta():
 
     df = DFData()
     # df.write_users(filename("users"))
-    # df.write_comments(filename("comments"))
-    # df.write_comment_votes(filename("comment_votes"))
+    df.write_comments(filename("comments"))
+    df.write_comment_votes(filename("comment_votes"))
     df.write_reviews(filename("reviews"))
-    # df.write_proposals(filename("proposals"))
-    # df.write_rounds(filename("rounds"))
-    # df.write_milestones(filename("milestones"))
-    # df.write_pools(filename("pools"))
+    df.write_proposals(filename("proposals"))
+    df.write_rounds(filename("rounds"))
+    df.write_milestones(filename("milestones"))
+    df.write_pools(filename("pools"))
 
 
 if __name__ == '__main__':
