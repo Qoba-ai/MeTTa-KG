@@ -51,7 +51,7 @@ def dict_to_metta(f: IO[str], d: dict) -> None:
         # TODO escape strings
         if isinstance(s, str):
             # s = '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
-            s = f'"{repr(s)[1:-1].replace('"', '\\"')}"'
+            s = f'"{repr(s)[1:-1].replace("\\", "\\\\").replace('"', '\\"')}"'
 
         for item in reversed(path[:-1]):
             if isinstance(item, tuple):
@@ -68,7 +68,7 @@ def dict_list_to_metta(f: IO[str], ds: list[dict]) -> None:
             # TODO escape strings
             if isinstance(s, str):
                 # s = '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
-                s = f'"{repr(s)[1:-1].replace('"', '\\"')}"'
+                s = f'"{repr(s)[1:-1].replace("\\", "\\\\").replace('"', '\\"')}"'
 
             for item in reversed(path[:-1]):
                 if isinstance(item, tuple):

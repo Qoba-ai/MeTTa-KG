@@ -55,8 +55,8 @@ class JSONToMeTTa(unittest.TestCase):
         dict_to_metta(out, d)
 
         print(out.getvalue())
-        self.assertEqual(out.getvalue(), '(k1 "item1\\\\item2")\n'
-                                         '(k2 "item3\\\\")\n')
+        self.assertEqual(out.getvalue(), '(k1 "item1\\\\\\\\item2")\n'
+                                         '(k2 "item3\\\\\\\\")\n')
 
     def test_escape_characters(self):
         out = StringIO()
@@ -64,8 +64,8 @@ class JSONToMeTTa(unittest.TestCase):
         dict_to_metta(out, d)
 
         print(out.getvalue())
-        self.assertEqual(out.getvalue(), '(k1 "item1\\nitem2")\n'
-                                        '(k2 "item3\\t")\n')
+        self.assertEqual(out.getvalue(), '(k1 "item1\\\\nitem2")\n'
+                                        '(k2 "item3\\\\t")\n')
 
     def test_jsonld_playground(self):
         with open("test_files/jsonld_files/contexts_person.jsonld") as f:
