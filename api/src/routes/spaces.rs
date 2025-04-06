@@ -3,7 +3,7 @@ use diesel::{ExpressionMethods, RunQueryDsl};
 use mork_bytestring::{item_byte, Expr, ExprZipper, Tag};
 use mork_frontend::bytestring_parser::{Context, Parser, ParserError};
 use pathmap::trie_map::BytesTrieMap;
-use pathmap::zipper::{ReadZipperUntracked, WriteZipper, WriteZipperUntracked, Zipper};
+use pathmap::zipper::{ReadZipperUntracked, WriteZipperTracked, WriteZipperUntracked, Zipper, ZipperMoving, ZipperSubtries, ZipperValues, ZipperWriting};
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use serde::Serialize;
@@ -90,7 +90,7 @@ fn metta_to_pathmap(metta: &str) -> BytesTrieMap<u32> {
 fn descend_path<'a, 'path, V: Clone + Send + Sync>(
     z: &mut WriteZipperUntracked<V>,
     url_path: &'path PathBuf,
-) -> () {
+) -> () where V: Unpin {
     for component in url_path.components() {
         let segment = component.as_os_str().to_str().unwrap();
 
@@ -105,7 +105,7 @@ fn descend_path<'a, 'path, V: Clone + Send + Sync>(
     }
 }
 
-fn serialize<V: Clone + Send + Sync>(z: ReadZipperUntracked<V>) -> Vec<String> {
+fn serialize<V: Clone + Send + Sync>(z: ReadZipperUntracked<V>) -> Vec<String> where V: Unpin  {
     return z
         .make_map()
         .unwrap()
@@ -119,7 +119,7 @@ fn serialize<V: Clone + Send + Sync>(z: ReadZipperUntracked<V>) -> Vec<String> {
         .collect::<Vec<String>>();
 }
 
-fn get_paths<'a, V: Clone + Send + Sync>(z: &mut ReadZipperUntracked<V>) -> Vec<Vec<String>> {
+fn get_paths<'a, V: Clone + Send + Sync>(z: &mut ReadZipperUntracked<V>) -> Vec<Vec<String>> where V: Unpin {
     let mut paths: Vec<Vec<String>> = vec![];
 
     let m: Option<BytesTrieMap<V>> = z.make_map();

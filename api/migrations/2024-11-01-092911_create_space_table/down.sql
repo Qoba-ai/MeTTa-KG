@@ -1,1 +1,1 @@
-DROP TABLE metta;
+DROP TABLE spaces;
