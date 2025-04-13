@@ -1,5 +1,6 @@
+use rocket::fs::FileServer;
 use rocket::http::Method;
-use rocket::{self, launch, routes, Build, Rocket};
+use rocket::{self, launch, routes, tokio, Build, Rocket};
 use rocket_cors::AllowedOrigins;
 
 mod db;
@@ -39,10 +40,12 @@ fn rocket() -> Rocket<Build> {
                 routes::tokens::update,
                 routes::tokens::delete,
                 routes::tokens::delete_batch,
-                routes::spaces::write,
-                routes::spaces::get
+                routes::spaces::read,
+                routes::spaces::import,
+                routes::spaces::transform
             ],
         )
+        .mount("/public", FileServer::from("static"))
         .attach(cors.clone())
         .manage(cors)
 }

@@ -1,13 +1,6 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    spaces (id) {
-        id -> Int4,
-        metta -> Varchar,
-    }
-}
-
-diesel::table! {
     tokens (id) {
         id -> Int4,
         code -> Varchar,
@@ -22,8 +15,3 @@ diesel::table! {
         parent -> Nullable<Int4>,
     }
 }
-
-diesel::allow_tables_to_appear_in_same_query!(
-    spaces,
-    tokens,
-);
