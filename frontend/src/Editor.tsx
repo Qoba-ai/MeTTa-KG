@@ -524,7 +524,7 @@ const App: Component = () => {
         const content = editorContent()
 
         await fetch(
-            `${BACKEND_URL}/spaces/metta`, // ${token()?.namespace}${selectedNamespace()}
+            `${BACKEND_URL}/spaces`, // ${token()?.namespace}${selectedNamespace()}
             {
                 method: 'POST',
                 headers: {
@@ -539,7 +539,7 @@ const App: Component = () => {
     }
 
     const read = async (token?: Token) => {
-        const resp = await fetch(`${BACKEND_URL}/spaces/metta`, {
+        const resp = await fetch(`${BACKEND_URL}/spaces`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
