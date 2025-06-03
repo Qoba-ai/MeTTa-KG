@@ -9,6 +9,6 @@ CREATE TABLE tokens (
     permission_share_share BOOLEAN NOT NULL,
     permission_share_read BOOLEAN NOT NULL,
     permission_share_write BOOLEAN NOT NULL,
-    parent INTEGER REFERENCES tokens
+    parent INTEGER REFERENCES tokens REFERENCES tokens(id)
 );
 

@@ -3,6 +3,3 @@ temp_dir = "temp/"
 
 [default.limits]
 string = "10 MiB"
-
-[global]
-address = "0.0.0.0"

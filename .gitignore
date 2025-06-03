@@ -16,7 +16,6 @@ Cargo.lock
 .idea
 
 .env
-db.sqlite3
 
 temp/
 

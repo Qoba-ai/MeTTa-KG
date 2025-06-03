@@ -1,20 +1,55 @@
-FROM rust:1.81
+# STAGE 1: build API Rust binary
+FROM rust:1.86 AS rust-builder
 
-WORKDIR /usr/src/mettakg
+WORKDIR /mettakg
 
-RUN apt-get update
-RUN apt-get install -y python3-pip python3.11-venv
+COPY api api
 
-COPY ./api/ ./api/
-COPY ./translations/ ./translations/
-COPY ./Rocket.toml ./
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    musl-dev \
+    g++ \
+    libpq-dev \
+    libssl-dev \
+    pkg-config
 
-RUN python3 -m venv ./venv
-RUN ./venv/bin/pip install -r translations/requirements.txt
-RUN --mount=type=ssh,id=default cargo install --path ./api/
+RUN rustup target add x86_64-unknown-linux-musl
 
-EXPOSE 8000
+ENV OPENSSL_STATIC=1
+ENV OPENSSL_DIR=/usr
+ENV OPENSSL_INCLUDE_DIR=/usr/include
+ENV OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu
 
-RUN mkdir /usr/src/mettakg/temp
+ENV LIBPQ_STATIC=1
 
-CMD ["api"]
+RUN cd api/ && cargo build --release --target x86_64-unknown-linux-musl
+
+# STAGE 2: build and install translation sub-project
+FROM python:3.11-alpine AS python-builder
+
+WORKDIR /mettakg
+
+RUN apk add --no-cache \
+    gcc g++ musl-dev \
+    libffi-dev openssl-dev \
+    python3-dev
+
+COPY translations /mettakg/translations
+
+RUN python3 -m venv /mettakg/venv && \
+    /mettakg/venv/bin/pip install --no-deps --no-cache-dir -r /mettakg/translations/requirements.txt && \
+    /mettakg/venv/bin/pip uninstall -y pip setuptools wheel
+
+# STAGE 3: runtime image
+FROM python:3.11.7-alpine3.19
+
+WORKDIR /mettakg
+
+COPY --from=rust-builder /mettakg/api/target/x86_64-unknown-linux-musl/release/api /usr/local/bin/
+COPY --from=python-builder /mettakg/venv /mettakg/venv
+COPY --from=python-builder /mettakg/translations /mettakg/translations
+
+COPY Rocket.toml .
+
+RUN mkdir -p static temp
+
+ENTRYPOINT ["api"]

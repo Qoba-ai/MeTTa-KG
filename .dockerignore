@@ -1,0 +1,10 @@
+target
+temp
+.github
+.dockerignore
+.git
+.gitignore
+
+translations/tests/
+translations/examples/
+translations/metta_queries/

@@ -89,6 +89,8 @@ const App: Component = () => {
     let loadSpaceForm: HTMLFormElement
     let loadSpaceFormInput: HTMLInputElement
     let loadSubspaceForm: HTMLFormElement
+    let transformModal: HTMLDialogElement
+    let transformForm: HTMLFormElement
 
     const [token, setToken] = createSignal<Token>()
 
@@ -124,6 +126,13 @@ const App: Component = () => {
         createSignal<ImportCSVDirection>(ImportCSVDirection.CELL_LABELED)
     const [importCSVDelimiter, setImportCSVDelimiter] =
         createSignal<string>('\u002C')
+
+    const [transformInputSpaces, setTransformInputSpaces] =
+        createSignal<string>('')
+    const [transformOutputSpaces, setTransformOutputSpaces] =
+        createSignal<string>('')
+    const [transformPattern, setTransformPattern] = createSignal<string>('')
+    const [transformTemplate, setTransformTemplate] = createSignal<string>('')
 
     const editorState = EditorState.create({
         doc: editorContent(),
@@ -206,6 +215,19 @@ const App: Component = () => {
             }
         })
 
+        transformModal.addEventListener('click', function (event) {
+            const rect = transformModal.getBoundingClientRect()
+            const isInDialog =
+                rect.top <= event.clientY &&
+                event.clientY <= rect.top + rect.height &&
+                rect.left <= event.clientX &&
+                event.clientX <= rect.left + rect.width
+
+            if (!isInDialog) {
+                transformModal.close()
+            }
+        })
+
         // perform translation and set editor into import mode
         importFileForm.onsubmit = async (event) => {
             // prevent page refresh on submit
@@ -229,6 +251,14 @@ const App: Component = () => {
             setEditorMode(EditorMode.EDIT)
 
             loadSpaceModal.close()
+        }
+
+        transformModal.onsubmit = async (event) => {
+            // prevent page refresh on submit
+            event.preventDefault()
+            await transform()
+
+            transformModal.close()
         }
 
         // clear file input after closing modal
@@ -488,49 +518,13 @@ const App: Component = () => {
     }))
 
     /**
-     * EDITOR ACTION: read space
-     */
-    const read = async (token?: Token) => {
-        const resp = await fetch(
-            `${BACKEND_URL}/spaces${token?.namespace}${selectedNamespace()}`,
-            {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: token?.code ?? '',
-                },
-            }
-        )
-
-        const metta: { space: string[]; paths: string[][] } = await resp.json()
-
-        const view = editorView()
-
-        if (!view) {
-            throw new Error('Failed to translate: editorView was undefined')
-        }
-
-        setNamespaces(metta.paths.map((p) => '/' + p.join('/') + '/'))
-
-        view.dispatch(
-            view.state.update({
-                changes: {
-                    from: 0,
-                    to: view.state.doc.length,
-                    insert: metta.space.join('\n').replace('\r', ''),
-                },
-            })
-        )
-    }
-
-    /**
-     * EDITOR ACTION: write space
+     * EDITOR ACTION: import into MORK
      */
     const write = async () => {
         const content = editorContent()
 
         await fetch(
-            `${BACKEND_URL}/spaces${token()?.namespace}${selectedNamespace()}`,
+            `${BACKEND_URL}/spaces`, // ${token()?.namespace}${selectedNamespace()}
             {
                 method: 'POST',
                 headers: {
@@ -542,6 +536,53 @@ const App: Component = () => {
         )
 
         await read(token())
+    }
+
+    const read = async (token?: Token) => {
+        const resp = await fetch(`${BACKEND_URL}/spaces`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: token?.code ?? '',
+            },
+        })
+
+        const metta: string = await resp.json()
+
+        const view = editorView()
+
+        if (!view) {
+            throw new Error('Failed to translate: editorView was undefined')
+        }
+
+        // TODO:
+        setNamespaces(['/'])
+
+        view.dispatch(
+            view.state.update({
+                changes: {
+                    from: 0,
+                    to: view.state.doc.length,
+                    insert: metta,
+                },
+            })
+        )
+    }
+
+    const transform = async () => {
+        const resp = await fetch(`${BACKEND_URL}/spaces`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: token()?.code ?? '',
+            },
+            body: JSON.stringify({
+                input_space: 'metta', // transformInputSpaces(),
+                output_space: 'transformed', // transformOutputSpaces(),
+                pattern: '(a $x $y)', //transformTemplate(),
+                template: '($x $y)', // transformTemplate(),
+            }),
+        })
     }
 
     return (
@@ -596,6 +637,11 @@ const App: Component = () => {
                                 </button>
                                 <button onclick={() => exportMetta()}>
                                     Export
+                                </button>
+                                <button
+                                    onclick={() => transformModal.showModal()}
+                                >
+                                    Transform
                                 </button>
                                 <div style={{ 'flex-grow': 1 }}></div>
                                 <button onclick={() => run()}>
@@ -819,6 +865,92 @@ const App: Component = () => {
                             disabled={tokenToOpen() === ''}
                         >
                             Open
+                        </button>
+                    </div>
+                </form>
+            </dialog>
+            <dialog ref={transformModal!} class={styles.TransformModal}>
+                <form ref={transformForm!}>
+                    <h2>Transform</h2>
+                    <div class={styles.TransformIOSpaces}>
+                        <div>
+                            <h4>Input Spaces</h4>
+                            <input
+                                class={styles.SelectSpaces}
+                                value={transformInputSpaces()}
+                                onchange={(ev) =>
+                                    setTransformInputSpaces(ev.target.value)
+                                }
+                                placeholder="Input"
+                            />
+                            <select
+                                class={styles.SelectSpaces}
+                                value={transformInputSpaces()}
+                                onchange={(ev) =>
+                                    setTransformInputSpaces(ev.target.value)
+                                }
+                            >
+                                {namespaces().map((namespace) => (
+                                    <option value={namespace}>
+                                        {namespace}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <h4>Output Spaces</h4>
+                            <input
+                                class={styles.SelectSpaces}
+                                value={transformOutputSpaces()}
+                                onchange={(ev) =>
+                                    setTransformOutputSpaces(ev.target.value)
+                                }
+                                placeholder="Output"
+                            />
+                            <select
+                                class={styles.SelectSpaces}
+                                value={transformOutputSpaces()}
+                                onchange={(ev) =>
+                                    setTransformOutputSpaces(ev.target.value)
+                                }
+                            >
+                                {namespaces().map((namespace) => (
+                                    <option value={namespace}>
+                                        {namespace}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <input
+                                class={styles.SelectSpaces}
+                                value={transformPattern()}
+                                placeholder="Pattern"
+                                onchange={(ev) =>
+                                    setTransformPattern(ev.target.value)
+                                }
+                            />
+                            <input
+                                class={styles.SelectSpaces}
+                                value={transformTemplate()}
+                                placeholder="Template"
+                                onchange={(ev) =>
+                                    setTransformTemplate(ev.target.value)
+                                }
+                            />
+                        </div>
+                    </div>
+                    <div class={styles.ModalButtonBar}>
+                        <button
+                            type="button"
+                            class={styles.TextButton}
+                            onclick={() => transformModal.close()}
+                        >
+                            Cancel
+                        </button>
+                        <div style={{ 'flex-grow': 1 }}></div>
+                        <button class={styles.Button} disabled={false}>
+                            Transform
                         </button>
                     </div>
                 </form>
