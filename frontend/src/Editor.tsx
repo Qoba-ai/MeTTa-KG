@@ -524,9 +524,9 @@ const App: Component = () => {
         const content = editorContent()
 
         await fetch(
-            `${BACKEND_URL}/spaces`, // ${token()?.namespace}${selectedNamespace()}
+            `${BACKEND_URL}/spaces${token()?.namespace}${selectedNamespace()}`,
             {
-                method: 'POST',
+                method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: token()?.code ?? '',
@@ -539,7 +539,7 @@ const App: Component = () => {
     }
 
     const read = async (token?: Token) => {
-        const resp = await fetch(`${BACKEND_URL}/spaces`, {
+        const resp = await fetch(`${BACKEND_URL}/spaces${token?.namespace}${selectedNamespace()}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -577,10 +577,10 @@ const App: Component = () => {
                 Authorization: token()?.code ?? '',
             },
             body: JSON.stringify({
-                input_space: 'metta', // transformInputSpaces(),
-                output_space: 'transformed', // transformOutputSpaces(),
-                pattern: '(a $x $y)', //transformTemplate(),
-                template: '($x $y)', // transformTemplate(),
+                input_space: '/', // transformInputSpaces(),
+                output_space: '/', // transformOutputSpaces(),
+                pattern: "(Sound ($n $s))", //transformTemplate(),
+                template: "(The $n is a creature that makes the following sound: $s)", // transformTemplate(),
             }),
         })
     }
@@ -875,17 +875,10 @@ const App: Component = () => {
                     <div class={styles.TransformIOSpaces}>
                         <div>
                             <h4>Input Spaces</h4>
-                            <input
-                                class={styles.SelectSpaces}
-                                value={transformInputSpaces()}
-                                onchange={(ev) =>
-                                    setTransformInputSpaces(ev.target.value)
-                                }
-                                placeholder="Input"
-                            />
                             <select
                                 class={styles.SelectSpaces}
                                 value={transformInputSpaces()}
+                                multiple
                                 onchange={(ev) =>
                                     setTransformInputSpaces(ev.target.value)
                                 }
@@ -899,17 +892,10 @@ const App: Component = () => {
                         </div>
                         <div>
                             <h4>Output Spaces</h4>
-                            <input
-                                class={styles.SelectSpaces}
-                                value={transformOutputSpaces()}
-                                onchange={(ev) =>
-                                    setTransformOutputSpaces(ev.target.value)
-                                }
-                                placeholder="Output"
-                            />
                             <select
                                 class={styles.SelectSpaces}
                                 value={transformOutputSpaces()}
+                                multiple
                                 onchange={(ev) =>
                                     setTransformOutputSpaces(ev.target.value)
                                 }
@@ -920,24 +906,6 @@ const App: Component = () => {
                                     </option>
                                 ))}
                             </select>
-                        </div>
-                        <div>
-                            <input
-                                class={styles.SelectSpaces}
-                                value={transformPattern()}
-                                placeholder="Pattern"
-                                onchange={(ev) =>
-                                    setTransformPattern(ev.target.value)
-                                }
-                            />
-                            <input
-                                class={styles.SelectSpaces}
-                                value={transformTemplate()}
-                                placeholder="Template"
-                                onchange={(ev) =>
-                                    setTransformTemplate(ev.target.value)
-                                }
-                            />
                         </div>
                     </div>
                     <div class={styles.ModalButtonBar}>
