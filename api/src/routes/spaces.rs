@@ -13,10 +13,9 @@ use crate::model::Token;
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Transformation {
-    pub input_space: PathBuf,
-    pub output_space: PathBuf,
-    pub pattern: String,
-    pub template: String,
+    pub space: PathBuf,
+    pub patterns: Vec<String>,
+    pub templates: Vec<String>,
 }
 
 #[post("/spaces", data = "<transformation>")]
@@ -26,8 +25,7 @@ pub async fn transform(
 ) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix("/").unwrap();
 
-    if !transformation.input_space.starts_with(token_namespace)
-        || !transformation.output_space.starts_with(token_namespace)
+    if !transformation.space.starts_with(token_namespace)
         || !token.permission_read
         || !token.permission_write
     {
@@ -36,10 +34,9 @@ pub async fn transform(
 
     let mork_api_client = MorkApiClient::new();
     let request = TransformRequest::new()
-        .input_space(transformation.input_space.to_path_buf())
-        .output_space(transformation.output_space.to_path_buf())
-        .pattern(transformation.pattern.clone())
-        .template(transformation.template.clone());
+        .space(transformation.space.to_path_buf())
+        .patterns(transformation.patterns.clone())
+        .templates(transformation.templates.clone());
 
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),
@@ -47,8 +44,8 @@ pub async fn transform(
     }
 }
 
-#[post("/spaces/<path..>", data = "<space>")]
-pub async fn import(token: Token, path: PathBuf, space: String) -> Result<Json<bool>, Status> {
+#[post("/spaces/<path..>", data = "<space_data>")]
+pub async fn import(token: Token, path: PathBuf, space_data: String) -> Result<Json<bool>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
         return Err(Status::Unauthorized);
     }
@@ -57,7 +54,7 @@ pub async fn import(token: Token, path: PathBuf, space: String) -> Result<Json<b
     let file_path = format!("static/{}.metta", file_id);
 
     if let Ok(mut file) = File::create(&file_path) {
-        if file.write_all(space.as_bytes()).is_err() {
+        if file.write_all(space_data.as_bytes()).is_err() {
             return Err(Status::InternalServerError);
         }
     } else {
@@ -69,6 +66,7 @@ pub async fn import(token: Token, path: PathBuf, space: String) -> Result<Json<b
 
     let mork_api_client = MorkApiClient::new();
     let request = ImportRequest::new()
+        .space(path.to_path_buf())
         .uri(import_file_url);
 
     match mork_api_client.dispatch(request).await {
@@ -84,7 +82,8 @@ pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
     }
 
     let mork_api_client = MorkApiClient::new();
-    let request = ReadRequest::new();
+    let request = ReadRequest::new()
+        .space(path.to_path_buf());
 
     mork_api_client.dispatch(request).await.map(Json)
 }
