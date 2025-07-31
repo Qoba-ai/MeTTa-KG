@@ -287,7 +287,8 @@ impl Request for ReadRequest {
 
     fn path(&self) -> String {
         format!(
-            "/export/{}/{}/",
+            "/export/({0} ({1}))/({0} ({2}))/",
+            self.transform_input.space.to_str().unwrap_or("/"),
             self.transform_input
                 .patterns
                 .first()
