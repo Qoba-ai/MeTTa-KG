@@ -134,6 +134,7 @@ impl MorkApiClient {
             http_request = http_request.json(&body);
         }
 
+        http_request = http_request.timeout(request.timeout());
         match http_request.send().await {
             Ok(resp) => match resp.text().await {
                 Ok(text) => Ok(text),
@@ -156,6 +157,9 @@ pub trait Request {
     fn path(&self) -> String;
     fn body(&self) -> Option<Self::Body> {
         None
+    }
+    fn timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(20)
     }
 }
 
@@ -297,7 +301,6 @@ impl Request for ReadRequest {
                 .templates
                 .first()
                 .unwrap_or(&String::from("&x")),
-
         )
     }
 }

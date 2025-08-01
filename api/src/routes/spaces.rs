@@ -61,7 +61,6 @@ pub async fn import(token: Token, path: PathBuf, space_data: String) -> Result<J
         return Err(Status::InternalServerError);
     }
 
-    let _path_serialized = path.to_str().unwrap_or_default();
     let import_file_url = format!("/public/{}.metta", file_id);
 
     let mork_api_client = MorkApiClient::new();
