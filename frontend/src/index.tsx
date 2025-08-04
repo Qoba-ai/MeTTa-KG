@@ -2,10 +2,12 @@
 import { render } from "solid-js/web";
 import { Route, Router } from "@solidjs/router";
 
-import Editor from "./Editor";
+//import Editor from "./Editor";
+import Editor from "./pages/index";
 import Tokens from "./Tokens";
 
 import './styles/global.scss';
+import './app.css'
 
 import 'solid-devtools'
 

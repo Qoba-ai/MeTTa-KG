@@ -1,7 +1,8 @@
 import { Show, type Component } from 'solid-js'
 import { AiOutlineGithub } from 'solid-icons/ai'
 import { A } from '@solidjs/router'
-import styles from '../Tokens.module.scss'
+import styles from '../../Tokens.module.scss'
+import { Button } from "~/components/ui/button"
 
 export enum PageType {
 	Editor,
@@ -17,7 +18,8 @@ export function Header({ currentPage }: HeaderProps) {
 	return (
 		<>
 			<header>
-				<h1>MeTTa KG</h1>
+				<h1 class="">MeTTa KG</h1>
+				<Button variant="destructive">bye</Button>
 				<nav>
 					<Show when={currentPage === PageType.Editor}>
 						<A href="/tokens" class={styles.OutlineButton}>

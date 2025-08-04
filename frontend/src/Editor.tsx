@@ -57,7 +57,7 @@ import {
 } from './mettaLanguageSupport'
 import { parser } from './parser/parser'
 import { Expression, Symbol, Variable } from './parser/parser.terms'
-import { Header, PageType } from './components/Header'
+import { Header, PageType } from './components/common/Header'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
 	const extension = file.name.split('.')[1]

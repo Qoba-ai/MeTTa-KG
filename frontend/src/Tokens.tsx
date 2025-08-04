@@ -6,7 +6,7 @@ import { AiOutlineCopy, AiOutlineGithub } from 'solid-icons/ai'
 import styles from './Tokens.module.scss'
 import toast, { Toaster } from 'solid-toast'
 import { Token } from './types'
-import { Header, PageType } from './components/Header'
+import { Header, PageType } from './components/common/Header'
 
 enum SortableColumns {
 	TIMESTAMP,
