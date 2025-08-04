@@ -10,22 +10,22 @@ const AppLayout = (props: any) => {
 	const sidbarOptions: SidebarProps["options"] = [
 		{
 			name: "Load",
-			icon: <FileUp />,
+			icon: <FileUp strokeWidth={1.5} />,
 			path: "/",
 		},
 		{
 			name: "Import",
-			icon: <FileDown />,
+			icon: <FileDown strokeWidth={1.5} />,
 			path: "/import",
 		},
 		{
 			name: "Transform",
-			icon: <Replace />,
+			icon: <Replace strokeWidth={1.5} />,
 			path: "/transform",
 		},
 		{
 			name: "Manage Tokens",
-			icon: <Database />,
+			icon: <Database strokeWidth={1.5} />,
 			path: "/tokens",
 			separator: true
 		},
