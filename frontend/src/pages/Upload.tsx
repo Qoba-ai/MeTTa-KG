@@ -1,0 +1,304 @@
+import { Component, createSignal, createEffect, Show } from "solid-js"
+import { Button } from "~/components/ui/button"
+import { TextField, TextFieldInput, TextFieldLabel } from "~/components/ui/text-field"
+import { Select, SelectTrigger, SelectItem, SelectContent, SelectValue } from "~/components/ui/select"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs"
+import { CodeInputField } from "~/components/upload/codeInputField"
+import { OutputViewer } from "~/components/upload/outputViewer"
+import { CommandCard } from "~/components/upload/commandCard"
+import toast from 'solid-toast'
+import { Loader, Upload as Upload_, Link, FileText, File } from 'lucide-solid'
+import { importSpace } from '~/lib/api'
+import { namespace } from "~/lib/state"
+import { error } from "console"
+
+async function importData(type: string, data: any = null, format: string = "metta") {
+	console.info("Not implemented")
+	console.log(data)
+
+	return {
+		status: "success",
+		data,
+		message: ""
+	}
+}
+
+export const UploadPage: Component = () => {
+	// URL Import state
+	const [uri, setUri] = createSignal("")
+	const [urlFormat, setUrlFormat] = createSignal("metta")
+
+	// File Upload state
+	const [selectedFile, setSelectedFile] = createSignal<File | null>(null)
+	let fileInputRef: HTMLInputElement | undefined
+
+	// Text Input state
+	const [textContent, setTextContent] = createSignal(`(= (fact 0) 1)
+(= (fact $n) (* $n (fact (- $n 1))))
+(fact 5)`)
+	const [textFormat, setTextFormat] = createSignal("metta")
+
+	// Common state
+	const [activeTab, setActiveTab] = createSignal("url")
+	const [isLoading, setIsLoading] = createSignal(false)
+	const [result, setResult] = createSignal<any>(null)
+
+	const handleFileSelect = (event: Event) => {
+		const file = (event.target as HTMLInputElement).files?.[0]
+		if (file) {
+			setSelectedFile(file)
+		}
+	}
+
+	const handleImport = async () => {
+		setIsLoading(true)
+		try {
+			let response
+
+			switch (activeTab()) {
+				case "url":
+					console.log("Hello world!!!")
+					if (!uri().trim()) {
+						toast("URL is required",)
+						return
+					}
+					response = await importSpace(namespace().join("/"), uri())
+					let success_msg = "Successfully imported to space"
+					let error_msg = "Error importing to space"
+					if (response) {
+						setResult(success_msg)
+						toast(success_msg)
+					} else {
+						setResult(error_msg)
+						toast(error_msg)
+					}
+					break
+
+				case "file":
+					if (!selectedFile()) {
+						toast("Please select a file to upload",)
+						return
+					}
+					const formData = new FormData()
+					formData.append("file", selectedFile()!)
+					response = await importData("file", formData)
+					break
+
+				case "text":
+					if (!textContent().trim()) {
+						toast(
+							"Text content is required",
+						)
+						return
+					}
+					response = await importData("text", textContent(), textFormat())
+					break
+
+				default:
+					throw new Error("Invalid tab selection")
+			}
+
+			//setResult(response.data)
+			//
+			//if (response.status === "success") {
+			//	toast(
+			//		response.message,
+			//	)
+			//} else {
+			//	toast(
+			//		response.message || "Failed to import data",
+			//	)
+			//}
+		} catch (error) {
+			toast(
+				"An unexpected error occurred"
+			)
+		} finally {
+			setIsLoading(false)
+		}
+	}
+
+	const formatFileSize = (bytes: number) => {
+		if (bytes === 0) return "0 Bytes";
+		const k = 1024;
+		const sizes = ["Bytes", "KB", "MB", "GB"];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2) + " " + sizes[i]);
+	}
+
+	const isFormValid = () => {
+		switch (activeTab()) {
+			case "url":
+				return uri().trim() !== ""
+			case "file":
+				return selectedFile() !== null
+			case "text":
+				return textContent().trim() !== ""
+			default:
+				return false
+		}
+	}
+
+	return (
+		<div class="ml-10 mt-8">
+			<CommandCard
+				title="Import & Upload Data"
+				description="Import data from a URL, upload a file, or input S-expression text directly."
+			>
+				<Tabs value={activeTab()} onChange={setActiveTab} class="w-full">
+					<TabsList class="grid w-full grid-cols-3">
+						<TabsTrigger value="url" class="flex items-center gap-2">
+							<Link class="h-4 w-4" />
+							URL Import
+						</TabsTrigger>
+						<TabsTrigger value="file" class="flex items-center gap-2">
+							<File class="h-4 w-4" />
+							File Upload
+						</TabsTrigger>
+						<TabsTrigger value="text" class="flex items-center gap-2">
+							<FileText class="h-4 w-4" />
+							Text Input
+						</TabsTrigger>
+					</TabsList>
+
+					<TabsContent value="url" class="space-y-4">
+						<div class="space-y-4">
+							<div class="space-y-2">
+								<TextField>
+									<TextFieldLabel for="import-uri">Import URL</TextFieldLabel>
+									<TextFieldInput
+										id="import-uri"
+										value={uri()}
+										onChange={(e) => setUri(e.currentTarget.value)}
+										placeholder="https://example.com/data.json or /path/to/local/file.json"
+										disabled={isLoading()}
+									/>
+								</TextField>
+								<p class="text-xs text-muted-foreground">
+									Enter a URL or local file path to import data from
+								</p>
+							</div>
+
+							<div class="space-y-2">
+								<TextField>
+									<TextFieldLabel for="url-format">Format</TextFieldLabel>
+								</TextField>
+								<Select
+									value={urlFormat()}
+									onChange={setUrlFormat}
+									options={["json", "metta", "csv", "raw"]}
+									disabled={isLoading()}
+									placeholder="Select format"
+									itemComponent={(props) => <SelectItem item={props.item}>{props.item.rawValue}</SelectItem>}
+								>
+									<SelectTrigger id="url-format">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent />
+								</Select>
+							</div>
+						</div>
+					</TabsContent>
+
+					<TabsContent value="file" class="space-y-4">
+						<div class="space-y-4">
+							<div class="space-y-2">
+								<TextField>
+									<TextFieldLabel for="file-upload">Select File</TextFieldLabel>
+									<TextFieldInput
+										id="file-upload"
+										type="file"
+										ref={fileInputRef}
+										onChange={handleFileSelect}
+										disabled={isLoading()}
+										class="cursor-pointer"
+										accept=".json,.metta,.csv,.txt"
+									/>
+								</TextField>
+								<p class="text-xs text-muted-foreground">
+									Supported formats: JSON, MeTTa, CSV, TXT
+								</p>
+							</div>
+
+							<Show when={selectedFile()}>
+								<div class="flex items-center gap-2 p-3 bg-muted rounded-md">
+									<File class="h-4 w-4" />
+									<div class="flex-1">
+										<p class="text-sm font-medium">{selectedFile()!.name}</p>
+										<p class="text-xs text-muted-foreground">
+											{formatFileSize(selectedFile()!.size)} • {selectedFile()!.type || "Unknown type"}
+										</p>
+									</div>
+								</div>
+							</Show>
+						</div>
+					</TabsContent>
+
+					<TabsContent value="text" class="space-y-4">
+						<div class="space-y-4">
+							<div class="space-y-2">
+								<TextFieldLabel for="text-format">Format</TextFieldLabel>
+								<Select
+									value={textFormat()}
+									onChange={setTextFormat}
+									disabled={isLoading()}
+									options={["metta", "json", "raw"]}
+									itemComponent={(props) => <SelectItem item={props.item}>{props.item.rawValue}</SelectItem>}
+									placeholder="Select format"
+								>
+									<SelectTrigger>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent />
+								</Select>
+							</div>
+
+							<CodeInputField
+								label="S-Expression Content"
+								value={textContent()}
+								onChange={setTextContent}
+								placeholder="Enter your S-expression code here..."
+								syntax={textFormat()}
+								rows={8}
+							/>
+
+							<div class="text-xs text-muted-foreground">
+								<p>
+									<strong>Example MeTTa expressions:</strong>
+								</p>
+								<ul class="list-disc list-inside mt-1 space-y-1">
+									<li>(= (fact 0) 1)</li>
+									<li>(= (fact $n) (* $n (fact (- $n 1))))</li>
+									<li>(fact 5)</li>
+								</ul>
+							</div>
+						</div>
+					</TabsContent>
+				</Tabs>
+
+				<Button onClick={handleImport} disabled={isLoading() || !isFormValid()} class="w-40">
+					<Show
+						when={isLoading()}
+						fallback={
+							<>
+								<Upload_ class="mr-2 h-4 w-4" />
+								{activeTab() === "url" ? "Import from URL" : activeTab() === "file" ? "Upload File" : "Upload Text"}
+							</>
+						}
+					>
+						<Loader class="mr-2 h-4 w-4 animate-spin" />
+						Processing...
+					</Show>
+				</Button>
+
+				{
+					//<Show when={result()}>
+					//	<OutputViewer title="Import Result" data={result()} status="success" />
+					//</Show>
+				}
+			</CommandCard>
+		</div>
+	)
+}
+
+export default UploadPage;

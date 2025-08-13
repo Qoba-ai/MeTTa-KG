@@ -262,7 +262,7 @@ const editorTheme = EditorView.theme(
 		'&': {
 			backgroundColor: 'var(--rp-moon-base)',
 			color: 'var(--rp-moon-text)',
-			maxHeight: '600px',
+			maxHeight: '100%',
 		},
 		'.cm-content': {
 			maxHeight: '600px',
