@@ -6,12 +6,16 @@ use rocket_cors::AllowedOrigins;
 mod db;
 mod model;
 mod routes;
+mod mork_api;
 mod schema;
 
 #[launch]
 fn rocket() -> Rocket<Build> {
     // TODO: move hardcoded allowed origins to database,
     // or get backend and frontend hosted under same domain
+    
+    dotenv::dotenv().ok();
+    
     let allowed_origins =
         AllowedOrigins::some_exact(&["http://localhost:3000", "https://metta-kg.vercel.app"]);
 
