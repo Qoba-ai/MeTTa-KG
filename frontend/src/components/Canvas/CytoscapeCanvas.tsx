@@ -15,22 +15,34 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
   let cy: Core | undefined;
   let currentLayout: ReturnType<Core['layout']> | undefined;
 
+  let isFirstRender = true; // <--- Add this flag
+
   // Data extractor
-  const getGraphData = () => {
+    const getGraphData = () => {
     if (props.data && props.data.length > 0) {
-      return props.data.map((item, index) => ({
-        group: 'nodes',
+        return props.data.map((item, index) => ({
+        group: 'nodes' as const,
         data: {
-          id: `node-${index}`,
-          label: item.expr || `Node ${index + 1}`,
-          type: 'expression',
+            id: `node-${index}`,
+            label: item.expr || `Node ${index + 1}`,
+            type: 'expression',
         }
-      }));
+        }));
     }
 
     // data here
-    return [];
-  };
+    return [
+        { group: 'nodes' as const, data: { id: 'root', label: 'root', type: 'root' } },
+        { group: 'nodes' as const, data: { id: 'A', label: 'A', type: 'leaf' } },
+        { group: 'nodes' as const, data: { id: 'B', label: 'B', type: 'internal' } },
+        { group: 'nodes' as const, data: { id: 'C', label: 'C', type: 'leaf' } },
+        { group: 'nodes' as const, data: { id: 'D', label: 'D', type: 'leaf' } },
+        { group: 'edges' as const, data: { id: 'rootA', source: 'root', target: 'A' } },
+        { group: 'edges' as const, data: { id: 'rootB', source: 'root', target: 'B' } },
+        { group: 'edges' as const, data: { id: 'rootC', source: 'root', target: 'C' } },
+        { group: 'edges' as const, data: { id: 'BD', source: 'B', target: 'D' } }
+    ];
+    };
 
   const getColors = () => {
     return {
@@ -52,7 +64,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
 
     cy = cytoscape({
       container: containerRef,
-      elements: getGraphData(),
+      elements: getGraphData() as cytoscape.ElementDefinition[],
       
       style: [
         {
@@ -61,8 +73,8 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
             'background-color': colors.nodeBackground,
             'label': 'data(label)',
             'color': colors.nodeText,
-            'font-size': '7px',
-            'font-weight': '500',
+            'font-size': 7,
+            'font-weight': 500,
             'font-family': "ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji",
             'text-valign': 'center',
             'text-halign': 'center',
@@ -73,7 +85,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
             'shape': 'ellipse',
             'border-width': 0,
             'transition-property': 'background-color, border-width, width, height',
-            'transition-duration': '0.2s'
+            'transition-duration': 0.2
           }
         },
         
@@ -96,11 +108,11 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
             'line-color': colors.edge,
             'target-arrow-color': colors.edgeArrow,
             'target-arrow-shape': 'triangle',
-            'target-arrow-size': 8,
+            'arrow-scale': 1.5,
             'curve-style': 'bezier',
             'control-point-step-size': 40,
             'transition-property': 'line-color, target-arrow-color, width',
-            'transition-duration': '0.2s'
+            'transition-duration': 0.2
           }
         },
         
@@ -111,7 +123,6 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
             'width': 2.5,
             'line-color': colors.nodeText,
             'target-arrow-color': colors.nodeText,
-            'cursor': 'pointer'
           }
         },
         
@@ -230,7 +241,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
       connectedNodes.animate({
         style: { 
           'border-width': 3,
-          'border-color': colors.expandableBackground
+          'border-color': colors.nodeBackground
         },
         duration: 300,
         complete: () => {
@@ -407,37 +418,50 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
   // Update data with smooth transitions
   createEffect(() => {
     if (cy && props.data) {
-      cy.animate({
-        style: { 'opacity': 0 }
-      }, {
-        duration: 200,
-        complete: () => {
-          cy.elements().remove();
-          cy.add(getGraphData());
-          
-          // Apply breadthfirst layout like MORK demo
-          const layout = cy.layout({
-            name: 'breadthfirst',
-            directed: true,
-            padding: 10,
-            spacingFactor: 1.1,
-            animate: true,
-            animationDuration: 500,
-            fit: true
-          });
-          
-          layout.run();
-          
-          // Fade in new elements
-          setTimeout(() => {
-            cy.animate({
-              style: { 'opacity': 1 }
-            }, {
-              duration: 400
-            });
-          }, 100);
-        }
-      });
+      if (isFirstRender) {
+        // On first render, just set the data, no animation
+        cy.elements().remove();
+        cy.add(getGraphData());
+        const layout = cy.layout({
+          name: 'breadthfirst',
+          directed: true,
+          padding: 10,
+          spacingFactor: 1.1,
+          animate: true,
+          animationDuration: 500,
+          fit: true
+        });
+        layout.run();
+        isFirstRender = false;
+      } else {
+        // On subsequent updates, animate opacity
+        cy.elements().animate(
+          { style: { 'opacity': 0 } },
+          {
+            duration: 200,
+            complete: () => {
+              cy.elements().remove();
+              cy.add(getGraphData());
+              const layout = cy.layout({
+                name: 'breadthfirst',
+                directed: true,
+                padding: 10,
+                spacingFactor: 1.1,
+                animate: true,
+                animationDuration: 500,
+                fit: true
+              });
+              layout.run();
+              setTimeout(() => {
+                cy.elements().animate(
+                  { style: { 'opacity': 1 } },
+                  { duration: 400 }
+                );
+              }, 100);
+            }
+          }
+        );
+      }
     }
   });
 
