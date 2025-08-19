@@ -1,5 +1,6 @@
 import { Component, createEffect, onMount, onCleanup } from 'solid-js';
 import cytoscape, { Core } from 'cytoscape';
+import type { LayoutAlgorithm, LayoutOptions } from '../../types';
 
 export interface CytoscapeCanvasProps {
   data?: any[];
@@ -12,6 +13,7 @@ export interface CytoscapeCanvasProps {
 const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
   let containerRef: HTMLDivElement | undefined;
   let cy: Core | undefined;
+  let currentLayout: ReturnType<Core['layout']> | undefined;
 
   // Create sample data from subSpace if no data provided
   const getGraphData = () => {
@@ -30,6 +32,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
     return [
       { group: 'nodes', data: { id: 'a', label: 'gender Chandler M', type: 'fact' } },
       { group: 'nodes', data: { id: 'b', label: 'age Alice 25', type: 'fact' } },
+      { group: 'nodes', data: { id: 'asdj', label: 'age Alice 25', type: 'fact' } },
       { group: 'nodes', data: { id: 'c', label: 'is-brother John Adam', type: 'relation' } },
       { group: 'nodes', data: { id: 'd', label: 'likes Alice Coffee', type: 'relation' } },
       { group: 'edges', data: { id: 'ab', source: 'a', target: 'b' } },
@@ -127,8 +130,8 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
           selector: 'edge:selected',
           style: {
             'width': 3,
-            'line-color': colors.expandableBackground,
-            'target-arrow-color': colors.expandableBackground,
+            'line-color': colors.nodeBackgroundSelected,
+            'target-arrow-color': colors.nodeBackgroundSelected,
             'z-index': 5
           }
         }
@@ -303,6 +306,114 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
     }
   };
 
+  // Map UI layout options to Cytoscape layouts
+  const applyLayout = (algorithm: LayoutAlgorithm, opts: Partial<LayoutOptions> = {}) => {
+    if (!cy) return;
+    // stop any running layout first
+    try { currentLayout?.stop(); } catch {}
+
+    const anim = opts.animationDuration ?? 1500;
+
+    // Notify UI: layout started
+    window.dispatchEvent(new CustomEvent('cy:layoutstart', { detail: { algorithm } }));
+
+    if (algorithm === 'force-directed') {
+      currentLayout = cy.layout({
+        name: 'cose',
+        animate: true,
+        animationDuration: anim,
+        fit: true,
+        padding: 20,
+        nodeRepulsion: () => opts.repulsionStrength ?? 4000,
+        idealEdgeLength: () => opts.springLength ?? 200,
+        edgeElasticity: () => opts.springStrength ?? 0.1,
+        gravity: opts.centerForce ?? 1,           
+        nestingFactor: 1.2,    
+        numIter: opts.iterations ?? 300,
+        coolingFactor: Math.min(0.99, Math.max(0.5, (opts.damping ?? 0.9))),
+        nodeOverlap: 20,
+        avoidOverlap: true,
+        randomize: false
+      });
+    } else if (algorithm === 'hierarchical') {
+      currentLayout = cy.layout({
+        name: 'breadthfirst',
+        directed: true,
+        spacingFactor: 2.5,
+        padding: 16,
+        animate: true,
+        avoidOverlap: true,
+        animationDuration: anim,
+        fit: true
+      });
+    } else { // 'circular'
+      currentLayout = cy.layout({
+        name: 'circle',
+        fit: true,
+        padding: 10,
+        avoidOverlap: true,
+        spacingFactor: 1.0,
+        animate: true,
+        animationDuration: anim
+      });
+    }
+
+    // Notify when layout stops
+    cy.one('layoutstop', () => {
+      window.dispatchEvent(new CustomEvent('cy:layoutstop', { detail: { algorithm } }));
+    });
+
+    currentLayout?.run();
+  };
+
+  const stopLayout = () => {
+    try { currentLayout?.stop(); } catch {}
+    currentLayout = undefined;
+    // Notify UI: layout stopped
+    window.dispatchEvent(new CustomEvent('cy:layoutstop', { detail: {} }));
+  };
+
+  const setShowLabels = (show: boolean) => {
+    if (!cy) return;
+    cy.style()
+      .selector('node')
+      .style({
+        'label': show ? 'data(label)' : '',
+        'text-background-opacity': show ? 0.8 : 0
+      })
+      .update();
+  };
+
+  // Exports
+  const exportPNG = (scale = 2) => {
+    if (!cy) return;
+    const url = cy.png({ full: true, scale, bg: '#ffffff' });
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `graph_${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+ const exportPDF = (scale = 2) => {
+    if (!cy) return;
+    const png = cy.png({ full: true, scale, bg: '#ffffff' });
+    // Try jsPDF if present, else fallback to PNG
+    const anyWin = window as any;
+    if (anyWin.jspdf?.jsPDF) {
+      const { jsPDF } = anyWin.jspdf;
+      const w = cy.width() * scale;
+      const h = cy.height() * scale;
+      const pdf = new jsPDF({ orientation: w > h ? 'landscape' : 'portrait', unit: 'pt', format: [w, h] });
+      pdf.addImage(png, 'PNG', 0, 0, w, h);
+      pdf.save(`graph_${Date.now()}.pdf`);
+    } else {
+      console.warn('jsPDF not found; downloading PNG instead.');
+      exportPNG(scale);
+    }
+  };
+
   // Update data with smooth transitions
   createEffect(() => {
     if (cy && props.data) {
@@ -342,16 +453,20 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
 
   // Cleanup
   onCleanup(() => {
-    if (cy) {
-      cy.destroy();
-    }
+    try { currentLayout?.stop(); } catch {}
+    if (cy) cy.destroy();
   });
 
   // Expose methods
   (globalThis as any).cytoscapeControls = {
     zoomIn,
     zoomOut,
-    recenter
+    recenter,
+    applyLayout,
+    stopLayout,
+    setShowLabels,
+    exportPNG,
+    exportPDF
   };
 
   return (
