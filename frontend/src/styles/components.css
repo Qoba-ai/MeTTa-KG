@@ -16,8 +16,8 @@
 
 /* Floating UI component positions */
 .top-left {
-  top: 20px;
-  left: 20px;
+  top: 10px;
+  left: 10px;
 }
 
 .top-center {
@@ -65,7 +65,7 @@
 /* Metta Editor Card - Full height and resizable */
 .metta-editor-card {
   width: 320px;
-  height: calc(100vh - 40px);
+  height: calc(100vh - 80px);
   min-width: 250px;
   min-height: 200px;
   max-width: 50vw;
@@ -981,3 +981,43 @@
     max-width: 70vw;
   }
 } 
+
+.loading-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  font-size: 16px;
+  color: #dc2626;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Add this to the end of your components.css file */
+
+/* Enhanced minimized state for floating behavior */
+.ui-card.minimized {
+  height: auto !important;
+  min-height: auto !important;
+  max-height: 50px;
+  resize: none !important;
+  transition: all 0.3s ease;
+}
+
+.ui-card.minimized .card-content {
+  display: none;
+}
+
+.ui-card.minimized:hover {
+  transform: scale(1.02);
+  box-shadow: var(--card-shadow), 0 4px 12px rgba(0, 0, 0, 0.15);
+}
