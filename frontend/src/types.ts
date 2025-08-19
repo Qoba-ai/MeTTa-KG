@@ -76,6 +76,8 @@ export interface UIControlsProps {
   showLabels: boolean;
   onToggleLabels: (show: boolean) => void;
   onStopLayout: () => void;
+  onApplyLayout: (algorithm: LayoutAlgorithm, options?: LayoutOptions) => void;
+  layoutState: LayoutState;
 }
 
 // export interface ContextMenuProps {
@@ -116,6 +118,27 @@ export interface FloatingCardProps {
   className?: string;
 }
 
+// Layout Types
+export type LayoutAlgorithm = 'force-directed' | 'hierarchical' | 'circular';
+
+export interface LayoutOptions {
+  iterations?: number;
+  springLength?: number;
+  springStrength?: number;
+  repulsionStrength?: number;
+  damping?: number;
+  animationDuration?: number;
+  centerForce?: number;
+}
+
+export interface LayoutState {
+  algorithm: LayoutAlgorithm;
+  isAnimating: boolean;
+  progress: number;
+  startTime?: number;
+  duration?: number;
+}
+
 export {
     type Token,
     EditorMode,
@@ -125,5 +148,5 @@ export {
     type CSVParserParameters,
     type NTParserParameters,
     type N3ParserParameters,
-    type JSONLDParserParameters
+    type JSONLDParserParameters,
 }
