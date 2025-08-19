@@ -1,6 +1,8 @@
 import { useColorMode } from "@kobalte/core"
 
-import { Flashlight, FlashlightOff, LaptopMinimal } from "lucide-solid"
+import Flashlight from "lucide-solid/icons/flashlight";
+import FlashlightOff from "lucide-solid/icons/flashlight-off";
+import LaptopMinimal from "lucide-solid/icons/laptop-minimal";
 import { Button } from "~/components/ui/button"
 import {
 	DropdownMenu,
