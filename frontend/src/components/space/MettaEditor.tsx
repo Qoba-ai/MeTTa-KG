@@ -15,15 +15,8 @@ export interface MettaEditorProps {
 const MettaEditor: Component<MettaEditorProps> = (props) => {
   const [text, setText] = createSignal(props.initialText);
   const [realTimeErrors, setRealTimeErrors] = createSignal<ParseError[]>([]);
-  const [lineNumbers, setLineNumbers] = createSignal<number[]>([]);
   let editorRef: HTMLDivElement | undefined;
   let editorView: EditorView | undefined;
-
-  // Update line numbers when text changes
-  const updateLineNumbers = (textValue: string) => {
-    const lines = textValue.split('\n');
-    setLineNumbers(lines.map((_, index) => index + 1));
-  };
 
   // Simple syntax validation for standalone component
   const validateSyntax = (textValue: string): { errors: ParseError[]; warnings: ParseError[] } => {
@@ -72,7 +65,6 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
   const handleTextChange = (textValue: string) => {
     setText(textValue);
     props.onTextChange(textValue);
-    updateLineNumbers(textValue);
     
     // Perform real-time validation
     const validation = validateSyntax(textValue);
@@ -100,79 +92,69 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
             fontSize: "13px",
             fontFamily: "'Courier New', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
             lineHeight: "1.5",
-            background: "transparent",
+            background: "hsl(var(--background))",
+            color: "hsl(var(--foreground))",
             border: "none",
             outline: "none",
-            color: "#374151",
-            caretColor: "#374151",
           },
           ".cm-content": {
             padding: "8px",
             whiteSpace: "pre",
             wordWrap: "break-word",
             tabSize: "2",
-          },
-          ".cm-line": {
+            background: "hsl(var(--background))",
+            color: "hsl(var(--foreground))",
             lineHeight: "1.5",
-            minHeight: "1.5em",
           },
           ".cm-gutters": {
-            background: "rgba(248, 250, 252, 0.9)",
-            borderRight: "1px solid var(--border-light)",
-            color: "#6b7280",
+            borderRight: "1px solid hsl(var(--border))",
             fontFamily: "'Courier New', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
             fontSize: "13px",
             lineHeight: "1.5",
-            padding: "8px 4px",
+            padding: "0px 4px",
+            background: "hsl(var(--muted))",
+            color: "hsl(var(--muted-foreground))",
           },
           ".cm-gutterElement": {
             textAlign: "right",
-            paddingRight: "8px",
+            paddingRight: "0px",
           },
           ".cm-activeLineGutter": {
-            background: "rgba(59, 130, 246, 0.1)",
-            color: "#1d4ed8",
+            background: "hsl(var(--accent))",
+            color: "hsl(var(--accent-foreground))",
             fontWeight: "600",
           },
           ".cm-activeLine": {
-            background: "rgba(59, 130, 246, 0.05)",
+            background: "hsl(var(--accent) / 0.1)",
           },
           ".cm-selectionBackground": {
-            background: "rgba(59, 130, 246, 0.2)",
+            background: "hsl(var(--primary) / 0.2)",
           },
           ".cm-cursor": {
-            borderLeft: "2px solid #374151",
+            borderLeft: "2px solid hsl(var(--primary))",
           },
-          // Error line styling
+          ".cm-focused": {
+            outline: "none",
+          },
+          ".cm-editor": {
+            background: "hsl(var(--background))",
+          },
+          ".cm-scroller": {
+            background: "hsl(var(--background))",
+          },
+          // Error and warning lines with theme colors
           ".cm-line.error-line": {
-            backgroundColor: "rgba(220, 38, 38, 0.1) !important",
-            borderLeft: "3px solid #dc2626 !important",
+            backgroundColor: "hsl(var(--destructive) / 0.1) !important",
+            borderLeft: "3px solid hsl(var(--destructive)) !important",
             paddingLeft: "5px !important",
             marginLeft: "-8px !important",
           },
           ".cm-line.warning-line": {
-            backgroundColor: "rgba(245, 158, 11, 0.1) !important",
-            borderLeft: "3px solid #f59e0b !important",
+            backgroundColor: "hsl(var(--warning) / 0.1) !important",
+            borderLeft: "3px solid hsl(var(--warning) / 0.8) !important",
             paddingLeft: "5px !important",
             marginLeft: "-8px !important",
           },
-          // Syntax highlighting colors
-          ".cm-keyword": { color: "#d73a49", fontWeight: "600" },
-          ".cm-operator": { color: "#d73a49" },
-          ".cm-variable": { color: "#24292e" },
-          ".cm-variable-2": { color: "#24292e" },
-          ".cm-string": { color: "#032f62" },
-          ".cm-number": { color: "#005cc5" },
-          ".cm-comment": { color: "#6a737d", fontStyle: "italic" },
-          ".cm-punctuation": { color: "#24292e" },
-          ".cm-bracket": { color: "#24292e" },
-          ".cm-propertyName": { color: "#005cc5" },
-          ".cm-definition.cm-variable": { color: "#6f42c1" },
-          ".cm-definition.cm-variable-2": { color: "#6f42c1" },
-          ".cm-definition.cm-variable-3": { color: "#6f42c1" },
-          ".cm-meta": { color: "#24292e" },
-          ".cm-link": { color: "#005cc5" },
-          ".cm-url": { color: "#005cc5" },
         }),
       ],
     });
@@ -181,8 +163,6 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
       state,
       parent: editorRef,
     });
-
-    updateLineNumbers(props.initialText);
   });
 
   // Update editor content when props change (only on initial load)
@@ -199,10 +179,25 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
         });
         editorView.dispatch(transaction);
         setText(props.initialText);
-        updateLineNumbers(props.initialText);
       }
     }
   });
+
+  // Update the Clear button onClick handler:
+  const clearEditor = () => {
+    if (editorView) {
+      const transaction = editorView.state.update({
+        changes: {
+          from: 0,
+          to: editorView.state.doc.length,
+          insert: ''
+        }
+      });
+      editorView.dispatch(transaction);
+      setText('');
+      props.onTextChange('');
+    }
+  };
 
   return (
     <div style="
@@ -218,13 +213,14 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
         font-weight: 600; 
         flex-shrink: 0;
         line-height: 1.2;
+        color: hsl(var(--foreground));
       ">
         {realTimeErrors().length > 0 && (
           <span style="
             margin-left: 8px;
             font-size: 11px;
             font-weight: normal;
-            color: #dc2626;
+            color: hsl(var(--destructive));
           ">
             ({realTimeErrors().filter(e => e.severity === 'error').length} errors, {realTimeErrors().filter(e => e.severity === 'warning').length} warnings)
           </span>
@@ -237,10 +233,11 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
         flex: 1;
         min-height: 0;
         margin-bottom: 8px;
-        border: 1px solid var(--border-light);
+        border: 1px solid hsl(var(--border));
         border-radius: 4px;
-        background: rgba(255, 255, 255, 0.8);
+        background: hsl(var(--background));
         overflow: hidden;
+        transition: all 0.3s ease;
       ">
         {/* CodeMirror Editor */}
         <div
@@ -248,6 +245,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
           style="
             height: 100%;
             width: 100%;
+            background: hsl(var(--background));
           "
         />
       </div>
@@ -264,9 +262,10 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
           style="
             padding: 4px 8px; 
             font-size: 11px; 
-            border: 1px solid var(--border-light); 
+            border: 1px solid hsl(var(--border)); 
             border-radius: 3px; 
-            background: white; 
+            background: hsl(var(--background)); 
+            color: hsl(var(--foreground));
             cursor: pointer;
             transition: all 0.2s ease;
           "
@@ -280,8 +279,14 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
             };
             input.click();
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-primary)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'hsl(var(--accent))';
+            e.currentTarget.style.borderColor = 'hsl(var(--primary))';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'hsl(var(--background))';
+            e.currentTarget.style.borderColor = 'hsl(var(--border))';
+          }}
         >
           Load File
         </button>
@@ -289,50 +294,45 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
           style="
             padding: 4px 8px; 
             font-size: 11px; 
-            border: 1px solid var(--border-light); 
+            border: 1px solid hsl(var(--border)); 
             border-radius: 3px; 
-            background: white; 
+            background: hsl(var(--background)); 
+            color: hsl(var(--foreground));
             cursor: pointer;
             transition: all 0.2s ease;
           "
-          onClick={() => {
-            if (editorView) {
-              const transaction = editorView.state.update({
-                changes: {
-                  from: 0,
-                  to: editorView.state.doc.length,
-                  insert: ''
-                }
-              });
-              editorView.dispatch(transaction);
-              setText('');
-              props.onTextChange('');
-              updateLineNumbers('');
-            }
+          onClick={clearEditor} // Use the new function
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'hsl(var(--accent))';
+            e.currentTarget.style.borderColor = 'hsl(var(--primary))';
           }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-primary)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'hsl(var(--background))';
+            e.currentTarget.style.borderColor = 'hsl(var(--border))';
+          }}
         >
           Clear
         </button>
       </div>
 
-      {/* Error Display Panel */}
+      {/* Error Display Panel - Updated with theme colors */}
       {(realTimeErrors().length > 0 || props.parseErrors.length > 0) && (
         <div style="
           max-height: 120px;
           overflow-y: auto;
-          border: 1px solid var(--border-light);
+          border: 1px solid hsl(var(--border));
           border-radius: 4px;
-          background: rgba(255, 255, 255, 0.95);
+          background: hsl(var(--card));
           flex-shrink: 0;
+          transition: all 0.3s ease;
         ">
           <div style="
             padding: 8px;
             font-size: 11px;
             font-weight: 600;
-            background: rgba(248, 250, 252, 0.8);
-            border-bottom: 1px solid var(--border-light);
+            background: hsl(var(--muted));
+            color: hsl(var(--muted-foreground));
+            border-bottom: 1px solid hsl(var(--border));
           ">
             Issues ({realTimeErrors().filter(e => e.severity === 'error').length + props.parseErrors.filter(e => e.severity === 'error').length} errors, {realTimeErrors().filter(e => e.severity === 'warning').length + props.parseErrors.filter(e => e.severity === 'warning').length} warnings)
           </div>
@@ -342,20 +342,21 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
                 <div style={`
                   padding: 4px 8px;
                   margin: 2px 0;
-                  border-left: 3px solid ${error.severity === 'error' ? '#dc2626' : '#f59e0b'};
-                  background: ${error.severity === 'error' ? 'rgba(220, 38, 38, 0.05)' : 'rgba(245, 158, 11, 0.05)'};
+                  border-left: 3px solid ${error.severity === 'error' ? 'hsl(var(--destructive))' : 'hsl(var(--warning) / 0.8)'};
+                  background: ${error.severity === 'error' ? 'hsl(var(--destructive) / 0.1)' : 'hsl(var(--warning) / 0.1)'};
                   border-radius: 2px;
                   font-size: 11px;
                   line-height: 1.3;
+                  transition: all 0.3s ease;
                 `}>
                   <div style={`
                     font-weight: 600;
-                    color: ${error.severity === 'error' ? '#dc2626' : '#f59e0b'};
+                    color: ${error.severity === 'error' ? 'hsl(var(--destructive))' : 'hsl(var(--warning))'};
                     margin-bottom: 2px;
                   `}>
                     {error.severity === 'error' ? '⚠️' : '⚡'} Line {error.line}:{error.column}
                   </div>
-                  <div style="color: #374151;">
+                  <div style="color: hsl(var(--foreground));">
                     {error.message}
                   </div>
                 </div>

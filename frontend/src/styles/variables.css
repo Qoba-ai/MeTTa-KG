@@ -1,31 +1,28 @@
-/* CSS Variables for floating UI components */
+/* CSS Variables that work with Tailwind dark mode */
 :root {
-  /* Color Palette - Light Theme */
-  --bg-primary: #fafafa;
-  --bg-secondary: rgba(255, 255, 255, 0.9);
-  --border-light: rgba(0, 0, 0, 0.1);
-  --text-primary: #374151;
-  --text-secondary: #6b7280;
+  /* Light theme variables */
+  --bg-primary: theme('colors.gray.50');
+  --bg-secondary: theme('colors.white');
+  --border-light: theme('colors.gray.200');
+  --text-primary: theme('colors.gray.800');
+  --text-secondary: theme('colors.gray.600');
   
-  /* Node Colors */
-  --node-default: rgba(59, 130, 246, 0.7);
-  --node-anchor: rgba(239, 68, 68, 0.8);
-  --node-border: rgba(0, 0, 0, 0.3);
+  /* Card styling */
+  --card-bg: theme('colors.white');
+  --card-shadow: theme('boxShadow.lg');
+  --card-border: theme('colors.gray.200');
+}
+
+:root.dark {
+  /* Dark theme variables */
+  --bg-primary: theme('colors.gray.900');
+  --bg-secondary: theme('colors.gray.800');
+  --border-light: theme('colors.gray.600');
+  --text-primary: theme('colors.gray.100');
+  --text-secondary: theme('colors.gray.400');
   
-  /* Edge Colors */
-  --edge-default: rgba(107, 114, 128, 0.6);
-  --edge-hover: rgba(59, 130, 246, 0.8);
-  
-  /* UI Elements */
-  --card-bg: rgba(255, 255, 255, 0.95);
-  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  --card-border: rgba(0, 0, 0, 0.1);
-  --border-radius: 8px;
-  
-  /* Grid Colors */
-  --grid-minor: rgba(0, 0, 0, 0.03);
-  --grid-major: rgba(0, 0, 0, 0.08);
-  --grid-axis: rgba(59, 130, 246, 0.15);
-  --grid-dots: rgba(0, 0, 0, 0.1);
-  --grid-center: rgba(59, 130, 246, 0.2);
-} 
+  /* Card styling */
+  --card-bg: theme('colors.gray.800');
+  --card-shadow: theme('boxShadow.xl');
+  --card-border: theme('colors.gray.600');
+}
