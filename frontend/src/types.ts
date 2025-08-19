@@ -92,8 +92,6 @@ export interface ZoomControlsProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onRecenter: () => void;
-  showLabels: boolean;
-  onToggleLabels: (show: boolean) => void;
 }
 
 export interface MinimizeControlsProps {
