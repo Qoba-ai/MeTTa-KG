@@ -51,6 +51,71 @@ interface JSONLDParserParameters {
     dummy: string
 }
 
+export interface ParseError {
+  line: number;
+  column: number;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+// Component Prop Interfaces
+export interface MettaEditorProps {
+  initialText: string;
+  onTextChange: (text: string) => void;
+  onFileUpload: (file: File) => void;
+  parseErrors: ParseError[];
+}
+
+// export interface LegendProps {
+//   graphData: GraphData;
+// }
+
+export interface UIControlsProps {
+  onExportPDF: () => void;
+  onExportPNG: () => void;
+  showLabels: boolean;
+  onToggleLabels: (show: boolean) => void;
+  onStopLayout: () => void;
+}
+
+// export interface ContextMenuProps {
+//   node: GraphNode | null;
+//   position: { x: number; y: number } | null;
+//   onIsolate: (node: GraphNode) => void;
+//   onCopyLabel: (node: GraphNode) => void;
+//   onClose: () => void;
+// }
+
+export interface ZoomControlsProps {
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onRecenter: () => void;
+  showLabels: boolean;
+  onToggleLabels: (show: boolean) => void;
+}
+
+export interface MinimizeControlsProps {
+  onMinimizeAll: () => void;
+  onMaximizeAll: () => void;
+}
+
+export interface FloatingCardProps {
+  title: string;
+  isMinimized: boolean;
+  onToggleMinimize: () => void;
+  position?: 
+    | 'top-left'
+    | 'top-right'
+    | 'bottom-right-upper'
+    | 'bottom-right-lower'
+    | 'top-center'
+    | 'top-right-secondary';
+  width?: string;
+  height?: string;
+  children?: any;
+  className?: string;
+}
+
 export {
     type Token,
     EditorMode,
