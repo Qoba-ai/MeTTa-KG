@@ -1,5 +1,5 @@
 import { Component, createSignal, Show } from 'solid-js';
-import { LayoutAlgorithm, LayoutOptions, UIControlsProps } from '../types';
+import { LayoutAlgorithm, LayoutOptions, UIControlsProps } from '../../types';
 
 const UIControls: Component<UIControlsProps> = (props) => {
   const [showLayoutOptions, setShowLayoutOptions] = createSignal(false);
