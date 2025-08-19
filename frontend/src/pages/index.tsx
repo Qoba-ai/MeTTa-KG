@@ -1,6 +1,9 @@
 import { Route, Router } from "@solidjs/router";
 import { Sidebar } from "~/components/common/Sidebar";
-import { FileUp, FileDown, Replace, Database } from 'lucide-solid';
+import FileUp from 'lucide-solid/icons/file-up';
+import FileDown from 'lucide-solid/icons/file-down';
+import Replace from 'lucide-solid/icons/replace';
+import Database from 'lucide-solid/icons/database';
 import { Switch, SwitchControl, SwitchThumb } from "~/components/ui/switch"
 import LoadPage from "./Load";
 import UploadPage from "./Upload";
