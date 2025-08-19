@@ -31,17 +31,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
     }
 
     // data here
-    return [
-        { group: 'nodes' as const, data: { id: 'root', label: 'root', type: 'root' } },
-        { group: 'nodes' as const, data: { id: 'A', label: 'A', type: 'leaf' } },
-        { group: 'nodes' as const, data: { id: 'B', label: 'B', type: 'internal' } },
-        { group: 'nodes' as const, data: { id: 'C', label: 'C', type: 'leaf' } },
-        { group: 'nodes' as const, data: { id: 'D', label: 'D', type: 'leaf' } },
-        { group: 'edges' as const, data: { id: 'rootA', source: 'root', target: 'A' } },
-        { group: 'edges' as const, data: { id: 'rootB', source: 'root', target: 'B' } },
-        { group: 'edges' as const, data: { id: 'rootC', source: 'root', target: 'C' } },
-        { group: 'edges' as const, data: { id: 'BD', source: 'B', target: 'D' } }
-    ];
+    return [];
     };
 
   const getColors = () => {
