@@ -1,0 +1,31 @@
+/* CSS Variables for floating UI components */
+:root {
+  /* Color Palette - Light Theme */
+  --bg-primary: #fafafa;
+  --bg-secondary: rgba(255, 255, 255, 0.9);
+  --border-light: rgba(0, 0, 0, 0.1);
+  --text-primary: #374151;
+  --text-secondary: #6b7280;
+  
+  /* Node Colors */
+  --node-default: rgba(59, 130, 246, 0.7);
+  --node-anchor: rgba(239, 68, 68, 0.8);
+  --node-border: rgba(0, 0, 0, 0.3);
+  
+  /* Edge Colors */
+  --edge-default: rgba(107, 114, 128, 0.6);
+  --edge-hover: rgba(59, 130, 246, 0.8);
+  
+  /* UI Elements */
+  --card-bg: rgba(255, 255, 255, 0.95);
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --card-border: rgba(0, 0, 0, 0.1);
+  --border-radius: 8px;
+  
+  /* Grid Colors */
+  --grid-minor: rgba(0, 0, 0, 0.03);
+  --grid-major: rgba(0, 0, 0, 0.08);
+  --grid-axis: rgba(59, 130, 246, 0.15);
+  --grid-dots: rgba(0, 0, 0, 0.1);
+  --grid-center: rgba(59, 130, 246, 0.2);
+} 
