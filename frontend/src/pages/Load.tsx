@@ -2,6 +2,7 @@ import MettaEditor from "~/components/space/MettaEditor"
 import UIControls from "~/components/controls/UIControls"
 import ZoomControls from "~/components/controls/ZoomControls"
 import MinimizeControls from "~/components/controls/MinimizeControls"
+import CytoscapeCanvas from "~/components/Canvas/CytoscapeCanvas"
 import { createResource, For, Show, Suspense, createSignal } from 'solid-js';
 import { readSpace, exploreSpace } from "~/lib/api"
 import { ParseError, LayoutAlgorithm, LayoutOptions, LayoutState } from '../types';
@@ -46,6 +47,27 @@ const LoadPage = () => {
         duration: 0
     });
 
+    let progressTimer: number | undefined;
+
+    const startProgressSim = (durationMs = 1500) => {
+        stopProgressSim();
+        const start = performance.now();
+        const tick = (t: number) => {
+            const elapsed = t - start;
+            const p = Math.min(0.98, elapsed / durationMs);
+            setLayoutState(prev => ({ ...prev, progress: p }));
+            if (p < 0.98 && layoutState().isAnimating) {
+                progressTimer = requestAnimationFrame(tick) as unknown as number;
+            }
+        };
+        progressTimer = requestAnimationFrame(tick) as unknown as number;
+    };
+
+    const stopProgressSim = () => {
+        if (progressTimer) cancelAnimationFrame(progressTimer);
+        progressTimer = undefined;
+    };
+
     // Editor event handlers
     const handleTextChange = (text: string) => {
         setMettaText(text);
@@ -73,51 +95,59 @@ const LoadPage = () => {
     // UI Controls event handlers
     const handleApplyLayout = (algorithm: LayoutAlgorithm, options?: LayoutOptions) => {
         console.log('Apply layout:', algorithm, options);
+        // Call Cytoscape
+        (window as any).cytoscapeControls?.applyLayout(algorithm, options);
+        
         setLayoutState(prev => ({
             ...prev,
             isAnimating: true,
             algorithm,
             startTime: Date.now(),
-            duration: options?.animationDuration || 1500
+            duration: options?.animationDuration || 1500,
+            progress: 0
         }));
-        
-        // Simulate layout animation
-        setTimeout(() => {
-            setLayoutState(prev => ({
-                ...prev,
-                isAnimating: false,
-                progress: 1
-            }));
-        }, options?.animationDuration || 1500);
+        startProgressSim(options?.animationDuration || 1500);
     };
 
     const handleStopLayout = () => {
         console.log('Stop layout');
+        (window as any).cytoscapeControls?.stopLayout();
         setLayoutState(prev => ({
             ...prev,
             isAnimating: false
         }));
+        stopProgressSim();
     };
 
     const handleExportPDF = () => {
         console.log('Export PDF');
+        (window as any).cytoscapeControls?.exportPDF(2);
     };
 
     const handleExportPNG = () => {
         console.log('Export PNG');
+        (window as any).cytoscapeControls?.exportPNG(2);
+    };
+
+    const handleToggleLabels = (show: boolean) => {
+        setShowLabels(show);
+        (window as any).cytoscapeControls?.setShowLabels(show);
     };
 
     // Zoom Controls event handlers
     const handleZoomIn = () => {
         console.log('Zoom in');
+        (window as any).cytoscapeControls?.zoomIn();
     };
 
     const handleZoomOut = () => {
         console.log('Zoom out');
+        (window as any).cytoscapeControls?.zoomOut();
     };
 
     const handleRecenter = () => {
         console.log('Recenter');
+        (window as any).cytoscapeControls?.recenter();
     };
 
     // Minimize Controls event handlers
@@ -132,6 +162,52 @@ const LoadPage = () => {
         setIsMinimized(false);
         setIsControlsMinimized(false);
     };
+
+    // Add Cytoscape event handlers
+    const handleNodeClick = (nodeData: any) => {
+        console.log('Node clicked:', nodeData);
+    };
+
+    const handleEdgeClick = (edgeData: any) => {
+        console.log('Edge clicked:', edgeData);
+    };
+
+    const handleZoomChange = (zoom: number) => {
+        console.log('Zoom changed:', zoom);
+    };
+
+    // Layout event listeners
+    const handleLayoutStart = (e: Event) => {
+        const detail = (e as CustomEvent).detail || {};
+        setLayoutState(prev => ({ 
+            ...prev, 
+            algorithm: detail.algorithm ?? prev.algorithm, 
+            isAnimating: true, 
+            progress: 0 
+        }));
+    };
+
+    const handleLayoutStop = () => {
+        stopProgressSim();
+        setLayoutState(prev => ({ ...prev, isAnimating: false, progress: 1 }));
+        setTimeout(() => setLayoutState(prev => ({ ...prev, progress: 0 })), 500);
+    };
+
+    // Add event listeners when component mounts
+    const setupEventListeners = () => {
+        window.addEventListener('cy:layoutstart', handleLayoutStart);
+        window.addEventListener('cy:layoutstop', handleLayoutStop);
+        
+        // Cleanup function
+        return () => {
+            window.removeEventListener('cy:layoutstart', handleLayoutStart);
+            window.removeEventListener('cy:layoutstop', handleLayoutStop);
+            stopProgressSim();
+        };
+    };
+
+    // Setup event listeners on mount
+    const cleanup = setupEventListeners();
 
     return (
         <div class="relative w-full h-full">
@@ -184,7 +260,7 @@ const LoadPage = () => {
                             onExportPDF={handleExportPDF}
                             onExportPNG={handleExportPNG}
                             showLabels={showLabels()}
-                            onToggleLabels={setShowLabels}
+                            onToggleLabels={handleToggleLabels}
                             onApplyLayout={handleApplyLayout}
                             layoutState={layoutState()}
                             onStopLayout={handleStopLayout}
@@ -193,26 +269,54 @@ const LoadPage = () => {
                 </Show>
             </div>
 
-            {/* Background Component - Full Screen */}
-            <div class="w-full h-full p-4" style="background: hsl(var(--background)); transition: background-color 0.3s ease;">
-                <Suspense fallback={<div class="loading-message">Loading...</div>}>
-                    <Show when={subSpace()} fallback={<div class="error-message">Error when loading space. Check mork server logs.</div>}>
-                        <div class="flex flex-col gap-4">
-                            <h2 class="text-xl font-semibold mb-4" style="color: hsl(var(--foreground)); transition: color 0.3s ease;">Space Data</h2>
-                            <For each={subSpace()}>
-                                {(item) => (
-                                    <div class="space-data-item">
-                                        <div class="expression-display">
-                                            <span class="expression-label">Expression: </span>
-                                            <span class="expression-value">{item.expr}</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </For>
+            {/* Cytoscape Canvas - Main Background */}
+            <div class="absolute inset-0 w-full h-full" style="z-index: 0;">
+                <Suspense fallback={
+                    <div class="flex items-center justify-center h-full" style="color: hsl(var(--muted-foreground));">
+                        <div class="text-lg">Loading graph...</div>
+                    </div>
+                }>
+                    <Show when={subSpace()} fallback={
+                        <div class="flex items-center justify-center h-full" style="color: hsl(var(--destructive));">
+                            <div class="text-center p-8">
+                                <div class="text-lg mb-2">Error loading space data</div>
+                                <div class="text-sm opacity-70">Check server logs for details</div>
+                            </div>
                         </div>
+                    }>
+                        <CytoscapeCanvas
+                            data={subSpace()}
+                            onNodeClick={handleNodeClick}
+                            onEdgeClick={handleEdgeClick}
+                            onZoomChange={handleZoomChange}
+                            className="w-full h-full"
+                        />
                     </Show>
                 </Suspense>
             </div>
+
+            {/* Data Panel - Optional overlay for debugging */}
+            <Show when={subSpace() && subSpace()!.length > 0}>
+                <div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 max-w-lg" style="z-index: 500;">
+                    <div class="space-data-item opacity-90 backdrop-blur-sm">
+                        <div class="text-xs font-semibold mb-2" style="color: hsl(var(--muted-foreground));">
+                            Graph Data ({subSpace()!.length} items)
+                        </div>
+                        <div class="max-h-20 overflow-y-auto">
+                            <For each={subSpace()!.slice(0, 3)}>
+                                {(item) => (
+                                    <div class="text-xs mb-1">
+                                        <span class="expression-value">{item.expr}</span>
+                                    </div>
+                                )}
+                            </For>
+                            {subSpace()!.length > 3 && (
+                                <div class="text-xs opacity-60">...and {subSpace()!.length - 3} more</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </Show>
         </div>
     );
 };
