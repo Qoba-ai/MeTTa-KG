@@ -299,7 +299,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
   const recenter = () => {
     if (cy) {
       cy.animate({
-        fit: { padding: 30 }
+        fit: { eles: cy.elements(), padding: 30 }
       }, {
         duration: 500,
         easing: 'ease-in-out'
