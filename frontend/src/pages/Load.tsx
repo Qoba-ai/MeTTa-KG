@@ -163,19 +163,6 @@ const LoadPage = () => {
         setIsControlsMinimized(false);
     };
 
-    // Add Cytoscape event handlers
-    const handleNodeClick = (nodeData: any) => {
-        console.log('Node clicked:', nodeData);
-    };
-
-    const handleEdgeClick = (edgeData: any) => {
-        console.log('Edge clicked:', edgeData);
-    };
-
-    const handleZoomChange = (zoom: number) => {
-        console.log('Zoom changed:', zoom);
-    };
-
     // Layout event listeners
     const handleLayoutStart = (e: Event) => {
         const detail = (e as CustomEvent).detail || {};
@@ -286,9 +273,6 @@ const LoadPage = () => {
                     }>
                         <CytoscapeCanvas
                             data={subSpace()}
-                            onNodeClick={handleNodeClick}
-                            onEdgeClick={handleEdgeClick}
-                            onZoomChange={handleZoomChange}
                             className="w-full h-full"
                         />
                     </Show>
