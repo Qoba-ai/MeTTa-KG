@@ -15,7 +15,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
   let cy: Core | undefined;
   let currentLayout: ReturnType<Core['layout']> | undefined;
 
-  // Create sample data from subSpace if no data provided
+  // Data extractor
   const getGraphData = () => {
     if (props.data && props.data.length > 0) {
       return props.data.map((item, index) => ({
@@ -28,20 +28,10 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
       }));
     }
 
-    // Default sample data with expandable nodes
-    return [
-      { group: 'nodes', data: { id: 'a', label: 'gender Chandler M', type: 'fact' } },
-      { group: 'nodes', data: { id: 'b', label: 'age Alice 25', type: 'fact' } },
-      { group: 'nodes', data: { id: 'asdj', label: 'age Alice 25', type: 'fact' } },
-      { group: 'nodes', data: { id: 'c', label: 'is-brother John Adam', type: 'relation' } },
-      { group: 'nodes', data: { id: 'd', label: 'likes Alice Coffee', type: 'relation' } },
-      { group: 'edges', data: { id: 'ab', source: 'a', target: 'b' } },
-      { group: 'edges', data: { id: 'bc', source: 'b', target: 'c' } },
-      { group: 'edges', data: { id: 'bd', source: 'b', target: 'd' } }
-    ];
+    // data here
+    return [];
   };
 
-  // MORK Trie Demo color scheme - exact match
   const getColors = () => {
     return {
       nodeBackground: '#21C45D',           
@@ -54,7 +44,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
     };
   };
 
-  // Initialize Cytoscape with MORK Trie Demo styling
+  // Initialize Cytoscape
   onMount(() => {
     if (!containerRef) return;
 
@@ -98,7 +88,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
           }
         },
         
-        // Edge styling - matching MORK demo
+        // Edge styling 
         {
           selector: 'edge',
           style: {
@@ -138,7 +128,7 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
       ],
 
       layout: {
-        // Breadthfirst layout like MORK demo
+        // Breadthfirst layout 
         name: 'breadthfirst',
         directed: true,
         padding: 10,

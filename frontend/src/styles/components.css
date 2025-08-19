@@ -772,7 +772,6 @@
   line-height: 1.2;
 }
 
-/* Keep your existing positioning and responsive styles */
 .top-left { top: 10px; left: 10px; }
 .top-center { top: 20px; left: 50%; transform: translateX(-50%); }
 .top-right { top: 10px; right: 10px; }
@@ -780,7 +779,6 @@
 .bottom-right-upper { bottom: 220px; right: 10px; width: 280px; }
 .bottom-right-lower { bottom: 10px; right: 10px; width: 280px; }
 
-/* Keep all your existing layout, sizing, and responsive styles... */
 .metta-editor-card {
   width: 320px;
   height: calc(100vh - 80px);
@@ -804,5 +802,3 @@
 .ui-card.minimized .card-content {
   display: none;
 }
-
-/* ... rest of your existing styles remain the same ... */
