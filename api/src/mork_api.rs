@@ -177,7 +177,7 @@ impl TransformRequest {
         format!(
             "(, {})",
             self.transform_input
-                .patterns
+                .templates
                 .iter()
                 .map(|pattern| { self.namespace.with_namespace(pattern) })
                 .collect::<Vec<String>>()
