@@ -1,13 +1,64 @@
 import { createSignal, onMount, onCleanup } from 'solid-js';
-import cytoscape, { Core, NodeSingular, EdgeSingular, ElementsDefinition, StylesheetCSS, EdgeCollection, CollectionArgument, ElementDefinition, Position } from 'cytoscape';
-import { Component } from 'solid-js';
+import cytoscape, {
+	Core,
+	NodeSingular,
+	NodeDefinition,
+	EdgeSingular,
+	ElementsDefinition,
+	StylesheetCSS,
+	EdgeCollection,
+	CollectionArgument,
+	ElementDefinition,
+	Position
+} from 'cytoscape';
+import { SpaceEdge, SpaceNode, subSpace } from '~/lib/space';
 
-export const LazyCytoscapeGraph: Component = () => {
+
+interface LazyCytoscapeGraphProps {
+	initNodes?: SpaceNode[]
+	initEdges?: SpaceEdge[]
+}
+
+export function LazyCytoscapeGraph(props: LazyCytoscapeGraphProps) {
 	let cyContainer: HTMLDivElement | undefined;
 	let cyInstance: Core | undefined;
 	const [collapsedNodes, setCollapsedNodes] = createSignal<Map<string, { nodes: ElementDefinition[], edges: ElementDefinition[], originalPositions: Record<string, Position> }>>(
 		new Map()
 	);
+
+	const initNodes = props.initNodes || [
+		{ id: '-' },
+		{ id: 'bird' },
+		{ id: 'ladybug' },
+		{ id: 'aphid' },
+		{ id: 'rose' },
+		{ id: 'grasshopper' },
+		{ id: 'plant' },
+		{ id: 'wheat' }
+	] as SpaceNode[]
+	const initEdges = props.initEdges || [
+		{ source: '-', target: 'bird' },
+		{ source: 'bird', target: 'ladybug' },
+		{ source: 'bird', target: 'grasshopper' },
+		{ source: 'grasshopper', target: 'plant' },
+		{ source: 'grasshopper', target: 'wheat' },
+		{ source: 'ladybug', target: 'aphid' },
+		{ source: 'aphid', target: 'rose' }
+	] as SpaceEdge[]
+
+	const [nodes, setNodes] = createSignal(initNodes.map((n) => {
+		return {
+			data: { id: n.id }
+		} as NodeDefinition
+	}))
+
+
+	//{ data: { source: 'cat', target: 'bird' } },
+	const [edges, setEdges] = createSignal(initEdges.map((n) => {
+		return {
+			data: { source: n.source, target: n.target }
+		}
+	}))
 
 	onMount(() => {
 		if (!cyContainer) {
@@ -62,25 +113,8 @@ export const LazyCytoscapeGraph: Component = () => {
 			] as StylesheetCSS[],
 
 			elements: {
-				nodes: [
-					{ data: { id: 'cat' }},
-					{ data: { id: 'bird' } },
-					{ data: { id: 'ladybug' } },
-					{ data: { id: 'aphid' } },
-					{ data: { id: 'rose' } },
-					{ data: { id: 'grasshopper' } },
-					{ data: { id: 'plant' } },
-					{ data: { id: 'wheat' } }
-				],
-				edges: [
-					{ data: { source: 'cat', target: 'bird' } },
-					{ data: { source: 'bird', target: 'ladybug' } },
-					{ data: { source: 'bird', target: 'grasshopper' } },
-					{ data: { source: 'grasshopper', target: 'plant' } },
-					{ data: { source: 'grasshopper', target: 'wheat' } },
-					{ data: { source: 'ladybug', target: 'aphid' } },
-					{ data: { source: 'aphid', target: 'rose' } }
-				]
+				nodes: nodes(),
+				edges: edges()
 			} as ElementsDefinition,
 
 			layout: {
@@ -131,11 +165,11 @@ export const LazyCytoscapeGraph: Component = () => {
 				for (let i = elementsToRestore.nodes.length - 1; i >= 0; i--) {
 					(function() {
 						const restoredNodeId = elementsToRestore.nodes[i].data.id;
-						const thisFood: NodeSingular = addedNodes.filter(`[id = "${restoredNodeId}"]`).first() as NodeSingular;
+						const node: NodeSingular = addedNodes.filter(`[id = "${restoredNodeId}"]`).first() as NodeSingular;
 						const originalPos = elementsToRestore.originalPositions[restoredNodeId];
-						const incomingEdge: EdgeCollection = thisFood.incomers('edge');
+						const incomingEdge: EdgeCollection = node.incomers('edge');
 
-						thisFood.delay(delay).animate({
+						node.delay(delay).animate({
 							position: originalPos,
 							style: {
 								width: 80,
@@ -161,9 +195,8 @@ export const LazyCytoscapeGraph: Component = () => {
 					})();
 				}
 			} else {
-				// Collapse: Collect and remove food nodes with animation
-				const food: NodeSingular[] = [];
-				const foodEdges: EdgeSingular[] = [];
+				const node: NodeSingular[] = [];
+				const nodeEdges: EdgeSingular[] = [];
 
 				nodes.addClass('eater');
 
@@ -173,9 +206,9 @@ export const LazyCytoscapeGraph: Component = () => {
 					});
 
 					const connectedNodes = connectedEdges.targets() as NodeSingular[];
-					foodEdges.push(...connectedEdges);
+					nodeEdges.push(...connectedEdges);
 
-					Array.prototype.push.apply(food, connectedNodes);
+					Array.prototype.push.apply(node, connectedNodes);
 
 					nodes = connectedNodes;
 
@@ -184,14 +217,14 @@ export const LazyCytoscapeGraph: Component = () => {
 
 				// Store original positions
 				const originalPositions: Record<string, Position> = {};
-				food.forEach(node => {
+				node.forEach(node => {
 					originalPositions[node.id()] = { ...node.position() };
 				});
 
 				// Store the elements to be removed
 				const elementsToRemove = {
-					nodes: food.map(node => ({ group: 'nodes', data: node.data() })),
-					edges: foodEdges.map(edge => ({ group: 'edges', data: edge.data() })),
+					nodes: node.map(node => ({ group: 'nodes', data: node.data() })),
+					edges: nodeEdges.map(edge => ({ group: 'edges', data: edge.data() })),
 					originalPositions
 				};
 
@@ -205,9 +238,9 @@ export const LazyCytoscapeGraph: Component = () => {
 				let delay: number = 0;
 				const duration: number = 150;
 				const stagger = 50; // Overlap animations for faster overall effect
-				for (let i = food.length - 1; i >= 0; i--) {
+				for (let i = node.length - 1; i >= 0; i--) {
 					(function() {
-						const thisFood: NodeSingular = food[i];
+						const thisFood: NodeSingular = node[i];
 						const eater: NodeSingular = thisFood.connectedEdges(function(el: EdgeSingular) {
 							return el.target().same(thisFood);
 						}).source() as NodeSingular;
