@@ -214,6 +214,7 @@ const LoadPage = () => {
                             onTextChange={handleTextChange}
                             onFileUpload={handleFileUpload}
                             parseErrors={parseErrors()}
+                            showActionButtons={true}
                         />
                     </div>
                 </Show>
