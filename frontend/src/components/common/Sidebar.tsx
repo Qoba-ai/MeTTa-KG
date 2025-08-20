@@ -1,6 +1,6 @@
 import { createSignal, createContext, useContext, For } from 'solid-js';
 import { A } from '@solidjs/router';
-import { ArrowRightToLine } from 'lucide-solid';
+import ArrowRightToLine from 'lucide-solid/icons/arrow-right-to-line';
 import { ModeToggle } from './modeToggle';
 import { Separator } from "~/components/ui/separator"
 import { Button } from "~/components/ui/button"

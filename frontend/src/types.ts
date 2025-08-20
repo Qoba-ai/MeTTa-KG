@@ -51,6 +51,92 @@ interface JSONLDParserParameters {
     dummy: string
 }
 
+export interface ParseError {
+  line: number;
+  column: number;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+// Component Prop Interfaces
+export interface MettaEditorProps {
+  initialText: string;
+  onTextChange: (text: string) => void;
+  onFileUpload: (file: File) => void;
+  parseErrors: ParseError[];
+}
+
+// export interface LegendProps {
+//   graphData: GraphData;
+// }
+
+export interface UIControlsProps {
+  onExportPDF: () => void;
+  onExportPNG: () => void;
+  showLabels: boolean;
+  onToggleLabels: (show: boolean) => void;
+  onStopLayout: () => void;
+  onApplyLayout: (algorithm: LayoutAlgorithm, options?: LayoutOptions) => void;
+  layoutState: LayoutState;
+}
+
+// export interface ContextMenuProps {
+//   node: GraphNode | null;
+//   position: { x: number; y: number } | null;
+//   onIsolate: (node: GraphNode) => void;
+//   onCopyLabel: (node: GraphNode) => void;
+//   onClose: () => void;
+// }
+
+export interface ZoomControlsProps {
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onRecenter: () => void;
+}
+
+export interface MinimizeControlsProps {
+  onMinimizeAll: () => void;
+  onMaximizeAll: () => void;
+}
+
+export interface FloatingCardProps {
+  title: string;
+  isMinimized: boolean;
+  onToggleMinimize: () => void;
+  position?: 
+    | 'top-left'
+    | 'top-right'
+    | 'bottom-right-upper'
+    | 'bottom-right-lower'
+    | 'top-center'
+    | 'top-right-secondary';
+  width?: string;
+  height?: string;
+  children?: any;
+  className?: string;
+}
+
+// Layout Types
+export type LayoutAlgorithm = 'force-directed' | 'hierarchical' | 'circular';
+
+export interface LayoutOptions {
+  iterations?: number;
+  springLength?: number;
+  springStrength?: number;
+  repulsionStrength?: number;
+  damping?: number;
+  animationDuration?: number;
+  centerForce?: number;
+}
+
+export interface LayoutState {
+  algorithm: LayoutAlgorithm;
+  isAnimating: boolean;
+  progress: number;
+  startTime?: number;
+  duration?: number;
+}
+
 export {
     type Token,
     EditorMode,
@@ -60,5 +146,5 @@ export {
     type CSVParserParameters,
     type NTParserParameters,
     type N3ParserParameters,
-    type JSONLDParserParameters
+    type JSONLDParserParameters,
 }

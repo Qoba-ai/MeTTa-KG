@@ -11,7 +11,7 @@ import cytoscape, {
 	ElementDefinition,
 	Position
 } from 'cytoscape';
-import { SpaceEdge, SpaceNode, subSpace } from '~/lib/space';
+import { SpaceEdge, SpaceNode, elementsToCyInput } from '~/lib/space';
 
 
 interface LazyCytoscapeGraphProps {
@@ -26,6 +26,7 @@ export function LazyCytoscapeGraph(props: LazyCytoscapeGraphProps) {
 		new Map()
 	);
 
+	// Get initial nodes and edges from `/explore`. know how to insert args to `createRsources` first
 	const initNodes = props.initNodes || [
 		{ id: '-' },
 		{ id: 'bird' },
@@ -46,19 +47,8 @@ export function LazyCytoscapeGraph(props: LazyCytoscapeGraphProps) {
 		{ source: 'aphid', target: 'rose' }
 	] as SpaceEdge[]
 
-	const [nodes, setNodes] = createSignal(initNodes.map((n) => {
-		return {
-			data: { id: n.id }
-		} as NodeDefinition
-	}))
-
-
-	//{ data: { source: 'cat', target: 'bird' } },
-	const [edges, setEdges] = createSignal(initEdges.map((n) => {
-		return {
-			data: { source: n.source, target: n.target }
-		}
-	}))
+	const [nodes, setNodes] = createSignal(elementsToCyInput(initNodes))
+	const [edges, setEdges] = createSignal(elementsToCyInput(initEdges))
 
 	onMount(() => {
 		if (!cyContainer) {
@@ -297,5 +287,35 @@ export function LazyCytoscapeGraph(props: LazyCytoscapeGraphProps) {
 		});
 	});
 
-	return <div ref={cyContainer} id="cy" class="w-full h-full" />;
+	return (
+
+		<>
+			{/* Suspense handles the loading state */}
+			<Suspense fallback={<p>Loading subspace data...</p>}>
+				{/* Show handles errors and empty states */}
+				<Show when={!subSpace.error} fallback={
+					<p class="error">Error: {subSpace.error?.message}</p>
+				}>
+					<Show when={subSpace() && subSpace().length > 0} fallback={
+						<p>No data found for this path.</p>
+					}>
+						<div>
+							<h3>Database Contents:</h3>
+							<div ref={cyContainer} id="cy" class="w-full h-full" />;
+							<For each={subSpace()}>
+								{(item, index) => (
+									<div>
+										<p>Item {index() + 1}:</p>
+										<p>Token: {item.token}</p>
+										<p>Expression: {item.expr}</p>
+									</div>
+								)}
+							</For>
+						</div>
+					</Show>
+				</Show>
+			</Suspense>
+		</>
+	)
+
 };

@@ -7,7 +7,11 @@ import { CodeInputField } from "~/components/upload/codeInputField"
 import { OutputViewer } from "~/components/upload/outputViewer"
 import { CommandCard } from "~/components/upload/commandCard"
 import toast from 'solid-toast'
-import { Loader, Upload as Upload_, Link, FileText, File } from 'lucide-solid'
+import Loader from 'lucide-solid/icons/loader'
+import Upload_ from 'lucide-solid/icons/upload'
+import Link from 'lucide-solid/icons/link'
+import FileText from 'lucide-solid/icons/file-text'
+import File from 'lucide-solid/icons/file'
 import { importSpace } from '~/lib/api'
 import { namespace } from "~/lib/state"
 import { error } from "console"
