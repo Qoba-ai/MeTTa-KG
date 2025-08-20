@@ -34,6 +34,7 @@ fn rocket() -> Rocket<Build> {
         .mount(
             "/",
             routes![
+                routes::upload::upload,
                 routes::translations::create_from_csv,
                 routes::translations::create_from_nt,
                 routes::translations::create_from_jsonld,
@@ -45,7 +46,7 @@ fn rocket() -> Rocket<Build> {
                 routes::tokens::delete,
                 routes::tokens::delete_batch,
                 routes::spaces::read,
-                //routes::spaces::upload,
+                // routes::spaces::upload,
                 routes::spaces::import,
                 routes::spaces::transform,
                 routes::spaces::explore
