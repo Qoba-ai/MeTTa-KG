@@ -1,37 +1,16 @@
 import { Component, createSignal, onCleanup, Show } from 'solid-js';
-
-// UI Components from provided files
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import MettaEditor from '../components/space/MettaEditor';
+import { OutputViewer } from "~/components/upload/outputViewer";
+import { CommandCard } from "~/components/upload/commandCard";
+import { transform, isPathClear, Transformation } from '~/lib/api';
+import { namespace } from "~/lib/state";
+import toast from 'solid-toast';
 
-// Assumed API functions
-// import { transformData, isPathClear } from '@/lib/mork-api';
-
-/**
- * A simple component to display formatted output, styled with Tailwind CSS.
- */
-const OutputViewer: Component<{ title: string; data: any; status: 'success' | 'error' }> = (props) => {
-  const dataString = typeof props.data === 'string' ? props.data : JSON.stringify(props.data, null, 2);
-  const titleColorClass = props.status === 'error' ? 'text-destructive' : 'text-foreground';
-  const borderColorClass = props.status === 'error' ? 'border-destructive' : 'border-border';
-
-  return (
-    <div class="mt-4">
-      <h3 class={`font-semibold text-sm mb-2 ${titleColorClass}`}>
-        {props.title}
-      </h3>
-      <pre class={`bg-muted border rounded-md p-3 text-xs text-muted-foreground whitespace-pre-wrap break-all ${borderColorClass}`}>
-        <code>{dataString}</code>
-      </pre>
-    </div>
-  );
-};
-
-/**
- * The main TransformCommand component, now styled using Tailwind CSS.
- */
-const Transform: Component<{ isUnderConstruction?: boolean }> = (props) => {
-  const [sExpr, setSExpr] = createSignal("(Node Node) \n \n \n \n \n \n \n");
+const TransformPage: Component = () => {
+  const [sExpr, setSExpr] = createSignal(`(transform 
+  (, (pattern $x))
+  (, (template $x))
+)`);
   const [isLoading, setIsLoading] = createSignal(false);
   const [isPolling, setIsPolling] = createSignal(false);
   const [result, setResult] = createSignal<any>(null);
@@ -46,57 +25,91 @@ const Transform: Component<{ isUnderConstruction?: boolean }> = (props) => {
   
   onCleanup(stopPolling);
 
-  const startPolling = (expr: string) => {
+  const startPolling = (spacePath: string) => {
     setIsPolling(true);
     pollingIntervalId = setInterval(async () => {
       try {
-        const isClear = await isPathClear(expr);
+        const isClear = await isPathClear(spacePath);
         if (isClear) {
           stopPolling();
           setResult("Successfully transformed the space 🎉");
+          toast.success("Transform completed!");
         }
       } catch (error) {
-        console.error("Status polling error:", error);
         setResult({ error: "Failed to fetch transformation status." });
+        toast.error("Polling failed.");
         stopPolling();
       }
     }, 3000);
   };
 
   const handleTransform = async () => {
+    if (!sExpr().trim()) {
+      toast.error("Please enter a transform expression.");
+      return;
+    }
+    
+    
     setIsLoading(true);
     setResult(null);
     stopPolling();
 
+    let spacePath = namespace().join("/");
+    
+    const filteredNamespace = namespace().filter(part => part.trim() !== "");
+    if (filteredNamespace.length === 0) {
+      // Use root space if no namespace is set
+      spacePath = "";
+    } else {
+      spacePath = filteredNamespace.join("/");
+    }
+
     try {
-      const response = await transformData(sExpr());
-      if (response.status === "success") {
-        console.log("Transformation Initiated:", response.message);
-        startPolling(sExpr());
-      } else {
-        setResult({ error: response.message || "Failed to initiate transformation." });
+      const pathIsClear = await isPathClear(spacePath);
+      
+      if (!pathIsClear) {
+        toast.error("The space is currently busy. Please wait.");
+        setResult({ error: "The space is currently busy. Please wait." });
+        setIsLoading(false);
+        return;
       }
+
+      // Create transformation using existing API structure
+      const transformation: Transformation = {
+        space: spacePath,
+        patterns: [sExpr()],
+        templates: [sExpr()]
+      };
+
+
+      const success = await transform(transformation);
+      
+      if (success) {
+        toast.success("Transform initiated successfully");
+        setResult("Transformation in progress...");
+        startPolling(spacePath);
+      } else {
+        setResult({ error: "Failed to initiate transformation." });
+        toast.error("Transform failed");
+      }
+
     } catch (error) {
-      console.error("Unknown Transform Error:", error);
-      setResult({ error: "An unexpected error occurred." });
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
+      setResult({ error: errorMessage });
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleFileUpload = (file: File) => {
-    console.log("File upload not implemented.", file.name);
   };
 
   return (
-    <Card class="max-w-4xl">
-      <CardHeader>
-        <CardTitle>Transform Data</CardTitle>
-        <CardDescription>
-          Apply templates to matched patterns. Input S-Expression.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <CommandCard
+    title="Transform Data"
+    description="Apply templates to matched patterns. Input S-Expression like: (transform (, (pattern)) (, (template)))"
+    >
         <div class="space-y-4">
           <MettaEditor
             initialText={sExpr()}
@@ -146,9 +159,8 @@ const Transform: Component<{ isUnderConstruction?: boolean }> = (props) => {
             />
           )}
         </Show>
-      </CardContent>
-    </Card>
+    </CommandCard>
   );
 };
 
-export default Transform;
+export default TransformPage;
