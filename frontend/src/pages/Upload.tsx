@@ -12,20 +12,8 @@ import Upload_ from 'lucide-solid/icons/upload'
 import Link from 'lucide-solid/icons/link'
 import FileText from 'lucide-solid/icons/file-text'
 import File from 'lucide-solid/icons/file'
-import { importSpace } from '~/lib/api'
+import { importSpace, importData, upload } from '~/lib/api'; // <-- add upload
 import { namespace } from "~/lib/state"
-import { error } from "console"
-
-async function importData(type: string, data: any = null, format: string = "metta") {
-	console.info("Not implemented")
-	console.log(data)
-
-	return {
-		status: "success",
-		data,
-		message: ""
-	}
-}
 
 export const UploadPage: Component = () => {
 	// URL Import state
@@ -40,7 +28,7 @@ export const UploadPage: Component = () => {
 	const [textContent, setTextContent] = createSignal(`(= (fact 0) 1)
 (= (fact $n) (* $n (fact (- $n 1))))
 (fact 5)`)
-	const [textFormat, setTextFormat] = createSignal("metta")
+    const [textFormat, setTextFormat] = createSignal("metta")
 
 	// Common state
 	const [activeTab, setActiveTab] = createSignal("url")
@@ -54,10 +42,12 @@ export const UploadPage: Component = () => {
 		}
 	}
 
-	const handleImport = async () => {
-		setIsLoading(true)
-		try {
-			let response
+    const handleImport = async () => {
+        setIsLoading(true)
+        setResult(null) // Clear previous results
+        
+        try {
+            let response
 
 			switch (activeTab()) {
 				case "url":
@@ -78,49 +68,57 @@ export const UploadPage: Component = () => {
 					}
 					break
 
-				case "file":
-					if (!selectedFile()) {
-						toast("Please select a file to upload",)
-						return
-					}
-					const formData = new FormData()
-					formData.append("file", selectedFile()!)
-					response = await importData("file", formData)
-					break
+                case "file":
+                    console.log("Importing from file...")
+                    if (!selectedFile()) {
+                        toast.error("Please select a file to upload")
+                        return
+                    }
+                    const formData = new FormData()
+                    formData.append("file", selectedFile()!)
+                    
+                    response = await importData("file", formData, "metta") // Assume metta format for files
+                    if (response.status === "success") {
+                        setResult({ data: response.data, status: "success" })
+                        toast.success(response.message)
+                    } else {
+                        setResult({ error: response.message, status: "error" })
+                        toast.error(response.message)
+                    }
+                    break
 
-				case "text":
-					if (!textContent().trim()) {
-						toast(
-							"Text content is required",
-						)
-						return
-					}
-					response = await importData("text", textContent(), textFormat())
-					break
+                case "text":
+                    console.log("Importing text content...")
+                    if (!textContent().trim()) {
+                        toast.error("Text content is required")
+                        return
+                    }
+
+                    try {
+                        const cleanText = textContent().replace(/[\r\n]+/g, '\n').trim();
+                        const response = await upload("$x", "$x", cleanText, textFormat());
+                        setResult({ data: response, status: "success" });
+                        toast.success("Text uploaded successfully");
+                    } catch (error) {
+                        const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
+                        setResult({ error: errorMessage, status: "error" });
+                        toast.error(errorMessage);
+                    }
+                    break
 
 				default:
 					throw new Error("Invalid tab selection")
 			}
 
-			//setResult(response.data)
-			//
-			//if (response.status === "success") {
-			//	toast(
-			//		response.message,
-			//	)
-			//} else {
-			//	toast(
-			//		response.message || "Failed to import data",
-			//	)
-			//}
-		} catch (error) {
-			toast(
-				"An unexpected error occurred"
-			)
-		} finally {
-			setIsLoading(false)
-		}
-	}
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred"
+            console.error("Import error:", error)
+            setResult({ error: errorMessage, status: "error" })
+            toast.error(errorMessage)
+        } finally {
+            setIsLoading(false)
+        }
+    }
 
 	const formatFileSize = (bytes: number) => {
 		if (bytes === 0) return "0 Bytes";
@@ -252,7 +250,7 @@ export const UploadPage: Component = () => {
                                         placeholder="Select format"
                                     >
                                         <SelectTrigger>
-                                            <SelectValue />
+                                            <SelectValue>{textFormat()}</SelectValue>
                                         </SelectTrigger>
                                         <SelectContent />
                                     </Select>
