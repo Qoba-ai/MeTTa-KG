@@ -241,30 +241,34 @@ export const UploadPage: Component = () => {
 					<TabsContent value="text" class="space-y-4">
 						<div class="space-y-4">
 							<div class="space-y-2">
-								<TextFieldLabel for="text-format">Format</TextFieldLabel>
-								<Select
-									value={textFormat()}
-									onChange={setTextFormat}
-									disabled={isLoading()}
-									options={["metta", "json", "raw"]}
-									itemComponent={(props) => <SelectItem item={props.item}>{props.item.rawValue}</SelectItem>}
-									placeholder="Select format"
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent />
-								</Select>
+                                <TextField>
+								    <TextFieldLabel for="text-format">Format</TextFieldLabel>
+                                    <Select
+                                        value={textFormat()}
+                                        onChange={setTextFormat}
+                                        disabled={isLoading()}
+                                        options={["metta", "json", "raw"]}
+                                        itemComponent={(props) => <SelectItem item={props.item}>{props.item.rawValue}</SelectItem>}
+                                        placeholder="Select format"
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent />
+                                    </Select>
+                                </TextField>
 							</div>
 
-							<CodeInputField
-								label="S-Expression Content"
-								value={textContent()}
-								onChange={setTextContent}
-								placeholder="Enter your S-expression code here..."
-								syntax={textFormat()}
-								rows={8}
-							/>
+							<TextField>
+								<CodeInputField
+									label="S-Expression Content"
+									value={textContent()}
+									onChange={setTextContent}
+									placeholder="Enter your S-expression code here..."
+									syntax={textFormat()}
+									rows={8}
+								/>
+							</TextField>
 
 							<div class="text-xs text-muted-foreground">
 								<p>
