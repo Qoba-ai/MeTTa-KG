@@ -4,6 +4,7 @@ import { exploreSpace } from "~/lib/api"
 interface SpaceNode {
 	id: string,
 	label: string,
+	remoteData: any,
 }
 
 interface SpaceEdge {
@@ -23,10 +24,10 @@ const [subSpace] = createResource(
 			token: token
 		});
 		res = JSON.parse(res as any);
-		res.forEach((each) => {
-			console.log("token: ", each.token);
-			console.log("expr: ", each.expr);
-		});
+		//res.forEach((each) => {
+		//	console.log("token: ", each.token);
+		//	console.log("expr: ", each.expr);
+		//});
 		return res;
 	}
 );
@@ -34,23 +35,40 @@ const [subSpace] = createResource(
 
 // HELPER FUNCTIONS
 
-// changes backend responses from `/explore` to correct `SpaceNode` representation
-// current format is `{token: Uint8Array, expr: string}`
-function initNodeFromApiResponse(data: { token: Uint8Array, expr: string }): SpaceNode {
+
+function initNode(id: string, label: string, remoteData?: any): SpaceNode {
 	return {
-		id: tokenToString(data.token),
-		label: extractLabel(data.expr)
+		id,
+		label,
+		remoteData
 	}
 }
 
-// changes a token of type Uint8Array to a string
+function initEdge(source: string, target: string): SpaceEdge {
+	return {
+		source: source,
+		target: target
+	}
+}
+
+// changes backend responses from `/explore` to correct `SpaceNode` representation
+// current format is `{token: Uint8Array, expr: string}`
+function initNodeFromApiResponse(data: { token: Uint8Array, expr: string }): SpaceNode {
+	return initNode(
+		tokenToString(data.token),
+		extractLabel(data.expr),
+		data
+	)
+}
+
+// changes a token of type Uint8Array to a unique string representation
 function tokenToString(token: Uint8Array): string {
-	return new TextDecoder().decode(token)
+	return token.join("-")
 }
 
 // changes a string to a token of type Uint8Array
 function stringToToken(token: string): Uint8Array {
-	return new TextEncoder().encode(token)
+	return Uint8Array.from(token.split("-").map((item) => parseInt(item)))
 }
 
 // Extracts a label from an expression
@@ -60,9 +78,9 @@ function extractLabel(expr: string): string {
 
 // wraps elements(nodes or edges) insde `data` keys.
 function elementsToCyInput(eles: SpaceNode[] | SpaceEdge[]): any[] {
-	return eles.map(() => {
+	return eles.map((el) => {
 		return {
-			data: eles
+			data: el
 		}
 	})
 }
@@ -75,6 +93,8 @@ export type {
 
 export {
 	subSpace,
+	initNode,
+	initEdge,
 	initNodeFromApiResponse,
 	tokenToString,
 	stringToToken,

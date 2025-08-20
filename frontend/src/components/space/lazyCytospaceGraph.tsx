@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show, For, Suspense } from 'solid-js';
 import cytoscape, {
 	Core,
 	NodeSingular,
@@ -11,7 +11,7 @@ import cytoscape, {
 	ElementDefinition,
 	Position
 } from 'cytoscape';
-import { SpaceEdge, SpaceNode, elementsToCyInput } from '~/lib/space';
+import { SpaceEdge, SpaceNode, subSpace, elementsToCyInput, tokenToString, initNode } from '~/lib/space';
 
 
 interface LazyCytoscapeGraphProps {
@@ -47,8 +47,12 @@ export function LazyCytoscapeGraph(props: LazyCytoscapeGraphProps) {
 		{ source: 'aphid', target: 'rose' }
 	] as SpaceEdge[]
 
-	const [nodes, setNodes] = createSignal(elementsToCyInput(initNodes))
+	const [nodes, setNodes] = createSignal(elementsToCyInput([initNode("root", ""), ...initNodes]))
 	const [edges, setEdges] = createSignal(elementsToCyInput(initEdges))
+
+	console.log("nodes: ", nodes())
+	console.log("edges: ", edges())
+	console.log("init edges: ", initEdges)
 
 	onMount(() => {
 		if (!cyContainer) {
@@ -69,7 +73,7 @@ export function LazyCytoscapeGraph(props: LazyCytoscapeGraphProps) {
 						height: 80,
 						width: 80,
 						'background-color': '#21C45D',
-						label: 'data(id)',
+						label: 'data(label)',
 						display: "flex",
 						"text-valign": "center",
 						"test-halign": "center",
@@ -289,33 +293,20 @@ export function LazyCytoscapeGraph(props: LazyCytoscapeGraphProps) {
 
 	return (
 
-		<>
-			{/* Suspense handles the loading state */}
-			<Suspense fallback={<p>Loading subspace data...</p>}>
-				{/* Show handles errors and empty states */}
-				<Show when={!subSpace.error} fallback={
-					<p class="error">Error: {subSpace.error?.message}</p>
-				}>
-					<Show when={subSpace() && subSpace().length > 0} fallback={
-						<p>No data found for this path.</p>
-					}>
-						<div>
-							<h3>Database Contents:</h3>
-							<div ref={cyContainer} id="cy" class="w-full h-full" />;
-							<For each={subSpace()}>
-								{(item, index) => (
-									<div>
-										<p>Item {index() + 1}:</p>
-										<p>Token: {item.token}</p>
-										<p>Expression: {item.expr}</p>
-									</div>
-								)}
-							</For>
-						</div>
-					</Show>
-				</Show>
-			</Suspense>
-		</>
+		<div class="w-full h-full flex flex-col items-center justify-center">
+			{
+				//<For each={subSpace()}>
+				//	{(item, index) => (
+				//		<div>
+				//			<p>Item {index() + 1}:</p>
+				//			<p>Token: {tokenToString(item.token)}</p>
+				//			<p>Expression: {item.expr}</p>
+				//		</div>
+				//	)}
+				//</For>
+			}
+			<div ref={cyContainer} id="cy" class="w-full h-full" />;
+		</div>
 	)
 
 };
