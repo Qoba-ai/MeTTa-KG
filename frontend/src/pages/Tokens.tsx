@@ -1,2 +1,284 @@
-const TokensPage = () => <div>Tokens Page</div>;
+import type { Component, JSX } from "solid-js";
+import { createResource, createSignal, For, onMount, Show } from "solid-js";
+import { A } from "@solidjs/router";
+import toast, { Toaster } from "solid-toast";
+
+// Import UI Components
+import { Button } from "~/components/ui/button";
+import { TextField, TextFieldInput, TextFieldLabel } from "~/components/ui/text-field";
+import { CommandCard } from "~/components/upload/commandCard";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogFooter,
+    DialogTitle,
+    DialogDescription,
+    DialogTrigger,
+} from "~/components/ui/dialog";
+
+import Copy from 'lucide-solid/icons/copy';
+import Trash2 from 'lucide-solid/icons/trash-2';
+import RefreshCw from 'lucide-solid/icons/refresh-cw';
+import ArrowUp from 'lucide-solid/icons/arrow-up';
+import ArrowDown from 'lucide-solid/icons/arrow-down';
+import Check from 'lucide-solid/icons/check';
+import X from 'lucide-solid/icons/x';
+
+import { API_URL } from '../lib/api';
+import { Token } from '../types';
+
+// Enums and API functions from original Tokens.tsx
+enum SortableColumns {
+    TIMESTAMP,
+    NAMESPACE,
+    READ,
+    WRITE,
+    SHARE_READ,
+    SHARE_WRITE,
+    SHARE_SHARE,
+}
+
+const fetchTokens = async (root: string | null): Promise<Token[]> => {
+    localStorage.setItem('rootToken', root ?? '');
+    if (!root) return [];
+    try {
+        const resp = await fetch(`${API_URL}/tokens`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json', Authorization: root },
+        });
+        const tokens = await resp.json();
+        toast.success(`Loaded ${tokens.length} tokens.`);
+        return tokens;
+    } catch (e) {
+        toast.error(`Failed to fetch tokens`);
+        return [];
+    }
+};
+
+const createToken = async (
+    root: string | null,
+    description: string,
+    namespace: string,
+    read: boolean,
+    write: boolean,
+    shareRead: boolean,
+    shareWrite: boolean,
+    shareShare: boolean
+): Promise<Token> => {
+    if (!root) throw new Error('No root token');
+    const newToken: Token = {
+        id: 0,
+        code: '',
+        description: description,
+        namespace: namespace,
+        creation_timestamp: new Date().toISOString().split('Z')[0],
+        permission_read: read,
+        permission_write: write,
+        permission_share_read: shareRead,
+        permission_share_write: shareWrite,
+        permission_share_share: shareShare,
+        parent: 0,
+    };
+    const resp = await fetch(`${API_URL}/tokens`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: root },
+        body: JSON.stringify(newToken),
+    });
+    return await resp.json();
+};
+
+const refreshCodes = async (root: string | null, tokens: Token[]): Promise<Token[]> => {
+    if (!root) return [];
+    const promises = tokens.map((t) =>
+        fetch(`${API_URL}/tokens/${t.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: root },
+        }).then((r) => r.json())
+    );
+    return Promise.all(promises);
+};
+
+const deleteTokens = async (root: string | null, tokens: Token[]): Promise<void> => {
+    if (!root) return;
+    await fetch(`${API_URL}/tokens`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: root },
+        body: JSON.stringify(tokens.map((t) => t.id)),
+    });
+};
+
+export const TokensPage: Component = () => {
+    // State Signals
+    const [rootTokenCode, setRootTokenCode] = createSignal<string | null>(localStorage.getItem('rootToken'));
+    const [newToken, setNewToken] = createSignal({
+        description: "",
+        namespace: "",
+        read: true,
+        write: false,
+        shareRead: false,
+        shareWrite: false,
+        shareShare: false
+    });
+    const [selectedTokens, setSelectedTokens] = createSignal<Token[]>([]);
+    const [sortColumn, setSortColumn] = createSignal<SortableColumns>(SortableColumns.TIMESTAMP);
+    const [sortDirectionDescending, setSortDirectionDescending] = createSignal<boolean>(true);
+    const [namespaceSearchRegex, setNamespaceSearchRegex] = createSignal<string>('');
+    const [descriptionSearchRegex, setDescriptionSearchRegex] = createSignal<string>('');
+    const [copiedTokenId, setCopiedTokenId] = createSignal<number | null>(null);
+
+    // Resource for fetching tokens
+
+
+    return (
+        <div class="ml-10 mt-8 space-y-8">
+            <CommandCard title="Token Management" description="Manage access by creating, viewing, and revoking tokens.">
+                <form onSubmit={handleRootTokenSubmit} class="flex items-end gap-4">
+                    <div class="flex-grow">
+                        <TextField>
+                            <TextFieldLabel for="root-token-input">Access Token</TextFieldLabel>
+                            <TextFieldInput
+                                id="root-token-input"
+                                type="password"
+                                placeholder="Enter your root token to manage other tokens"
+                                value={rootTokenCode() ?? ''}
+                            />
+                        </TextField>
+                    </div>
+                    <Button type="submit">Load Tokens</Button>
+                </form>
+            </CommandCard>
+
+            <Show when={rootTokenCode()}>
+                <CommandCard title="Create New Token" description="Define a namespace, description, and permissions for a new token.">
+                    <form onSubmit={handleCreateToken} class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-4">
+                            <TextField>
+                                <TextFieldLabel for="namespace">Namespace</TextFieldLabel>
+                                <TextFieldInput id="namespace" placeholder="e.g., /projects/alpha/" onInput={e => setNewToken(p => ({ ...p, namespace: e.currentTarget.value }))} />
+                            </TextField>
+                            <TextField>
+                                <TextFieldLabel for="description">Description</TextFieldLabel>
+                                <TextFieldInput id="description" placeholder="e.g., Read-only access for team member" onInput={e => setNewToken(p => ({ ...p, description: e.currentTarget.value }))} />
+                            </TextField>
+                        </div>
+                        <div class="space-y-4">
+                            <fieldset>
+                                <legend class="text-sm font-medium mb-2">Permissions</legend>
+                                <div class="grid grid-cols-2 gap-4">
+                                    {["read", "write", "shareRead", "shareWrite"].map(p => (
+                                        <label class="flex items-center gap-2 text-sm">
+                                            <input type="checkbox" class="rounded" onInput={e => setNewToken(val => ({ ...val, [p]: e.currentTarget.checked }))}/>
+                                            {`Can ${p.replace(/([A-Z])/g, ' $1').toLowerCase()}`}
+                                        </label>
+                                    ))}
+                                </div>
+                            </fieldset>
+                            <Button type="submit" class="w-full">Create Token</Button>
+                        </div>
+                    </form>
+                </CommandCard>
+
+                <CommandCard title="Available Tokens" description="A list of all tokens accessible with your current root token.">
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center">
+                            <div class="flex gap-4">
+                               <TextField>
+                                    <TextFieldInput placeholder="Filter by namespace..." onInput={e => setNamespaceSearchRegex(e.currentTarget.value)} />
+                                </TextField>
+                               <TextField>
+                                    <TextFieldInput placeholder="Filter by description..." onInput={e => setDescriptionSearchRegex(e.currentTarget.value)} />
+                                </TextField>
+                            </div>
+                            <div class="flex gap-2">
+                                <Dialog>
+                                    <DialogTrigger as={Button} variant="outline" disabled={selectedTokens().length === 0}>
+                                        <RefreshCw class="mr-2" /> Refresh ({selectedTokens().length})
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>Refresh Selected Tokens?</DialogTitle>
+                                            <DialogDescription>
+                                                This will invalidate the old token codes and generate new ones. This action cannot be undone.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <DialogFooter>
+                                            <Button variant="destructive" onClick={handleRefreshTokens}>Confirm Refresh</Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
+                                <Dialog>
+                                    <DialogTrigger as={Button} variant="destructive" disabled={selectedTokens().length === 0}>
+                                        <Trash2 class="mr-2" /> Delete ({selectedTokens().length})
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>Delete Selected Tokens?</DialogTitle>
+                                            <DialogDescription>
+                                                This will permanently delete the selected tokens and any sub-tokens. This action cannot be undone.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <DialogFooter>
+                                            <Button variant="destructive" onClick={handleDeleteTokens}>Confirm Deletion</Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
+                            </div>
+                        </div>
+
+                        <div class="border rounded-lg overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-muted">
+                                    <tr class="border-b">
+                                        <th class="p-3 w-10 text-left"><input type="checkbox" class="rounded" onChange={e => handleSelectAll(e.currentTarget.checked)}/></th>
+                                        {/* Add other headers here, for example: */}
+                                        <th class="p-3 text-left font-medium cursor-pointer" onClick={() => handleSort(SortableColumns.TIMESTAMP)}>
+                                            Created <Show when={sortColumn() === SortableColumns.TIMESTAMP}>{sortDirectionDescending() ? <ArrowDown/> : <ArrowUp/>}</Show>
+                                        </th>
+                                        <th class="p-3 text-left font-medium">Code</th>
+                                        <th class="p-3 text-left font-medium cursor-pointer" onClick={() => handleSort(SortableColumns.NAMESPACE)}>
+                                            Namespace <Show when={sortColumn() === SortableColumns.NAMESPACE}>{sortDirectionDescending() ? <ArrowDown/> : <ArrowUp/>}</Show>
+                                        </th>
+                                        <th class="p-3 text-left font-medium">Description</th>
+                                        <th class="p-3 text-center font-medium">Read</th>
+                                        <th class="p-3 text-center font-medium">Write</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <For each={filteredAndSortedTokens()}>
+                                        {token => (
+                                            <tr class="border-b last:border-none hover:bg-muted/50">
+                                                <td class="p-3"><input type="checkbox" class="rounded" checked={isTokenSelected(token)} onChange={e => handleSelectToken(token, e.currentTarget.checked)}/></td>
+                                                <td class="p-3 text-muted-foreground">{new Date(token.creation_timestamp).toLocaleString()}</td>
+                                                <td class="p-3">
+                                                    <div class="flex items-center gap-2 font-mono">
+                                                        <span>{token.code.substring(0, 8)}...</span>
+                                                        <Button variant="ghost" size="icon" onClick={() => handleCopyToken(token)}>
+                                                           <Show when={copiedTokenId() === token.id} fallback={<Copy/>}>
+                                                               <Check class="text-green-500" />
+                                                           </Show>
+                                                        </Button>
+                                                    </div>
+                                                </td>
+                                                <td class="p-3">{token.namespace}</td>
+                                                <td class="p-3 text-muted-foreground">{token.description}</td>
+                                                <td class="p-3 text-center">{token.permission_read ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
+                                                <td class="p-3 text-center">{token.permission_write ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
+                                            </tr>
+                                        )}
+                                    </For>
+                                </tbody>
+                            </table>
+                            <Show when={tokens().length === 0}>
+                                <div class="p-6 text-center text-muted-foreground">No tokens found.</div>
+                            </Show>
+                        </div>
+                    </div>
+                </CommandCard>
+            </Show>
+            <Toaster position="bottom-right" />
+        </div>
+    );
+};
+
 export default TokensPage;
