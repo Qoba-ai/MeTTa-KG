@@ -109,6 +109,9 @@ const deleteTokens = async (root: string | null, tokens: Token[]): Promise<void>
 };
 
 export const TokensPage: Component = () => {
+    const permissionKeys = ["read", "write", "shareRead", "shareWrite", "shareShare"] as const;
+    type PermissionKey = typeof permissionKeys[number];
+
     // State Signals
     const [rootTokenCode, setRootTokenCode] = createSignal<string | null>(localStorage.getItem('rootToken'));
     const [newToken, setNewToken] = createSignal({
@@ -220,7 +223,7 @@ export const TokensPage: Component = () => {
         );
     };
 
-    const handlePermissionChange = (perm: string, checked: boolean) => {
+    const handlePermissionChange = (perm: PermissionKey, checked: boolean) => {
         setNewToken(prev => {
             let next = { ...prev };
 
@@ -300,9 +303,14 @@ export const TokensPage: Component = () => {
                             <fieldset>
                                 <legend class="text-sm font-medium mb-2">Permissions</legend>
                                 <div class="grid grid-cols-2 gap-4">
-                                    {["read", "write", "shareRead", "shareWrite", "shareShare"].map(p => (
+                                    {permissionKeys.map((p) => (
                                         <label class="flex items-center gap-2 text-sm">
-                                            <input type="checkbox" class="rounded" onInput={e => setNewToken(val => ({ ...val, [p]: e.currentTarget.checked }))}/>
+                                            <input
+                                                type="checkbox"
+                                                class="rounded"
+                                                checked={newToken()[p]}
+                                                onInput={e => handlePermissionChange(p, e.currentTarget.checked)}
+                                            />
                                             {`Can ${p.replace(/([A-Z])/g, ' $1').toLowerCase()}`}
                                         </label>
                                     ))}
