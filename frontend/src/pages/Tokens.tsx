@@ -258,7 +258,7 @@ export const TokensPage: Component = () => {
                             <fieldset>
                                 <legend class="text-sm font-medium mb-2">Permissions</legend>
                                 <div class="grid grid-cols-2 gap-4">
-                                    {["read", "write", "shareRead", "shareWrite"].map(p => (
+                                    {["read", "write", "shareRead", "shareWrite", "shareShare"].map(p => (
                                         <label class="flex items-center gap-2 text-sm">
                                             <input type="checkbox" class="rounded" onInput={e => setNewToken(val => ({ ...val, [p]: e.currentTarget.checked }))}/>
                                             {`Can ${p.replace(/([A-Z])/g, ' $1').toLowerCase()}`}
@@ -332,8 +332,11 @@ export const TokensPage: Component = () => {
                                             Namespace <Show when={sortColumn() === SortableColumns.NAMESPACE}>{sortDirectionDescending() ? <ArrowDown/> : <ArrowUp/>}</Show>
                                         </th>
                                         <th class="p-3 text-left font-medium">Description</th>
-                                        <th class="p-3 text-center font-medium">Read</th>
-                                        <th class="p-3 text-center font-medium">Write</th>
+                                        <th class="p-3 text-center font-medium">R</th>
+                                        <th class="p-3 text-center font-medium">W</th>
+                                        <th class="p-3 text-center font-medium">SR</th>
+                                        <th class="p-3 text-center font-medium">SW</th>
+                                        <th class="p-3 text-center font-medium">SS</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -356,6 +359,9 @@ export const TokensPage: Component = () => {
                                                 <td class="p-3 text-muted-foreground">{token.description}</td>
                                                 <td class="p-3 text-center">{token.permission_read ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
                                                 <td class="p-3 text-center">{token.permission_write ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
+                                                <td class="p-3 text-center">{token.permission_share_read ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
+                                                <td class="p-3 text-center">{token.permission_share_write ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
+                                                <td class="p-3 text-center">{token.permission_share_share ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
                                             </tr>
                                         )}
                                     </For>
