@@ -18,7 +18,6 @@ import { rootToken, namespace, setNamespace } from "~/lib/state";
 
 import Folder from "lucide-solid/icons/folder";
 import Home from "lucide-solid/icons/home";
-import FolderPlus from "lucide-solid/icons/folder-plus";
 
 type TreeNode = {
     name: string;
@@ -146,7 +145,7 @@ export default function NameSpace() {
                                 title="Show available subspaces"
                                 aria-label="Show available subspaces"
                             >
-                                <FolderPlus class="w-4 h-4" />
+                                ...
                             </button>
                         </BreadcrumbItem>
                     </BreadcrumbList>
@@ -169,9 +168,14 @@ export default function NameSpace() {
                                         <Folder class="mr-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />
                                         <span class="font-sans">{item.name}</span>
                                     </div>
-                                    <span class="text-xs text-muted-foreground truncate ml-4" title={item.description}>
-                                        {item.description}
-                                    </span>
+									<span
+										class="text-xs text-muted-foreground truncate ml-4"
+										title={item.description}
+									>
+										{item.description.length > 20
+											? item.description.slice(0, 25) + "…"
+											: item.description}
+									</span>
                                 </CommandItem>
                             )}
                         </For>
