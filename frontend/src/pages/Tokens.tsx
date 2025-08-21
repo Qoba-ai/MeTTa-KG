@@ -128,7 +128,99 @@ export const TokensPage: Component = () => {
     const [copiedTokenId, setCopiedTokenId] = createSignal<number | null>(null);
 
     // Resource for fetching tokens
+    const [tokens, { refetch: refetchTokens, mutate: mutateTokens }] = createResource(rootTokenCode, fetchTokens, { initialValue: [] });
 
+    const filteredAndSortedTokens = () => {
+        const nsRegex = new RegExp(namespaceSearchRegex(), 'i');
+        const descRegex = new RegExp(descriptionSearchRegex(), 'i');
+
+        return tokens()
+            .filter(t => nsRegex.test(t.namespace) && descRegex.test(t.description))
+            .sort((a, b) => {
+                let result = 0;
+                switch (sortColumn()) {
+                    case SortableColumns.TIMESTAMP:
+                        result = Date.parse(a.creation_timestamp) - Date.parse(b.creation_timestamp);
+                        break;
+                    case SortableColumns.NAMESPACE:
+                        result = a.namespace.localeCompare(b.namespace);
+                        break;
+                    // Add other sort cases here
+                }
+                return sortDirectionDescending() ? -result : result;
+            });
+    };
+
+    // Event Handlers
+    const handleRootTokenSubmit = (e: Event) => {
+        e.preventDefault();
+        const form = e.currentTarget as HTMLFormElement;
+        const input = form.querySelector("#root-token-input") as HTMLInputElement;
+        setRootTokenCode(input.value.trim());
+    };
+
+    const handleCreateToken = async (e: Event) => {
+        e.preventDefault();
+        const { description, namespace, read, write, shareRead, shareWrite, shareShare } = newToken();
+        try {
+            const created = await createToken(rootTokenCode(), description, namespace, read, write, shareRead, shareWrite, shareShare);
+            mutateTokens(prev => [...(prev || []), created]);
+            toast.success("Token created successfully!");
+        } catch (error) {
+            toast.error("Failed to create token.");
+        }
+    };
+
+    const handleRefreshTokens = async () => {
+        const results = await refreshCodes(rootTokenCode(), selectedTokens());
+        const selectedIds = new Set(selectedTokens().map(t => t.id));
+        mutateTokens(currentTokens => [
+            ...(currentTokens?.filter(t => !selectedIds.has(t.id)) || []),
+            ...results,
+        ]);
+        toast.success(`Refreshed ${results.length} tokens.`);
+        setSelectedTokens([]);
+    };
+
+    const handleDeleteTokens = async () => {
+        const selectedIds = new Set(selectedTokens().map(t => t.id));
+        try {
+            await deleteTokens(rootTokenCode(), selectedTokens());
+            mutateTokens(currentTokens => currentTokens?.filter(t => !selectedIds.has(t.id)) || []);
+            toast.success(`Deleted ${selectedTokens().length} tokens.`);
+            setSelectedTokens([]);
+        } catch (error) {
+            toast.error("Failed to delete tokens.");
+        }
+    };
+    
+    const handleCopyToken = (token: Token) => {
+        navigator.clipboard.writeText(token.code);
+        setCopiedTokenId(token.id);
+        toast.success("Token code copied to clipboard!");
+        setTimeout(() => setCopiedTokenId(null), 2000);
+    };
+
+    const handleSort = (column: SortableColumns) => {
+        if (sortColumn() === column) {
+            setSortDirectionDescending(!sortDirectionDescending());
+        } else {
+            setSortColumn(column);
+            setSortDirectionDescending(true);
+        }
+    };
+    
+    const handleSelectAll = (checked: boolean) => {
+        setSelectedTokens(checked ? [...tokens()] : []);
+    };
+
+    const handleSelectToken = (token: Token, checked: boolean) => {
+        setSelectedTokens(prev =>
+            checked ? [...prev, token] : prev.filter(t => t.id !== token.id)
+        );
+    };
+
+    const isTokenSelected = (token: Token) => selectedTokens().some(t => t.id === token.id);
 
     return (
         <div class="ml-10 mt-8 space-y-8">
