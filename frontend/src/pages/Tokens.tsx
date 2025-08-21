@@ -452,7 +452,13 @@ export const TokensPage: Component = () => {
                                                     </div>
                                                 </td>
                                                 <td class="p-3">{token.namespace}</td>
-                                                <td class="p-3 text-muted-foreground">{token.description}</td>
+                                                <td class="p-3 text-muted-foreground">
+                                                    <span title={token.description}>
+                                                        {token.description.length > 12
+                                                        ? token.description.slice(0, 12) + "…"
+                                                        : token.description}
+                                                    </span>
+                                                </td>
                                                 <td class="p-3 text-center">{token.permission_read ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
                                                 <td class="p-3 text-center">{token.permission_write ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
                                                 <td class="p-3 text-center">{token.permission_share_read ? <Check class="text-green-500 mx-auto"/> : <X class="text-red-500 mx-auto"/>}</td>
