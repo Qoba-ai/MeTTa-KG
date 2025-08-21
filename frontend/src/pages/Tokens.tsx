@@ -24,6 +24,8 @@ import ArrowUp from 'lucide-solid/icons/arrow-up';
 import ArrowDown from 'lucide-solid/icons/arrow-down';
 import Check from 'lucide-solid/icons/check';
 import X from 'lucide-solid/icons/x';
+import Eye from 'lucide-solid/icons/eye';
+import EyeOff from 'lucide-solid/icons/eye-off';
 
 import { API_URL } from '../lib/api';
 import { Token } from '../types';
@@ -109,7 +111,7 @@ const deleteTokens = async (root: string | null, tokens: Token[]): Promise<void>
 };
 
 export const TokensPage: Component = () => {
-    const permissionKeys = ["read", "write", "shareRead", "shareWrite", "shareShare"] as const;
+    const permissionKeys = ["read", "write", "shareRead", "shareWrite"] as const; // removed "shareShare"
     type PermissionKey = typeof permissionKeys[number];
 
     // State Signals
@@ -129,6 +131,9 @@ export const TokensPage: Component = () => {
     const [namespaceSearchRegex, setNamespaceSearchRegex] = createSignal<string>('');
     const [descriptionSearchRegex, setDescriptionSearchRegex] = createSignal<string>('');
     const [copiedTokenId, setCopiedTokenId] = createSignal<number | null>(null);
+    const [showRootToken, setShowRootToken] = createSignal(false);
+    const namespaceRegex = new RegExp(`^/(([a-zA-Z0-9])+([a-zA-Z0-9]|[-_])*([a-zA-Z0-9])/)*$`);
+    const [namespaceError, setNamespaceError] = createSignal("");
 
     // Resource for fetching tokens
     const [tokens, { refetch: refetchTokens, mutate: mutateTokens }] = createResource(rootTokenCode, fetchTokens, { initialValue: [] });
@@ -252,20 +257,31 @@ export const TokensPage: Component = () => {
                     next.shareRead = true;
                 }
             }
-            if (perm === "shareShare") {
-                next.shareShare = checked;
-                if (checked) {
-                    next.read = true;
-                    next.write = true;
-                    next.shareRead = true;
-                    next.shareWrite = true;
-                }
-            }
+            // if (perm === "shareShare") { 
+            //     next.shareShare = checked;
+            //     if (checked) {
+            //         next.read = true;
+            //         next.write = true;
+            //         next.shareRead = true;
+            //         next.shareWrite = true;
+            //     }
+            // }
             return next;
         });
     };
+    
+    const handleNamespaceInput = (value: string) => {
+        setNewToken(p => ({ ...p, namespace: value }));
+        if (value && !namespaceRegex.test(value)) {
+            setNamespaceError("Invalid format. Each segment must start/end with a letter/number and the path must end with a '/'");
+        } else {
+            setNamespaceError("");
+        }
+    };
 
     const isTokenSelected = (token: Token) => selectedTokens().some(t => t.id === token.id);
+    const isRootTokenSelected = () =>
+        selectedTokens().some(t => t.code === rootTokenCode());
 
     return (
         <div class="ml-10 mt-8 space-y-8">
@@ -274,12 +290,22 @@ export const TokensPage: Component = () => {
                     <div class="flex-grow">
                         <TextField>
                             <TextFieldLabel for="root-token-input">Access Token</TextFieldLabel>
-                            <TextFieldInput
-                                id="root-token-input"
-                                type="password"
-                                placeholder="Enter your root token to manage other tokens"
-                                value={rootTokenCode() ?? ''}
-                            />
+                            <div class="relative">
+                                <TextFieldInput
+                                    id="root-token-input"
+                                    type={showRootToken() ? "text" : "password"}
+                                    placeholder="Enter your root token to manage other tokens"
+                                    value={rootTokenCode() ?? ''}
+                                />
+                                <button
+                                    type="button"
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                                    tabindex="-1"
+                                    onClick={() => setShowRootToken(v => !v)}
+                                >
+                                    {showRootToken() ? <EyeOff size={18}/> : <Eye size={18}/>}
+                                </button>
+                            </div>
                         </TextField>
                     </div>
                     <Button type="submit">Load Tokens</Button>
@@ -334,7 +360,11 @@ export const TokensPage: Component = () => {
                             </div>
                             <div class="flex gap-2">
                                 <Dialog>
-                                    <DialogTrigger as={Button} variant="outline" disabled={selectedTokens().length === 0}>
+                                    <DialogTrigger
+                                        as={Button}
+                                        variant="outline"
+                                        disabled={selectedTokens().length === 0 || isRootTokenSelected()}
+                                    >
                                         <RefreshCw class="mr-2" /> Refresh ({selectedTokens().length})
                                     </DialogTrigger>
                                     <DialogContent>
@@ -350,7 +380,11 @@ export const TokensPage: Component = () => {
                                     </DialogContent>
                                 </Dialog>
                                 <Dialog>
-                                    <DialogTrigger as={Button} variant="destructive" disabled={selectedTokens().length === 0}>
+                                    <DialogTrigger
+                                        as={Button}
+                                        variant="destructive"
+                                        disabled={selectedTokens().length === 0 || isRootTokenSelected()}
+                                    >
                                         <Trash2 class="mr-2" /> Delete ({selectedTokens().length})
                                     </DialogTrigger>
                                     <DialogContent>
