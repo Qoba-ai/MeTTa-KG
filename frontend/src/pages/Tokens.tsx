@@ -220,6 +220,48 @@ export const TokensPage: Component = () => {
         );
     };
 
+    const handlePermissionChange = (perm: string, checked: boolean) => {
+        setNewToken(prev => {
+            let next = { ...prev };
+
+            if (perm === "read") {
+                next.read = checked;
+                if (!checked) {
+                    next.write = false;
+                    next.shareRead = false;
+                    next.shareWrite = false;
+                    next.shareShare = false;
+                }
+            }
+            if (perm === "write") {
+                next.write = checked;
+                if (checked && !next.read) next.read = true;
+            }
+            if (perm === "shareRead") {
+                next.shareRead = checked;
+                if (checked && !next.read) next.read = true;
+            }
+            if (perm === "shareWrite") {
+                next.shareWrite = checked;
+                if (checked) {
+                    next.read = true;
+                    next.write = true;
+                    next.shareRead = true;
+                }
+            }
+            if (perm === "shareShare") {
+                next.shareShare = checked;
+                if (checked) {
+                    next.read = true;
+                    next.write = true;
+                    next.shareRead = true;
+                    next.shareWrite = true;
+                }
+            }
+            return next;
+        });
+    };
+
     const isTokenSelected = (token: Token) => selectedTokens().some(t => t.id === token.id);
 
     return (
