@@ -26,6 +26,7 @@ import Check from 'lucide-solid/icons/check';
 import X from 'lucide-solid/icons/x';
 import Eye from 'lucide-solid/icons/eye';
 import EyeOff from 'lucide-solid/icons/eye-off';
+import AlertTriangle from 'lucide-solid/icons/alert-triangle';
 
 import { API_URL } from '../lib/api';
 import { Token } from '../types';
@@ -318,7 +319,18 @@ export const TokensPage: Component = () => {
                         <div class="space-y-4">
                             <TextField>
                                 <TextFieldLabel for="namespace">Namespace</TextFieldLabel>
-                                <TextFieldInput id="namespace" placeholder="e.g., /projects/alpha/" onInput={e => setNewToken(p => ({ ...p, namespace: e.currentTarget.value }))} />
+                                <TextFieldInput 
+                                    id="namespace" 
+                                    placeholder="/my-project/data/" 
+                                    required
+                                    value={newToken().namespace}
+                                    onInput={e => handleNamespaceInput(e.currentTarget.value)} 
+                                />
+                                <Show when={namespaceError()}>
+                                    <p class="text-xs text-destructive flex items-center gap-2 pt-1">
+                                        <AlertTriangle size={14}/> {namespaceError()}
+                                    </p>
+                                </Show>
                             </TextField>
                             <TextField>
                                 <TextFieldLabel for="description">Description</TextFieldLabel>
