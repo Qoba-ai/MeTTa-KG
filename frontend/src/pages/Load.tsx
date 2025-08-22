@@ -3,10 +3,11 @@ import MettaEditor from "~/components/space/MettaEditor"
 import UIControls from "~/components/controls/UIControls"
 import ZoomControls from "~/components/controls/ZoomControls"
 import MinimizeControls from "~/components/controls/MinimizeControls"
+import SpaceGraph from '~/components/space/SpaceGraph'
 import { For, Show, Suspense, createSignal } from 'solid-js';
 import { ParseError, LayoutAlgorithm, LayoutOptions, LayoutState } from '../types';
 import { HiOutlineMinus, HiOutlinePlus } from 'solid-icons/hi';
-import { initEdge, initNodeFromApiResponse, subSpace } from "~/lib/space"
+import { extractLabels, initEdge, initNode, initNodeFromApiResponse, initNodesFromApiResponse, SpaceNode, subSpace } from "~/lib/space"
 
 // Import the required CSS for the editor
 import '../styles/variables.css';
@@ -14,15 +15,10 @@ import '../styles/components.css';
 
 const LoadPage = () => {
 
-	//const [space] = createResource("/", async (source) => {
-	//	return await readSpace(source)
-	//});
-
-
 	// Editor state
 	const [mettaText, setMettaText] = createSignal('; Sample Metta Code\n(gender Chandler M)\n(age Alice 25)\n(is-brother John Adam)');
 	const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
-	const [isMinimized, setIsMinimized] = createSignal(false);
+	const [isMinimized, setIsMinimized] = createSignal(true);
 
 	// UI Controls state
 	const [isControlsMinimized, setIsControlsMinimized] = createSignal(false);
@@ -34,7 +30,23 @@ const LoadPage = () => {
 		startTime: 0,
 		duration: 0
 	});
+	const rootNode: SpaceNode = initNode("root", "", { token: Uint8Array.from([]), expr: "" })
 	let progressTimer: number | undefined;
+
+	const [newNodeLabel, setNewNodeLabel] = createSignal("");
+
+	const handleNewNodeLabelChange = (e: any) => {
+		setNewNodeLabel(e.target.value);
+	};
+
+	const handleAddNewNode = (e: any) => {
+		if (e.key === 'Enter') {
+			const labels = newNodeLabel().split('\n').filter(label => label.trim() !== '');
+			// @ts-ignore
+			window.newNodes = labels.map(label => initNode(label, label));
+			setNewNodeLabel("");
+		}
+	};
 
 	const startProgressSim = (durationMs = 1500) => {
 		stopProgressSim();
@@ -250,7 +262,7 @@ const LoadPage = () => {
 						<div class="text-lg">Loading graph...</div>
 					</div>
 				}>
-					<Show when={subSpace()} fallback={
+					<Show when={true /*subSpace()*/} fallback={
 						<div class="flex items-center justify-center h-full" style="color: hsl(var(--destructive));">
 							<div class="text-center p-8">
 								<div class="text-lg mb-2">Error loading space data</div>
@@ -258,15 +270,12 @@ const LoadPage = () => {
 							</div>
 						</div>
 					}>
-						<Show when={subSpace()!.length > 0} fallback={
+						<Show when={true /*subSpace()!.length > 0*/} fallback={
 							<div class="flex items-center justify-center h-full" style="color: hsl(var(--muted-foreground));">
 								<span class="text-lg">No data loaded on this path/namespace</span>
 							</div>
 						}>
-							<LazyCytoscapeGraph 
-								initNodes={subSpace()!.map(item => initNodeFromApiResponse(item))} 
-								initEdges={subSpace()!.map(item => initEdge("root", initNodeFromApiResponse(item).id))} 
-							/>
+							<SpaceGraph />
 						</Show>
 
 					</Show>
@@ -295,6 +304,21 @@ const LoadPage = () => {
 					</div>
 				</div>
 			</Show>
+			<div class="absolute bottom-4 left-4 max-w-lg" style="z-index: 500;">
+				asdfasdf
+				<div class="space-data-item opacity-90 backdrop-blur-sm">
+					<div class="text-xs font-semibold mb-2" style="color: hsl(var(--muted-foreground));">
+						Add Nodes (press Enter)
+					</div>
+					<textarea
+						class="w-full bg-transparent border rounded p-2 text-xs"
+						rows="3"
+						value={newNodeLabel()}
+						onInput={handleNewNodeLabelChange}
+						onKeyDown={handleAddNewNode}
+					/>
+				</div>
+			</div>
 		</div>
 	);
 };
