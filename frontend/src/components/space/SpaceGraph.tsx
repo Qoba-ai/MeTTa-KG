@@ -1,30 +1,28 @@
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import { onCleanup, onMount } from 'solid-js';
+import { elementsToCyInput, initEdge, initNode, SpaceNode } from '~/lib/space';
 
 cytoscape.use(coseBilkent);
 
-const SpaceGraph = () => {
+interface SpaceGraphProps {
+	rootNodes: SpaceNode[]
+}
+
+const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 	let cyContainer: HTMLDivElement;
 	let cy: cytoscape.Core;
 
-	const dummyData = [
-		{ data: { id: 'a', collapsed: false } },
-		{ data: { id: 'b', collapsed: false } },
-		{ data: { id: 'c', collapsed: false } },
-		{ data: { id: 'd', collapsed: false } },
-		{ data: { id: 'e', collapsed: false } },
-		{ data: { id: 'f', collapsed: false } },
-		{ data: { id: 'g', collapsed: false } },
-		{ data: { id: 'h', collapsed: false } },
-		{ data: { source: 'a', target: 'b' } },
-		{ data: { source: 'a', target: 'c' } },
-		{ data: { source: 'b', target: 'd' } },
-		{ data: { source: 'c', target: 'e' } },
-		{ data: { source: 'c', target: 'f' } },
-		{ data: { source: 'c', target: 'g' } },
-		{ data: { source: 'g', target: 'h' } },
-	];
+
+	const rootNode: cytoscape.ElementDefinition = elementsToCyInput(
+		[
+			initNode(
+				"root",
+				"",
+				{ token: Uint8Array.from([]), expr: "" })
+		]
+	)[0]
+	rootNode.style = { "background-color": "blue" }
 
 	const generateRandomChildren = (node: cytoscape.NodeSingular): cytoscape.CollectionReturnValue => {
 		const numChildren = Math.floor(Math.random() * 5) + 1;
@@ -33,10 +31,10 @@ const SpaceGraph = () => {
 
 		for (let i = 0; i < numChildren % 3; i++) {
 			const childId = `${node.id()}${i}`;
-			newNodes.push({ data: { id: childId }, position: { x: node.position().x, y: node.position().y } });
+			newNodes.push({ data: { id: childId, label: childId }, position: { x: node.position().x, y: node.position().y } });
 			newEdges.push({ data: { source: node.id(), target: childId } });
 		}
-		let nodes = cy.add(newNodes).nodes();
+		const nodes = cy.add(newNodes).nodes();
 		cy.add(newEdges);
 		return nodes
 	}
@@ -81,24 +79,51 @@ const SpaceGraph = () => {
 		}
 	};
 
+	const graphColors = {
+		nodeBackground: '#21C45D',
+		nodeBackgroundHover: '#5a87ff',
+		nodeBackgroundSelected: '#3a6bff',
+
+		nodeText: '#e7ecf9',
+		edge: '#7aa2ff',
+		edgeArrow: '#7aa2ff',
+	};
+
 	onMount(() => {
 		cy = cytoscape({
-			container: cyContainer,
-			elements: dummyData,
+			container: cyContainer!,
+			elements: [
+				rootNode,
+				...elementsToCyInput(rootNodes),  // nodes
+				...elementsToCyInput(rootNodes.map(node => initEdge(rootNode.data.id!, node.id)))],  // edges to root
 			style: [
 				{
 					selector: 'node',
 					style: {
-						'background-color': '#666',
-						label: 'data(id)',
+						'background-color': graphColors.nodeBackground,
+						'label': 'data(label)',
+						'color': graphColors.nodeText,
+						'font-size': 7,
+						'font-weight': 5000,
+						'font-family': "ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji",
+						'text-valign': 'center',
+						'text-halign': 'center',
+						'text-wrap': 'wrap',
+						'text-max-width': '30px',
+						'width': 40,
+						'height': 40,
+						'shape': 'ellipse',
+						'border-width': 0,
+						'transition-property': 'background-color, border-width, width, height',
+						'transition-duration': 0.2
 					},
 				},
 				{
 					selector: 'edge',
 					style: {
-						width: 3,
-						'line-color': '#ccc',
-						'target-arrow-color': '#ccc',
+						width: 1,
+						'line-color': graphColors.edge,
+						'target-arrow-color': graphColors.edgeArrow,
 						'target-arrow-shape': 'triangle',
 					},
 				},
@@ -109,6 +134,12 @@ const SpaceGraph = () => {
 			},
 		});
 
+		//cy.on('ready', () => {
+		//	console.log("I am ready")
+		//	cy.zoom(2);
+		//	cy.center();
+		//});
+
 		cy.on('tap', 'node', (event) => {
 			const node = event.target;
 			if (node.successors().length > 0) {
@@ -116,6 +147,12 @@ const SpaceGraph = () => {
 			} else {
 				expandNode(node);
 			}
+		});
+
+		cy.on('mouseover', 'node', (event) => {
+		});
+
+		cy.on('mouseout', 'node', () => {
 		});
 	});
 
@@ -128,4 +165,4 @@ const SpaceGraph = () => {
 	return <div class="w-full h-full" ref={cyContainer!} />;
 };
 
-export default TestSpaceGraph;
+export default SpaceGraph;

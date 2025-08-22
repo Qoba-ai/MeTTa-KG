@@ -6,7 +6,7 @@ export default [
   {files: ["**/*.{js,jsx,mjs,cjs,ts,tsx}"]},
   {languageOptions: { globals: globals.browser }},
   {rules: {
-    'no-unused-vars': false
+    'no-unused-vars': 'off'
   }},
   {ignores: ["src/main.ts"]},
   pluginJs.configs.recommended,

@@ -6,7 +6,7 @@ import { EdgeDataDefinition, ElementDefinition, NodeDataDefinition } from 'cytos
 interface SpaceNode {
 	id: string,
 	label: string,
-	remoteData: any,
+	remoteData: { expr: string, token: Uint8Array },
 }
 
 interface SpaceEdge {
@@ -35,7 +35,6 @@ const [subSpace] = createResource(
 );
 
 
-// HELPER FUNCTIONS
 function initNode(id: string, label: string, remoteData?: any): SpaceNode {
 	return {
 		id,
@@ -53,6 +52,7 @@ function initEdge(source: string, target: string): SpaceEdge {
 
 // changes backend responses from `/explore` to correct `SpaceNode` representation
 // current format is `{token: Uint8Array, expr: string}`
+// To be Deprecated
 function initNodeFromApiResponse(data: { token: Uint8Array, expr: string }): SpaceNode {
 	return initNode(
 		tokenToString(data.token),
@@ -64,11 +64,8 @@ function initNodeFromApiResponse(data: { token: Uint8Array, expr: string }): Spa
 // changes backend responses from `/explore` to correct `SpaceNode` representation
 // current format is `{token: Uint8Array, expr: string}`
 function initNodesFromApiResponse(data: { token: Uint8Array, expr: string }[]): SpaceNode[] {
-	console.log("data: ", data)
-	console.log("data type: ", typeof data)
 	const tokens = data.map((item) => tokenToString(item.token))
-	const labels = extractLabels(data.map((item) => item.expr))
-	console.log(`labels: ${labels}`)
+	const labels = extractLabels(data)
 	let nodes = []
 
 	for (let i = 0; i < tokens.length; i++) {

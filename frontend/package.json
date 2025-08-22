@@ -61,6 +61,7 @@
         "solid-toast": "^0.5.0",
         "tailwind-merge": "^3.3.1",
         "tailwindcss-animate": "^1.0.7",
-        "thememirror": "^2.0.1"
+        "thememirror": "^2.0.1",
+        "tippy.js": "^6.3.7"
     }
 }

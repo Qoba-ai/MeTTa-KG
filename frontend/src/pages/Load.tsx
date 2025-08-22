@@ -1,4 +1,3 @@
-import { LazyCytoscapeGraph } from '~/components/space/lazyCytospaceGraph'
 import MettaEditor from "~/components/space/MettaEditor"
 import UIControls from "~/components/controls/UIControls"
 import ZoomControls from "~/components/controls/ZoomControls"
@@ -7,21 +6,20 @@ import SpaceGraph from '~/components/space/SpaceGraph'
 import { For, Show, Suspense, createSignal } from 'solid-js';
 import { ParseError, LayoutAlgorithm, LayoutOptions, LayoutState } from '../types';
 import { HiOutlineMinus, HiOutlinePlus } from 'solid-icons/hi';
-import { extractLabels, initEdge, initNode, initNodeFromApiResponse, initNodesFromApiResponse, SpaceNode, subSpace } from "~/lib/space"
+import { initNode, initNodesFromApiResponse, SpaceNode, subSpace } from "~/lib/space"
 
 // Import the required CSS for the editor
 import '../styles/variables.css';
 import '../styles/components.css';
 
 const LoadPage = () => {
-
 	// Editor state
 	const [mettaText, setMettaText] = createSignal('; Sample Metta Code\n(gender Chandler M)\n(age Alice 25)\n(is-brother John Adam)');
 	const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
 	const [isMinimized, setIsMinimized] = createSignal(true);
 
 	// UI Controls state
-	const [isControlsMinimized, setIsControlsMinimized] = createSignal(false);
+	const [isControlsMinimized, setIsControlsMinimized] = createSignal(true);
 	const [showLabels, setShowLabels] = createSignal(true);
 	const [layoutState, setLayoutState] = createSignal<LayoutState>({
 		isAnimating: false,
@@ -193,7 +191,7 @@ const LoadPage = () => {
 	};
 
 	// Setup event listeners on mount
-	const cleanup = setupEventListeners();
+	//const cleanup = setupEventListeners();
 
 	return (
 		<div class="relative w-full h-full">
@@ -262,7 +260,7 @@ const LoadPage = () => {
 						<div class="text-lg">Loading graph...</div>
 					</div>
 				}>
-					<Show when={true /*subSpace()*/} fallback={
+					<Show when={subSpace()} fallback={
 						<div class="flex items-center justify-center h-full" style="color: hsl(var(--destructive));">
 							<div class="text-center p-8">
 								<div class="text-lg mb-2">Error loading space data</div>
@@ -270,12 +268,12 @@ const LoadPage = () => {
 							</div>
 						</div>
 					}>
-						<Show when={true /*subSpace()!.length > 0*/} fallback={
+						<Show when={subSpace()!.length > 0} fallback={
 							<div class="flex items-center justify-center h-full" style="color: hsl(var(--muted-foreground));">
 								<span class="text-lg">No data loaded on this path/namespace</span>
 							</div>
 						}>
-							<SpaceGraph />
+							<SpaceGraph rootNodes={initNodesFromApiResponse(subSpace()!)}/>
 						</Show>
 
 					</Show>
@@ -283,7 +281,7 @@ const LoadPage = () => {
 			</div>
 
 			{/* Data Panel - Optional overlay for debugging */}
-			<Show when={subSpace() && subSpace()!.length > 0}>
+			<Show when={false}>
 				<div class="absolute bottom-4 left-1/2 transform -translate-x-1/2 max-w-lg" style="z-index: 500;">
 					<div class="space-data-item opacity-90 backdrop-blur-sm">
 						<div class="text-xs font-semibold mb-2" style="color: hsl(var(--muted-foreground));">
@@ -304,21 +302,6 @@ const LoadPage = () => {
 					</div>
 				</div>
 			</Show>
-			<div class="absolute bottom-4 left-4 max-w-lg" style="z-index: 500;">
-				asdfasdf
-				<div class="space-data-item opacity-90 backdrop-blur-sm">
-					<div class="text-xs font-semibold mb-2" style="color: hsl(var(--muted-foreground));">
-						Add Nodes (press Enter)
-					</div>
-					<textarea
-						class="w-full bg-transparent border rounded p-2 text-xs"
-						rows="3"
-						value={newNodeLabel()}
-						onInput={handleNewNodeLabelChange}
-						onKeyDown={handleAddNewNode}
-					/>
-				</div>
-			</div>
 		</div>
 	);
 };
