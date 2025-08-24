@@ -49,7 +49,8 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 		console.error(new Error(`HTTP error! status: ${response.status}`));
 	}
 
-	return await response.json();
+	let res = await response.json();
+	return res
 }
 
 export const transform = (transformation: Transformation) => {
@@ -71,16 +72,53 @@ export const readSpace = (path: string) => {
 	return request<string>(`/spaces${path}`);
 };
 
-export const exploreSpace = (path: string, pattern: string, exploreDetails: ExploreDetail) => {
+function quoteFromBytes(data: Uint8Array): string {
+	let result = '';
+ 
+	for (let i = 0; i < data.length; i++) {
+		const byte = data[i];
+ 
+		// Safe characters: alphanumeric and -_.~
+		if ((byte >= 0x30 && byte <= 0x39) ||    // 0-9
+			(byte >= 0x41 && byte <= 0x5A) ||    // A-Z
+			(byte >= 0x61 && byte <= 0x7A) ||    // a-z
+			byte === 0x2D || byte === 0x5F ||    // - _
+			byte === 0x2E || byte === 0x7E) {    // . ~
+			result += String.fromCharCode(byte);
+		} else {
+			// Percent-encode everything else
+			result += '%' + byte.toString(16).padStart(2, '0').toUpperCase();
+		}
+	}
+ 
+	return result;
+} 
+
+export const exploreSpace = (path: string, pattern: string, token: Uint8Array | Array<number>) => {
+	//let tokenStr = '';
+	//
+	//for (let i = 0; i < exploreDetails.token.length; i++) {
+	//	tokenStr += String.fromCharCode(exploreDetails.token[i]);
+	//}
+
+	// if token is basic array change to Uint8Array
+	if (token instanceof Array) {
+		token = Uint8Array.from(token);
+	}
+
+	console.log("token before: ", token)
+	console.log("token after: ", new TextDecoder().decode(token))
 	return request<ExploreDetail[]>(`/explore/spaces${path}`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
 			pattern,
-			token: new TextDecoder().decode(exploreDetails.token)
+			token: quoteFromBytes(token)
 		}),
 	})
 }
+
+window.exploreSpace = exploreSpace
 
 export const getAllTokens = () => {
 	return request<Token[]>('/tokens');

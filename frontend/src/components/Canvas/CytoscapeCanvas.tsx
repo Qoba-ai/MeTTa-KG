@@ -1,7 +1,6 @@
 import { Component, createEffect, onMount, onCleanup } from 'solid-js';
 import cytoscape, { Core } from 'cytoscape';
 import type { LayoutAlgorithm, LayoutOptions } from '../../types';
-import { LazyCytoscapeGraph } from '~/components/space/lazyGraph'
 
 export interface CytoscapeCanvasProps {
 	data?: any[];

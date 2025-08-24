@@ -16,24 +16,16 @@ interface SpaceEdge {
 
 const [subSpace] = createResource(
 	() => ({
-		path: "/",  // change this to namespace signal
+		path: "",  // change this to namespace signal
 		expr: "$x",
-		token: Uint8Array.from([2])
+		token: Uint8Array.from([])
 	}),
 	async ({ path, expr, token }) => { // Destructure the object
-		let res = await exploreSpace(path, expr, {
-			expr: expr,
-			token: token
-		});
+		let res = await exploreSpace(path, expr, token);
 		res = JSON.parse(res as any);
-		//res.forEach((each) => {
-		//	console.log("token: ", each.token);
-		//	console.log("expr: ", each.expr);
-		//});
 		return res;
 	}
 );
-
 
 function initNode(id: string, label: string, remoteData?: any): SpaceNode {
 	return {
@@ -72,15 +64,13 @@ function initNodesFromApiResponse(data: { token: Uint8Array, expr: string }[]): 
 		nodes.push(
 			initNode(
 				tokens[i],
-				labels[i],
+				data[i].expr,
 				data[i]
 			)
 		)
 	}
 	return nodes
 }
-
-
 
 // changes a token of type Uint8Array to a unique string representation
 function tokenToString(token: Uint8Array): string {
@@ -218,13 +208,31 @@ function extractLabels(details: ExploreDetail[]): string[] {
 }
 
 // wraps elements(nodes or edges) insde `data` keys.
+// TODO: Deprecate
 function elementsToCyInput(eles: SpaceNode[] | SpaceEdge[]): ElementDefinition[] {
 	return eles.map((el) => {
+		let scratchData = el.remoteData
+		el.remoteData = undefined
 		return {
-			data: el
+			data: el,
+			scratch: scratchData 
 		}
 	})
 }
+
+function spaceNodeToCyInput(node: SpaceNode): ElementDefinition {
+	return {
+		data: node,
+		scratch: node.remoteData
+	}
+}
+
+function spaceEdgeToCyInput(edge: SpaceEdge): ElementDefinition {
+	return {
+		data: edge,
+	}
+}
+
 
 
 export type {

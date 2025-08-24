@@ -1,7 +1,8 @@
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import { onCleanup, onMount } from 'solid-js';
-import { elementsToCyInput, initEdge, initNode, SpaceNode } from '~/lib/space';
+import { elementsToCyInput, initEdge, initNode, initNodesFromApiResponse, SpaceNode } from '~/lib/space';
+import { exploreSpace } from '~/lib/api';
 
 cytoscape.use(coseBilkent);
 
@@ -23,6 +24,18 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 		]
 	)[0]
 	rootNode.style = { "background-color": "blue" }
+
+	const fetchChildren = async (node: cytoscape.NodeSingular) => {
+		let children = JSON.parse(await exploreSpace("", "$x", node.scratch().token));
+		//children = Array.from(children)
+		//children = children.map(item => { return item.token})
+		console.log("childre: ", children)
+		const newNodes = initNodesFromApiResponse(children);
+		const newEdges = newNodes.map(newNode => initEdge(node.id(), newNode.id));
+		cy.add(elementsToCyInput(newNodes));
+		cy.add(elementsToCyInput(newEdges));
+		runLayout();
+	}
 
 	const generateRandomChildren = (node: cytoscape.NodeSingular): cytoscape.CollectionReturnValue => {
 		const numChildren = Math.floor(Math.random() * 5) + 1;
@@ -73,10 +86,7 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 
 	const expandNode = (node: cytoscape.NodeSingular) => {
 		console.log(`Expanding node ${node.id()}`)
-		const children = generateRandomChildren(node);
-		if (children.length > 0) {
-			runLayout();
-		}
+		fetchChildren(node);
 	};
 
 	const graphColors = {
@@ -135,7 +145,6 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 		});
 
 		//cy.on('ready', () => {
-		//	console.log("I am ready")
 		//	cy.zoom(2);
 		//	cy.center();
 		//});
@@ -149,7 +158,7 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 			}
 		});
 
-		cy.on('mouseover', 'node', (event) => {
+		cy.on('mouseover', 'node', () => {
 		});
 
 		cy.on('mouseout', 'node', () => {
