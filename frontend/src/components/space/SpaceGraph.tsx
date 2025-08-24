@@ -32,8 +32,12 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 		console.log("childre: ", children)
 		const newNodes = initNodesFromApiResponse(children);
 		const newEdges = newNodes.map(newNode => initEdge(node.id(), newNode.id));
-		cy.add(elementsToCyInput(newNodes));
-		cy.add(elementsToCyInput(newEdges));
+		const graphNodes = elementsToCyInput(newNodes)
+		const graphEdges = elementsToCyInput(newEdges)
+		graphNodes.forEach(n => n.position = { x: node.position().x, y: node.position().y })
+
+		cy.add(graphNodes);
+		cy.add(graphEdges);
 		runLayout();
 	}
 
