@@ -64,7 +64,7 @@ function initNodesFromApiResponse(data: { token: Uint8Array, expr: string }[]): 
 		nodes.push(
 			initNode(
 				tokens[i],
-				data[i].expr,
+				labels[i],
 				data[i]
 			)
 		)
