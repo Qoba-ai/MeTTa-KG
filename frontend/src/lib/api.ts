@@ -1,4 +1,4 @@
-export const API_URL = import.meta.env.VITE_BACKEND_URL;
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 export interface Token {
 	id: number;
@@ -12,6 +12,18 @@ export interface Token {
 	permission_share_read: boolean;
 	permission_share_write: boolean;
 	parent: number | null;
+}
+export interface ApiResponse {
+    status: "success" | "error";
+    data?: any;
+    message: string;
+}
+
+async function sanitizeResponse(response: Response) {
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP error! status: ${response.status}`);
+    }
 }
 
 export interface Transformation {
@@ -46,19 +58,23 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
 	const response = await fetch(`${API_URL}${url}`, { ...options, headers });
 	if (!response.ok) {
-		console.error(new Error(`HTTP error! status: ${response.status}`));
 	}
 
 	let res = await response.json();
 	return res
 }
 
-export const transform = (transformation: Transformation) => {
-	return request<boolean>('/spaces', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(transformation),
-	});
+
+export const transform = (transformation: Transformation) => {    
+    return request<boolean>('/spaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(transformation),
+    }).then(result => {
+        return result;
+    }).catch(error => {
+        throw error;
+    });
 };
 
 export const importSpace = (path: string, uri: string) => {
@@ -208,4 +224,164 @@ export const createFromN3 = (file: File) => {
 			'Authorization': `${localStorage.getItem("token")}`,
 		}
 	}).then(response => response.json());
+};
+
+export async function isPathClear(path: string): Promise<boolean> {
+    try {
+        
+        // Clean the path properly
+        const cleanPath = path.replace(/^\/+|\/+$/g, ''); // Remove leading/trailing slashes
+        
+        const requestBody = {
+            pattern: "$x",
+            token: ""
+        };
+        
+        const response = await fetch(`${API_URL}/explore/spaces/${cleanPath}`, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                'Authorization': `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        const result = response.status !== 503;
+        
+        return result;
+
+    } catch (error) {
+        // Assume clear to avoid getting stuck
+        return true;
+    }
+}
+
+export interface ImportDataResponse {
+    status: "success" | "error";
+    data?: any;
+    message: string;
+}
+// export async function importData(type: string, data: any = null, format: string = "metta"): Promise<ImportDataResponse> {
+//     try {
+//         switch (type) {
+//             case "text": {
+//                 // Split lines and use as patterns/templates
+//                 const exprs = (data as string).split('\n').filter(line => line.trim() !== "");
+//                 const transformation: Transformation = {
+//                     space: "",
+//                     patterns: exprs,
+//                     templates: exprs
+//                 };
+//                 const response = await fetch(`${API_URL}/spaces`, {
+//                     method: "POST",
+//                     headers: {
+//                         "Content-Type": "application/json",
+//                         "Authorization": `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
+//                     },
+//                     body: JSON.stringify(transformation),
+//                 });
+
+//                 if (!response.ok) {
+//                     const errorText = await response.text();
+//                     return {
+//                         status: "error",
+//                         message: errorText || `HTTP error! status: ${response.status}`,
+//                     };
+//                 }
+
+//                 const responseText = await response.text();
+//                 return {
+//                     status: "success",
+//                     data: responseText,
+//                     message: "Text imported successfully",
+//                 };
+//             }
+
+//             case "file":
+//                 return {
+//                     status: "error",
+//                     message: "File upload not implemented yet",
+//                 };
+
+//             default:
+//                 throw new Error(`Unsupported import type: ${type}`);
+//         }
+//     } catch (error) {
+//         return {
+//             status: "error",
+//             message: error instanceof Error ? error.message : "Failed to import data",
+//         };
+//     }
+// }
+
+export async function importData(
+    type: string,
+    data: any = null,
+    format: string = "metta"
+): Promise<ImportDataResponse> {
+    try {
+        switch (type) {
+            case "text": {
+                // Use the upload endpoint like the pattern you showed
+                const url = `${API_URL}/upload/${encodeURIComponent("$x")}/${encodeURIComponent("$x")}?format=${encodeURIComponent(format)}`;
+                const res = await fetch(url, { 
+                    method: 'POST', 
+                    headers: {
+                        "Content-Type": "text/plain",
+                        "Authorization": `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
+                    },
+                    body: data as string 
+                });
+                
+                const text = await res.text();
+                
+                if (!res.ok) {
+                    return {
+                        status: "error",
+                        message: text || res.statusText,
+                    };
+                }
+
+                return {
+                    status: "success",
+                    data: text,
+                    message: "Text imported successfully",
+                };
+            }
+
+            case "file":
+                return {
+                    status: "error",
+                    message: "File upload not implemented yet",
+                };
+
+            default:
+                throw new Error(`Unsupported import type: ${type}`);
+        }
+    } catch (error) {
+        return {
+            status: "error",
+            message: error instanceof Error ? error.message : "Failed to import data",
+        };
+    }
+}
+
+export const upload = async (
+    pattern: string,
+    template: string,
+    data: string,
+    format: string = 'metta'
+): Promise<string> => {
+    const url = `/upload/${encodeURIComponent(pattern)}/${encodeURIComponent(template)}?format=${encodeURIComponent(format)}`;
+    const res = await fetch(`${API_URL}${url}`, {
+        method: 'POST',
+        headers: {
+            "Content-Type": "text/plain",
+            "Authorization": `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
+        },
+        body: data,
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(text || res.statusText);
+    return text;
 };

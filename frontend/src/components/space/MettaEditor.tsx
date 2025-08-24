@@ -1,16 +1,16 @@
-import { Component, onMount, createSignal, createEffect, For } from 'solid-js';
-import { ParseError } from '../../types';
+import { Component, onMount, createSignal, createEffect, For, Show } from 'solid-js';
+import { ParseError, MettaEditorProps} from '../../types';
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { mettaLanguage } from '../../syntax/mettaLanguage';
 
-export interface MettaEditorProps {
-  initialText: string;
-  onTextChange: (text: string) => void;
-  onFileUpload: (file: File) => void;
-  parseErrors: ParseError[];
-}
+// export interface MettaEditorProps {
+//   initialText: string;
+//   onTextChange: (text: string) => void;
+//   onFileUpload: (file: File) => void;
+//   parseErrors: ParseError[];
+// }
 
 const MettaEditor: Component<MettaEditorProps> = (props) => {
   const [text, setText] = createSignal(props.initialText);
@@ -251,69 +251,71 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
       </div>
 
       {/* Action Buttons */}
-      <div style="
-        margin-bottom: 8px; 
-        display: flex; 
-        gap: 8px; 
-        flex-shrink: 0;
-        align-items: center;
-      ">
-        <button
-          style="
-            padding: 4px 8px; 
-            font-size: 11px; 
-            border: 1px solid hsl(var(--border)); 
-            border-radius: 3px; 
-            background: hsl(var(--background)); 
-            color: hsl(var(--foreground));
-            cursor: pointer;
-            transition: all 0.2s ease;
-          "
-          onClick={() => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.metta,.txt';
-            input.onchange = (e) => {
-              const file = (e.target as HTMLInputElement).files?.[0];
-              if (file) props.onFileUpload(file);
-            };
-            input.click();
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'hsl(var(--accent))';
-            e.currentTarget.style.borderColor = 'hsl(var(--primary))';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'hsl(var(--background))';
-            e.currentTarget.style.borderColor = 'hsl(var(--border))';
-          }}
-        >
-          Load File
-        </button>
-        <button
-          style="
-            padding: 4px 8px; 
-            font-size: 11px; 
-            border: 1px solid hsl(var(--border)); 
-            border-radius: 3px; 
-            background: hsl(var(--background)); 
-            color: hsl(var(--foreground));
-            cursor: pointer;
-            transition: all 0.2s ease;
-          "
-          onClick={clearEditor} // Use the new function
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'hsl(var(--accent))';
-            e.currentTarget.style.borderColor = 'hsl(var(--primary))';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'hsl(var(--background))';
-            e.currentTarget.style.borderColor = 'hsl(var(--border))';
-          }}
-        >
-          Clear
-        </button>
-      </div>
+      <Show when={props.showActionButtons ?? true}>
+        <div style="
+          margin-bottom: 8px; 
+          display: flex; 
+          gap: 8px; 
+          flex-shrink: 0;
+          align-items: center;
+        ">
+          <button
+            style="
+              padding: 4px 8px; 
+              font-size: 11px; 
+              border: 1px solid hsl(var(--border)); 
+              border-radius: 3px; 
+              background: hsl(var(--background)); 
+              color: hsl(var(--foreground));
+              cursor: pointer;
+              transition: all 0.2s ease;
+            "
+            onClick={() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = '.metta,.txt';
+              input.onchange = (e) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (file) props.onFileUpload(file);
+              };
+              input.click();
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'hsl(var(--accent))';
+              e.currentTarget.style.borderColor = 'hsl(var(--primary))';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'hsl(var(--background))';
+              e.currentTarget.style.borderColor = 'hsl(var(--border))';
+            }}
+          >
+            Load File
+          </button>
+          <button
+            style="
+              padding: 4px 8px; 
+              font-size: 11px; 
+              border: 1px solid hsl(var(--border)); 
+              border-radius: 3px; 
+              background: hsl(var(--background)); 
+              color: hsl(var(--foreground));
+              cursor: pointer;
+              transition: all 0.2s ease;
+            "
+            onClick={clearEditor} // Use the new function
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'hsl(var(--accent))';
+              e.currentTarget.style.borderColor = 'hsl(var(--primary))';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'hsl(var(--background))';
+              e.currentTarget.style.borderColor = 'hsl(var(--border))';
+            }}
+            >
+              Clear
+            </button>
+          </div>
+      </Show>
 
       {/* Error Display Panel - Updated with theme colors */}
       {(realTimeErrors().length > 0 || props.parseErrors.length > 0) && (

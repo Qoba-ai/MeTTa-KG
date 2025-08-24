@@ -64,6 +64,7 @@ export interface MettaEditorProps {
   onTextChange: (text: string) => void;
   onFileUpload: (file: File) => void;
   parseErrors: ParseError[];
+  showActionButtons?: boolean;
 }
 
 // export interface LegendProps {

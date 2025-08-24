@@ -125,6 +125,14 @@ impl MorkApiClient {
             }
         }
     }
+    pub async fn post_upload(&self, url: &str, body: String) -> Result<reqwest::Response, reqwest::Error> {
+        self.client
+            .post(format!("{}{}", self.base_url, url))
+            .body(body)
+            .header("Content-Type", "text/plain")
+            .send()
+            .await
+    }
 }
 
 pub trait Request {
@@ -177,7 +185,7 @@ impl TransformRequest {
         format!(
             "(, {})",
             self.transform_input
-                .patterns
+                .templates
                 .iter()
                 .map(|pattern| { self.namespace.with_namespace(pattern) })
                 .collect::<Vec<String>>()

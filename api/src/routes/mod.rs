@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 pub mod spaces;
 pub mod tokens;
 pub mod translations;
+pub mod upload;
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum AuthError {
