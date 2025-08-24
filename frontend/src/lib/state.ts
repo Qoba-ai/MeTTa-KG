@@ -1,5 +1,7 @@
 import { createSignal } from "solid-js";
 
+export const [rootToken, setRootToken] = createSignal<string | null>(
+  localStorage.getItem('rootToken')
+);
 
-// the current namespace. e.g `/hello/world/`.
-export const [namespace, setNamespace] = createSignal([""]);
+export const [namespace, setNamespace] = createSignal<string[]>(['']);
