@@ -22,14 +22,14 @@ interface SidbarProps {
 
 export default function Sidbar({activeTab, setActiveTab, sidebarSections}: SidbarProps) {
 	// const [activeTab, setActiveTab] = createSignal("explore")
-	const [isCollapsed, setIsCollapsed] = createSignal(false)
+	const [isCollapsed, setIsCollapsed] = createSignal(true)
 
 
 	return (
 		<>
 			<div
 				class={`relative transition-all duration-300 ease-in-out ${
-					isCollapsed() ? "w-20" : "w-80"
+					isCollapsed() ? "w-16" : "w-80"
 				} bg-sidebar border-r border-sidebar-border`}
 			>
 				<Button

@@ -7,6 +7,7 @@ import { For, Show, Suspense, createSignal } from 'solid-js';
 import { ParseError, LayoutAlgorithm, LayoutOptions, LayoutState } from '../types';
 import { HiOutlineMinus, HiOutlinePlus } from 'solid-icons/hi';
 import { initNode, initNodesFromApiResponse, SpaceNode, subSpace } from "~/lib/space"
+import CytoscapeCanvas, { CytoscapeCanvasHandle } from "~/components/space/SpaceGraph";
 
 // Import the required CSS for the editor
 import '../styles/variables.css';
@@ -28,6 +29,7 @@ const LoadPage = () => {
 		startTime: 0,
 		duration: 0
 	});
+	let canvas!: CytoscapeCanvasHandle;
 	const rootNode: SpaceNode = initNode("root", "", { token: Uint8Array.from([]), expr: "" })
 	let progressTimer: number | undefined;
 
@@ -132,19 +134,19 @@ const LoadPage = () => {
 	};
 
 	// Zoom Controls event handlers
-	const handleZoomIn = () => {
+	function handleZoomIn() {
 		console.log('Zoom in');
-		(window as any).cytoscapeControls?.zoomIn();
+		canvas.zoomIn();
 	};
 
-	const handleZoomOut = () => {
+	function handleZoomOut() {
 		console.log('Zoom out');
-		(window as any).cytoscapeControls?.zoomOut();
+		canvas.zoomOut();
 	};
 
 	const handleRecenter = () => {
 		console.log('Recenter');
-		(window as any).cytoscapeControls?.recenter();
+		canvas.recenter();
 	};
 
 	// Minimize Controls event handlers
@@ -192,7 +194,6 @@ const LoadPage = () => {
 
 	// Setup event listeners on mount
 	//const cleanup = setupEventListeners();
-
 	return (
 		<div class="relative w-full h-full">
 			{/* MettaEditor - Always floating on the left */}
@@ -273,7 +274,10 @@ const LoadPage = () => {
 								<span class="text-lg">No data loaded on this path/namespace</span>
 							</div>
 						}>
-							<SpaceGraph rootNodes={initNodesFromApiResponse(subSpace()!)}/>
+							<SpaceGraph rootNodes={initNodesFromApiResponse(subSpace()!)} ref={el => {
+								canvas = el
+								console.log("canvas: ", canvas)
+							}} />
 						</Show>
 
 					</Show>

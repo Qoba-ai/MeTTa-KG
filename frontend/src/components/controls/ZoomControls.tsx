@@ -1,31 +1,17 @@
-import { Component } from 'solid-js';
-import { ZoomControlsProps } from '../../types';
+export interface ZoomControlsProps {
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onRecenter: () => void;
+}
 
-const ZoomControls: Component<ZoomControlsProps> = (props) => {
+
+const ZoomControls = (props: ZoomControlsProps) => {
   
-  const handleZoomIn = () => {
-    if ((globalThis as any).cytoscapeControls) {
-      (globalThis as any).cytoscapeControls.zoomIn();
-    }
-  };
-
-  const handleZoomOut = () => {
-    if ((globalThis as any).cytoscapeControls) {
-      (globalThis as any).cytoscapeControls.zoomOut();
-    }
-  };
-
-  const handleRecenter = () => {
-    if ((globalThis as any).cytoscapeControls) {
-      (globalThis as any).cytoscapeControls.recenter();
-    }
-  };
-
   return (
     <div id="zoom-controls" class="ui-card top-right">
-      <button id="zoom-in" title="Zoom In" onClick={handleZoomIn}>+</button>
-      <button id="zoom-out" title="Zoom Out" onClick={handleZoomOut}>−</button>
-      <button id="recenter" title="Recenter" onClick={handleRecenter}>⌂</button>
+      <button id="zoom-in" title="Zoom In" onClick={props.onZoomIn}>+</button>
+      <button id="zoom-out" title="Zoom Out" onClick={props.onZoomOut}>−</button>
+      <button id="recenter" title="Recenter" onClick={props.onRecenter}>⌂</button>
     </div>
   );
 };

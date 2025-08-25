@@ -6,13 +6,27 @@ import { exploreSpace } from '~/lib/api';
 
 cytoscape.use(coseBilkent);
 
+export type CytoscapeCanvasHandle = {
+	zoomIn: () => void;
+	zoomOut: () => void;
+	recenter: () => void;
+	// applyLayout: () => void;
+	// stopLayout: () => void;
+	// setShowLabels: (show: boolean) => void;
+	// exportPNG: () => void;
+	// exportPDF: () => void;
+};
+
 interface SpaceGraphProps {
 	rootNodes: SpaceNode[]
+	onZoomChange?: (zoom: number) => void;
+	ref?: (el: CytoscapeCanvasHandle) => void;
 }
 
-const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
+const SpaceGraph = ( props: SpaceGraphProps) => {
 	let cyContainer: HTMLDivElement;
 	let cy: cytoscape.Core;
+	const { rootNodes } = props;
 
 
 	const rootNode: cytoscape.ElementDefinition = elementsToCyInput(
@@ -26,7 +40,7 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 	rootNode.style = { "background-color": "blue" }
 
 	const fetchChildren = async (node: cytoscape.NodeSingular) => {
-		let children = JSON.parse(await exploreSpace("", "$x", node.scratch().token));
+		let children = JSON.parse(await exploreSpace("", "$x", node.scratch().token) as any);
 		//children = Array.from(children)
 		//children = children.map(item => { return item.token})
 		console.log("childre: ", children)
@@ -41,27 +55,12 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 		runLayout();
 	}
 
-	const generateRandomChildren = (node: cytoscape.NodeSingular): cytoscape.CollectionReturnValue => {
-		const numChildren = Math.floor(Math.random() * 5) + 1;
-		const newNodes: cytoscape.ElementDefinition[] = [];
-		const newEdges: cytoscape.ElementDefinition[] = [];
-
-		for (let i = 0; i < numChildren % 3; i++) {
-			const childId = `${node.id()}${i}`;
-			newNodes.push({ data: { id: childId, label: childId }, position: { x: node.position().x, y: node.position().y } });
-			newEdges.push({ data: { source: node.id(), target: childId } });
-		}
-		const nodes = cy.add(newNodes).nodes();
-		cy.add(newEdges);
-		return nodes
-	}
-
 	const runLayout = () => {
 		const layout = cy.layout({
 			name: 'cose-bilkent',
 			animate: true,
 			fit: false,
-		});
+		} as any);
 		layout.run();
 	}
 
@@ -93,6 +92,49 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 		fetchChildren(node);
 	};
 
+	function zoomIn() {
+		if (cy && !cy.animated()) {
+			const currentZoom = cy.zoom();
+			console.log("currentZoom: ", currentZoom)
+			cy.animate({
+				zoom: {
+					level: Math.min(currentZoom * 1.2, 4),
+					renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
+				}
+			}, {
+				duration: 300,
+				easing: 'ease-out'
+			});
+		}
+	};
+
+	function zoomOut() {
+		if (cy && !cy.animated()) {
+			const currentZoom = cy.zoom();
+			console.log("currentZoom: ", currentZoom)
+			cy.animate({
+				zoom: {
+					level: Math.max(currentZoom * 0.8, 0.2),
+					renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
+				}
+			}, {
+				duration: 300,
+				easing: 'ease-out'
+			});
+		}
+	};
+
+	function recenter() {
+		if (cy) {
+			cy.animate({
+				fit: { eles: cy.elements(), padding: 200 }
+			}, {
+				duration: 500,
+				easing: 'ease-in-out'
+			});
+		}
+	};
+
 	const graphColors = {
 		nodeBackground: '#21C45D',
 		nodeBackgroundHover: '#5a87ff',
@@ -106,6 +148,7 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 	onMount(() => {
 		cy = cytoscape({
 			container: cyContainer!,
+			zoom: 1.5,
 			elements: [
 				rootNode,
 				...elementsToCyInput(rootNodes),  // nodes
@@ -145,8 +188,11 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 			layout: {
 				name: 'cose-bilkent',
 				animate: false,
-			},
+				fit: false
+			} as any,
 		});
+
+		recenter()
 
 		//cy.on('ready', () => {
 		//	cy.zoom(2);
@@ -167,6 +213,18 @@ const SpaceGraph = ({ rootNodes }: SpaceGraphProps) => {
 
 		cy.on('mouseout', 'node', () => {
 		});
+
+		props.ref?.({
+			zoomIn,
+			zoomOut,
+			recenter,
+			// applyLayout,
+			// stopLayout,
+			// setShowLabels,
+			// exportPNG,
+			// exportPDF,
+		});
+
 	});
 
 	onCleanup(() => {
