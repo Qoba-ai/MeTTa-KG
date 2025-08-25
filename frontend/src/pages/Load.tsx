@@ -162,6 +162,14 @@ const LoadPage = () => {
 		setIsControlsMinimized(false);
 	};
 
+	function handleToggleCard() {
+		if (isMinimized()) {
+			handleMaximizeAll()
+		} else {
+			handleMinimizeAll()
+		}
+	}
+
 	// Layout event listeners
 	const handleLayoutStart = (e: Event) => {
 		const detail = (e as CustomEvent).detail || {};
@@ -226,8 +234,7 @@ const LoadPage = () => {
 
 			{/* Minimize Controls - Top Right Secondary (next to zoom controls) */}
 			<MinimizeControls
-				onMinimizeAll={handleMinimizeAll}
-				onMaximizeAll={handleMaximizeAll}
+				onToggleCards={handleToggleCard}
 			/>
 
 			{/* UI Controls - Floating on bottom right */}
