@@ -1,8 +1,9 @@
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
-import { onCleanup, onMount } from 'solid-js';
+import { Accessor, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 import { elementsToCyInput, initEdge, initNode, initNodesFromApiResponse, SpaceNode } from '~/lib/space';
 import { exploreSpace } from '~/lib/api';
+import { formatedNamespace, namespace } from '~/lib/state';
 
 cytoscape.use(coseBilkent);
 
@@ -18,32 +19,104 @@ export type CytoscapeCanvasHandle = {
 };
 
 interface SpaceGraphProps {
-	rootNodes: SpaceNode[]
+	pattern: Accessor<string>;
+	rootNodes: Accessor<SpaceNode[]>;
 	onZoomChange?: (zoom: number) => void;
-	ref?: (el: CytoscapeCanvasHandle) => void;
+	ref?: (cavas: CytoscapeCanvasHandle, setSpaceGraph: (eles: SpaceNode[]) => void) => void;
 }
 
-const SpaceGraph = ( props: SpaceGraphProps) => {
+const SpaceGraph = (props: SpaceGraphProps) => {
 	let cyContainer: HTMLDivElement;
 	let cy: cytoscape.Core;
-	const { rootNodes } = props;
+	const [initNodes, setInitNodes] = createSignal(props.rootNodes());
+	const [rootNode, setRootNode] = createSignal(initRootNode(props.pattern()))
+
+	createEffect(() => {
+		setInitNodes(props.rootNodes());
+		setRootNode(initRootNode(props.pattern()))
+		if (cy) {
+			cy.destroy();
+		}
+		setSpaceGraph();
+	})
+
+	function setSpaceGraph() {
+		cy = cytoscape({
+			container: cyContainer!,
+			zoom: 1.5,
+			elements: [
+				rootNode(),
+				...elementsToCyInput(initNodes()),  // nodes
+				...elementsToCyInput(initNodes().map(node => initEdge(rootNode().data.id!, node.id)))],  // edges to root
+			style: [
+				{
+					selector: 'node',
+					style: {
+						'background-color': graphColors.nodeBackground,
+						'label': 'data(label)',
+						'color': graphColors.nodeText,
+						'font-size': 7,
+						'font-weight': 5000,
+						'font-family': "ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji",
+						'text-valign': 'center',
+						'text-halign': 'center',
+						'text-wrap': 'wrap',
+						'text-max-width': '30px',
+						'width': 40,
+						'height': 40,
+						'shape': 'ellipse',
+						'border-width': 0,
+						'transition-property': 'background-color, border-width, width, height',
+						'transition-duration': 0.2
+					},
+				},
+				{
+					selector: 'edge',
+					style: {
+						width: 1,
+						'line-color': graphColors.edge,
+						'target-arrow-color': graphColors.edgeArrow,
+						'target-arrow-shape': 'triangle',
+					},
+				},
+			],
+			layout: {
+				name: 'cose-bilkent',
+				animate: false,
+				fit: false
+			} as any,
+		});
+		recenter()
+
+		cy.on('tap', 'node', (event) => {
+			const node = event.target;
+			if (node.successors().length > 0) {
+				collapseNode(node);
+			} else {
+				expandNode(node);
+			}
+		});
 
 
-	const rootNode: cytoscape.ElementDefinition = elementsToCyInput(
-		[
-			initNode(
-				"root",
-				"",
-				{ token: Uint8Array.from([]), expr: "" })
-		]
-	)[0]
-	rootNode.style = { "background-color": "blue" }
+	}
+
+	function initRootNode(pattern: string): cytoscape.ElementDefinition {
+		let node = elementsToCyInput(
+			[
+				initNode(
+					"root",
+					"",
+					{ token: Uint8Array.from([]), pattern: pattern })
+			]
+		)[0];
+		node.style = { "background-color": "blue" };
+		return node;
+	}
 
 	const fetchChildren = async (node: cytoscape.NodeSingular) => {
-		let children = JSON.parse(await exploreSpace("", "$x", node.scratch().token) as any);
+		let children = JSON.parse(await exploreSpace(formatedNamespace(), props.pattern(), node.scratch().token) as any);
 		//children = Array.from(children)
 		//children = children.map(item => { return item.token})
-		console.log("childre: ", children)
 		const newNodes = initNodesFromApiResponse(children);
 		const newEdges = newNodes.map(newNode => initEdge(node.id(), newNode.id));
 		const graphNodes = elementsToCyInput(newNodes)
@@ -88,14 +161,12 @@ const SpaceGraph = ( props: SpaceGraphProps) => {
 	}
 
 	const expandNode = (node: cytoscape.NodeSingular) => {
-		console.log(`Expanding node ${node.id()}`)
 		fetchChildren(node);
 	};
 
 	function zoomIn() {
 		if (cy && !cy.animated()) {
 			const currentZoom = cy.zoom();
-			console.log("currentZoom: ", currentZoom)
 			cy.animate({
 				zoom: {
 					level: Math.min(currentZoom * 1.2, 4),
@@ -111,7 +182,6 @@ const SpaceGraph = ( props: SpaceGraphProps) => {
 	function zoomOut() {
 		if (cy && !cy.animated()) {
 			const currentZoom = cy.zoom();
-			console.log("currentZoom: ", currentZoom)
 			cy.animate({
 				zoom: {
 					level: Math.max(currentZoom * 0.8, 0.2),
@@ -146,73 +216,7 @@ const SpaceGraph = ( props: SpaceGraphProps) => {
 	};
 
 	onMount(() => {
-		cy = cytoscape({
-			container: cyContainer!,
-			zoom: 1.5,
-			elements: [
-				rootNode,
-				...elementsToCyInput(rootNodes),  // nodes
-				...elementsToCyInput(rootNodes.map(node => initEdge(rootNode.data.id!, node.id)))],  // edges to root
-			style: [
-				{
-					selector: 'node',
-					style: {
-						'background-color': graphColors.nodeBackground,
-						'label': 'data(label)',
-						'color': graphColors.nodeText,
-						'font-size': 7,
-						'font-weight': 5000,
-						'font-family': "ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji",
-						'text-valign': 'center',
-						'text-halign': 'center',
-						'text-wrap': 'wrap',
-						'text-max-width': '30px',
-						'width': 40,
-						'height': 40,
-						'shape': 'ellipse',
-						'border-width': 0,
-						'transition-property': 'background-color, border-width, width, height',
-						'transition-duration': 0.2
-					},
-				},
-				{
-					selector: 'edge',
-					style: {
-						width: 1,
-						'line-color': graphColors.edge,
-						'target-arrow-color': graphColors.edgeArrow,
-						'target-arrow-shape': 'triangle',
-					},
-				},
-			],
-			layout: {
-				name: 'cose-bilkent',
-				animate: false,
-				fit: false
-			} as any,
-		});
-
-		recenter()
-
-		//cy.on('ready', () => {
-		//	cy.zoom(2);
-		//	cy.center();
-		//});
-
-		cy.on('tap', 'node', (event) => {
-			const node = event.target;
-			if (node.successors().length > 0) {
-				collapseNode(node);
-			} else {
-				expandNode(node);
-			}
-		});
-
-		cy.on('mouseover', 'node', () => {
-		});
-
-		cy.on('mouseout', 'node', () => {
-		});
+		setSpaceGraph()
 
 		props.ref?.({
 			zoomIn,
@@ -223,7 +227,7 @@ const SpaceGraph = ( props: SpaceGraphProps) => {
 			// setShowLabels,
 			// exportPNG,
 			// exportPDF,
-		});
+		}, setSpaceGraph);
 
 	});
 

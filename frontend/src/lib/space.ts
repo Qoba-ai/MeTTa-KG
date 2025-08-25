@@ -14,18 +14,6 @@ interface SpaceEdge {
 	target: SpaceNode["id"]
 }
 
-const [subSpace] = createResource(
-	() => ({
-		path: "",  // change this to namespace signal
-		expr: "$x",
-		token: Uint8Array.from([])
-	}),
-	async ({ path, expr, token }) => { // Destructure the object
-		let res = await exploreSpace(path, expr, token);
-		res = JSON.parse(res as any);
-		return res;
-	}
-);
 
 function initNode(id: string, label: string, remoteData?: any): SpaceNode {
 	return {

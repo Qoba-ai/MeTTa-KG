@@ -1,16 +1,19 @@
 import { Component, onMount, createSignal, createEffect, For, Show } from 'solid-js';
-import { ParseError, MettaEditorProps} from '../../types';
+import { ParseError } from '../../types';
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { mettaLanguage } from '../../syntax/mettaLanguage';
+import toast from 'solid-toast';
 
-// export interface MettaEditorProps {
-//   initialText: string;
-//   onTextChange: (text: string) => void;
-//   onFileUpload: (file: File) => void;
-//   parseErrors: ParseError[];
-// }
+// Component Prop Interfaces
+export interface MettaEditorProps {
+  initialText: string;
+  onTextChange: (text: string) => void;
+  onPatternLoad: (pattern: string) => void;
+  parseErrors: ParseError[];
+  showActionButtons?: boolean;
+}
 
 const MettaEditor: Component<MettaEditorProps> = (props) => {
   const [text, setText] = createSignal(props.initialText);
@@ -65,7 +68,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
   const handleTextChange = (textValue: string) => {
     setText(textValue);
     props.onTextChange(textValue);
-    
+
     // Perform real-time validation
     const validation = validateSyntax(textValue);
     setRealTimeErrors([...validation.errors, ...validation.warnings]);
@@ -271,14 +274,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
               transition: all 0.2s ease;
             "
             onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = '.metta,.txt';
-              input.onchange = (e) => {
-                const file = (e.target as HTMLInputElement).files?.[0];
-                if (file) props.onFileUpload(file);
-              };
-              input.click();
+                props.onPatternLoad(text())
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'hsl(var(--accent))';
@@ -289,7 +285,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
               e.currentTarget.style.borderColor = 'hsl(var(--border))';
             }}
           >
-            Load File
+            Load Pattern
           </button>
           <button
             style="
@@ -311,10 +307,10 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
               e.currentTarget.style.background = 'hsl(var(--background))';
               e.currentTarget.style.borderColor = 'hsl(var(--border))';
             }}
-            >
-              Clear
-            </button>
-          </div>
+          >
+            Clear
+          </button>
+        </div>
       </Show>
 
       {/* Error Display Panel - Updated with theme colors */}

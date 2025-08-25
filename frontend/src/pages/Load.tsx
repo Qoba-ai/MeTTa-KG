@@ -3,7 +3,7 @@ import UIControls from "~/components/controls/UIControls"
 import ZoomControls from "~/components/controls/ZoomControls"
 import MinimizeControls from "~/components/controls/MinimizeControls"
 import SpaceGraph from '~/components/space/SpaceGraph'
-import { For, Show, Suspense, createSignal } from 'solid-js';
+import { For, Show, Suspense, createEffect, createResource, createSignal } from 'solid-js';
 import { ParseError, LayoutAlgorithm, LayoutOptions, LayoutState } from '../types';
 import { HiOutlineMinus, HiOutlinePlus } from 'solid-icons/hi';
 import { initNode, initNodesFromApiResponse, SpaceNode, subSpace } from "~/lib/space"
@@ -12,12 +12,15 @@ import CytoscapeCanvas, { CytoscapeCanvasHandle } from "~/components/space/Space
 // Import the required CSS for the editor
 import '../styles/variables.css';
 import '../styles/components.css';
+import { exploreSpace } from "~/lib/api"
+import { namespace } from "~/lib/state"
 
 const LoadPage = () => {
 	// Editor state
-	const [mettaText, setMettaText] = createSignal('; Sample Metta Code\n(gender Chandler M)\n(age Alice 25)\n(is-brother John Adam)');
+	const [mettaText, setMettaText] = createSignal('$x');
 	const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
 	const [isMinimized, setIsMinimized] = createSignal(true);
+	const [pattern, setPattern] = createSignal("$x");
 
 	// UI Controls state
 	const [isControlsMinimized, setIsControlsMinimized] = createSignal(true);
@@ -30,10 +33,35 @@ const LoadPage = () => {
 		duration: 0
 	});
 	let canvas!: CytoscapeCanvasHandle;
+	let setSpaceGraph: (eles: SpaceNode[]) => void;
 	const rootNode: SpaceNode = initNode("root", "", { token: Uint8Array.from([]), expr: "" })
 	let progressTimer: number | undefined;
 
 	const [newNodeLabel, setNewNodeLabel] = createSignal("");
+
+	const [subSpace] = createResource(
+		() => ({
+			path: namespace(),	
+			expr: pattern(),
+			token: Uint8Array.from([])
+		}),
+		async ({ path, expr, token }) => { // Destructure the object
+			let pathStr = `/${path.join("/")}`
+			console.log("path: ", pathStr)
+			console.log("expr: ", expr)
+			console.log("token: ", token)
+			let res = await exploreSpace(pathStr, expr, token);
+			res = JSON.parse(res as any);
+			return res;
+		}
+	);
+	createEffect(() => {
+		console.log("new space: ", subSpace())
+		if (subSpace() && setSpaceGraph) {
+			setSpaceGraph(initNodesFromApiResponse(subSpace()!));
+		}
+	})
+
 
 	const handleNewNodeLabelChange = (e: any) => {
 		setNewNodeLabel(e.target.value);
@@ -70,17 +98,10 @@ const LoadPage = () => {
 	// Editor event handlers
 	const handleTextChange = (text: string) => {
 		setMettaText(text);
-		console.log('Editor text changed:', text);
 	};
 
-	const handleFileUpload = (file: File) => {
-		console.log('File uploaded:', file.name);
-		const reader = new FileReader();
-		reader.onload = (e) => {
-			const content = e.target?.result as string;
-			setMettaText(content);
-		};
-		reader.readAsText(file);
+	function handlePatternLoad(pattern: string) {
+		setPattern(pattern)
 	};
 
 	const toggleMinimize = () => {
@@ -93,7 +114,6 @@ const LoadPage = () => {
 
 	// UI Controls event handlers
 	const handleApplyLayout = (algorithm: LayoutAlgorithm, options?: LayoutOptions) => {
-		console.log('Apply layout:', algorithm, options);
 		// Call Cytoscape
 		(window as any).cytoscapeControls?.applyLayout(algorithm, options);
 
@@ -109,7 +129,6 @@ const LoadPage = () => {
 	};
 
 	const handleStopLayout = () => {
-		console.log('Stop layout');
 		(window as any).cytoscapeControls?.stopLayout();
 		setLayoutState(prev => ({
 			...prev,
@@ -119,12 +138,10 @@ const LoadPage = () => {
 	};
 
 	const handleExportPDF = () => {
-		console.log('Export PDF');
 		(window as any).cytoscapeControls?.exportPDF(2);
 	};
 
 	const handleExportPNG = () => {
-		console.log('Export PNG');
 		(window as any).cytoscapeControls?.exportPNG(2);
 	};
 
@@ -135,29 +152,24 @@ const LoadPage = () => {
 
 	// Zoom Controls event handlers
 	function handleZoomIn() {
-		console.log('Zoom in');
 		canvas.zoomIn();
 	};
 
 	function handleZoomOut() {
-		console.log('Zoom out');
 		canvas.zoomOut();
 	};
 
 	const handleRecenter = () => {
-		console.log('Recenter');
 		canvas.recenter();
 	};
 
 	// Minimize Controls event handlers
 	const handleMinimizeAll = () => {
-		console.log('Minimize all');
 		setIsMinimized(true);
 		setIsControlsMinimized(true);
 	};
 
 	const handleMaximizeAll = () => {
-		console.log('Maximize all');
 		setIsMinimized(false);
 		setIsControlsMinimized(false);
 	};
@@ -207,7 +219,7 @@ const LoadPage = () => {
 			{/* MettaEditor - Always floating on the left */}
 			<div class={`ui-card ${isMinimized() ? 'minimized' : 'metta-editor-card'} top-left`} style={isMinimized() ? "width: 300px; height: auto; z-index: 1001;" : ""}>
 				<div class="card-header">
-					<h3>MeTTa Editor</h3>
+					<h3>Pattern</h3>
 					<button class="minimize-btn" onClick={toggleMinimize}>
 						{isMinimized() ? <HiOutlinePlus class="w-4 h-4" /> : <HiOutlineMinus class="w-4 h-4" />}
 					</button>
@@ -218,7 +230,7 @@ const LoadPage = () => {
 						<MettaEditor
 							initialText={mettaText()}
 							onTextChange={handleTextChange}
-							onFileUpload={handleFileUpload}
+							onPatternLoad={handlePatternLoad}
 							parseErrors={parseErrors()}
 						/>
 					</div>
@@ -281,9 +293,9 @@ const LoadPage = () => {
 								<span class="text-lg">No data loaded on this path/namespace</span>
 							</div>
 						}>
-							<SpaceGraph rootNodes={initNodesFromApiResponse(subSpace()!)} ref={el => {
-								canvas = el
-								console.log("canvas: ", canvas)
+							<SpaceGraph pattern={pattern} rootNodes={() => initNodesFromApiResponse(subSpace()!)} ref={(c, s) => {
+								canvas = c
+								setSpaceGraph = s
 							}} />
 						</Show>
 

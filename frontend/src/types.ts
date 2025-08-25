@@ -58,14 +58,7 @@ export interface ParseError {
   severity: 'error' | 'warning';
 }
 
-// Component Prop Interfaces
-export interface MettaEditorProps {
-  initialText: string;
-  onTextChange: (text: string) => void;
-  onFileUpload: (file: File) => void;
-  parseErrors: ParseError[];
-  showActionButtons?: boolean;
-}
+
 
 // export interface LegendProps {
 //   graphData: GraphData;
