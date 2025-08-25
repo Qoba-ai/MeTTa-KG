@@ -1,5 +1,4 @@
 import { Route, Router } from "@solidjs/router";
-import { Sidebar } from "~/components/common/Sidebar";
 import FileUp from 'lucide-solid/icons/file-up';
 import FileDown from 'lucide-solid/icons/file-down';
 import Replace from 'lucide-solid/icons/replace';
@@ -11,6 +10,7 @@ import TransformPage from "./Transform";
 import TokensPage from "./Tokens";
 import NameSpace from "~/components/common/nameSpace";
 import { createSignal } from "solid-js";
+import Sidebar from "~/components/common/Sidebar";
 
 
 const AppLayout = (props: any) => {
@@ -44,7 +44,7 @@ const AppLayout = (props: any) => {
     return (
         <div class="w-full h-screen flex ">
             <div class="flex h-full">
-                <Sidebar options={sidbarOptions} />
+                <Sidebar />
             </div>
 
             <div class="w-full h-full flex flex-col">
