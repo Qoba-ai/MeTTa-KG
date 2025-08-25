@@ -17,30 +17,6 @@ const AppLayout = (props: any) => {
     const [spaces, setSpaces] = createSignal([""]); 
     const [isGraph, setIsGraph] = createSignal(false);
 
-    const sidbarOptions: any = [
-        {
-            name: "Load",
-            icon: <FileUp size={24} strokeWidth={2} />,
-            path: "/",
-        },
-        {
-            name: "Import",
-            icon: <FileDown size={24} strokeWidth={2} />,
-            path: "/import",
-        },
-        {
-            name: "Transform",
-            icon: <Replace size={24} strokeWidth={2} />,
-            path: "/transform",
-        },
-        {
-            name: "Manage Tokens",
-            icon: <Database size={24} strokeWidth={2} />,
-            path: "/tokens",
-            separator: true
-        },
-    ];
-
     return (
         <div class="w-full h-screen flex ">
             <div class="flex h-full">
@@ -54,15 +30,6 @@ const AppLayout = (props: any) => {
                         <div class="ml-24">
                             <NameSpace />
                         </div>
-                    </div>
-
-                    <div class="flex justify-center items-center mr-10">
-                        <span class="mr-4">{isGraph() ? "Graph" : "Code"}</span>
-                        <Switch checked={isGraph()} onChange={setIsGraph}>
-                            <SwitchControl>
-                                <SwitchThumb />
-                            </SwitchControl>
-                        </Switch>
                     </div>
                 </div>
 
