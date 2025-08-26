@@ -204,158 +204,65 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
   };
 
   return (
-    <div style="
-      display: flex; 
-      flex-direction: column; 
-      height: 100%; 
-      width: 100%;
-      box-sizing: border-box;
-    ">
-      <h3 style="
-        margin: 0 0 12px 0; 
-        font-size: 14px; 
-        font-weight: 600; 
-        flex-shrink: 0;
-        line-height: 1.2;
-        color: hsl(var(--foreground));
-      ">
+    <div class="flex flex-col h-full w-full box-border">
+      <h3 class="m-0 mb-3 text-sm font-semibold flex-shrink-0 leading-tight text-foreground">
         {realTimeErrors().length > 0 && (
-          <span style="
-            margin-left: 8px;
-            font-size: 11px;
-            font-weight: normal;
-            color: hsl(var(--destructive));
-          ">
+          <span class="ml-2 text-xs font-normal text-destructive">
             ({realTimeErrors().filter(e => e.severity === 'error').length} errors, {realTimeErrors().filter(e => e.severity === 'warning').length} warnings)
           </span>
         )}
       </h3>
 
       {/* Editor Container */}
-      <div style="
-        position: relative;
-        flex: 1;
-        min-height: 0;
-        margin-bottom: 8px;
-        border: 1px solid hsl(var(--border));
-        border-radius: 4px;
-        background: hsl(var(--background));
-        overflow: hidden;
-        transition: all 0.3s ease;
-      ">
+      <div class="relative flex-1 min-h-0 mb-2 border border-border rounded bg-background overflow-hidden transition-all duration-300 ease-linear">
         {/* CodeMirror Editor */}
         <div
           ref={editorRef}
-          style="
-            height: 100%;
-            width: 100%;
-            background: hsl(var(--background));
-          "
+          class="h-full w-full bg-background"
         />
       </div>
 
       {/* Action Buttons */}
       <Show when={props.showActionButtons ?? true}>
-        <div style="
-          margin-bottom: 8px; 
-          display: flex; 
-          gap: 8px; 
-          flex-shrink: 0;
-          align-items: center;
-        ">
+        <div class="mb-2 flex gap-2 flex-shrink-0 items-center">
           <button
-            style="
-              padding: 4px 8px; 
-              font-size: 11px; 
-              border: 1px solid hsl(var(--border)); 
-              border-radius: 3px; 
-              background: hsl(var(--background)); 
-              color: hsl(var(--foreground));
-              cursor: pointer;
-              transition: all 0.2s ease;
-            "
+            class="px-2 py-1 text-xs border border-border rounded-sm bg-background text-foreground cursor-pointer transition-all duration-200 ease-linear hover:bg-accent hover:border-primary"
             onClick={() => {
                 props.onPatternLoad(text())
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'hsl(var(--accent))';
-              e.currentTarget.style.borderColor = 'hsl(var(--primary))';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'hsl(var(--background))';
-              e.currentTarget.style.borderColor = 'hsl(var(--border))';
             }}
           >
             Load Pattern
           </button>
           <button
-            style="
-              padding: 4px 8px; 
-              font-size: 11px; 
-              border: 1px solid hsl(var(--border)); 
-              border-radius: 3px; 
-              background: hsl(var(--background)); 
-              color: hsl(var(--foreground));
-              cursor: pointer;
-              transition: all 0.2s ease;
-            "
-            onClick={clearEditor} // Use the new function
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'hsl(var(--accent))';
-              e.currentTarget.style.borderColor = 'hsl(var(--primary))';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'hsl(var(--background))';
-              e.currentTarget.style.borderColor = 'hsl(var(--border))';
-            }}
+            class="px-2 py-1 text-xs border border-border rounded-sm bg-background text-foreground cursor-pointer transition-all duration-200 ease-linear hover:bg-accent hover:border-primary"
+            onClick={clearEditor}
           >
             Clear
           </button>
         </div>
       </Show>
 
-      {/* Error Display Panel - Updated with theme colors
+      {/* Error Display Panel - Commented out as in original */}
+      {/* 
       {(realTimeErrors().length > 0 || props.parseErrors.length > 0) && (
-        <div style="
-          max-height: 120px;
-          overflow-y: auto;
-          border: 1px solid hsl(var(--border));
-          border-radius: 4px;
-          background: hsl(var(--card));
-          flex-shrink: 0;
-          transition: all 0.3s ease;
-        ">
-          <div style="
-            padding: 8px;
-            font-size: 11px;
-            font-weight: 600;
-            background: hsl(var(--muted));
-            color: hsl(var(--muted-foreground));
-            border-bottom: 1px solid hsl(var(--border));
-          ">
+        <div class="max-h-30 overflow-y-auto border border-border rounded bg-card flex-shrink-0 transition-all duration-300 ease-linear">
+          <div class="p-2 text-xs font-semibold bg-muted text-muted-foreground border-b border-border">
             Issues ({realTimeErrors().filter(e => e.severity === 'error').length + props.parseErrors.filter(e => e.severity === 'error').length} errors, {realTimeErrors().filter(e => e.severity === 'warning').length + props.parseErrors.filter(e => e.severity === 'warning').length} warnings)
           </div>
-          <div style="padding: 4px;">
+          <div class="p-1">
             <For each={[...realTimeErrors(), ...props.parseErrors]}>
               {(error) => (
-                <div style={`
-                  padding: 4px 8px;
-                  margin: 2px 0;
-                  border-left: 3px solid ${error.severity === 'error' ? 'hsl(var(--destructive))' : 'hsl(var(--warning) / 0.8)'};
-                  background: ${error.severity === 'error' ? 'hsl(var(--destructive) / 0.1)' : 'hsl(var(--warning) / 0.1)'};
-                  border-radius: 2px;
-                  font-size: 11px;
-                  line-height: 1.3;
-                  transition: all 0.3s ease;
-                `}>
-                  <div style={`
-                    font-weight: 600;
-                    color: ${error.severity === 'error' ? 'hsl(var(--destructive))' : 'hsl(var(--warning))'};
-                    margin-bottom: 2px;
-                  `}>
+                <div class={`p-1 px-2 my-0.5 border-l-2 rounded-sm text-xs leading-tight transition-all duration-300 ease-linear ${
+                  error.severity === 'error' 
+                    ? 'border-l-destructive bg-destructive/10' 
+                    : 'border-l-yellow-500 bg-yellow-500/10'
+                }`}>
+                  <div class={`font-semibold mb-0.5 ${
+                    error.severity === 'error' ? 'text-destructive' : 'text-yellow-600'
+                  }`}>
                     {error.severity === 'error' ? '⚠️' : '⚡'} Line {error.line}:{error.column}
                   </div>
-                  <div style="color: hsl(var(--foreground));">
+                  <div class="text-foreground">
                     {error.message}
                   </div>
                 </div>
@@ -363,7 +270,8 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
             </For>
           </div>
         </div>
-      )} */}
+      )}
+      */}
     </div>
   );
 };
