@@ -78,7 +78,7 @@ export const transform = (transformation: Transformation) => {
 };
 
 export const importSpace = (path: string, uri: string) => {
-	return request<boolean>(`/spaces/${path}?uri=${uri}`, {
+	return request<boolean>(`/spaces${path}?uri=${uri}`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 	});
@@ -90,10 +90,12 @@ export const readSpace = (path: string) => {
 
 function quoteFromBytes(data: Uint8Array): string {
 	let result = '';
- 
-	for (let i = 0; i < data.length; i++) {
+
+ 
+	for (let i = 0; i < data?.length; i++) {
 		const byte = data[i];
- 
+
+ 
 		// Safe characters: alphanumeric and -_.~
 		if ((byte >= 0x30 && byte <= 0x39) ||    // 0-9
 			(byte >= 0x41 && byte <= 0x5A) ||    // A-Z
@@ -106,7 +108,8 @@ function quoteFromBytes(data: Uint8Array): string {
 			result += '%' + byte.toString(16).padStart(2, '0').toUpperCase();
 		}
 	}
- 
+
+ 
 	return result;
 } 
 
@@ -133,8 +136,6 @@ export const exploreSpace = (path: string, pattern: string, token: Uint8Array | 
 		}),
 	})
 }
-
-window.exploreSpace = exploreSpace
 
 export const getAllTokens = () => {
 	return request<Token[]>('/tokens');

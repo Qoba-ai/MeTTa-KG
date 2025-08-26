@@ -13,7 +13,8 @@ import Link from 'lucide-solid/icons/link'
 import FileText from 'lucide-solid/icons/file-text'
 import File from 'lucide-solid/icons/file'
 import { importSpace, importData, upload } from '~/lib/api'; // <-- add upload
-import { namespace } from "~/lib/state"
+import { formatedNamespace, namespace } from "~/lib/state"
+import NotImplemented from "~/components/common/NotImplemented"
 
 export const UploadPage: Component = () => {
 	// URL Import state
@@ -23,12 +24,13 @@ export const UploadPage: Component = () => {
 	// File Upload state
 	const [selectedFile, setSelectedFile] = createSignal<File | null>(null)
 	let fileInputRef: HTMLInputElement | undefined
+	const isFileUploadImplemented = false; // Feature flag for file upload
 
 	// Text Input state
 	const [textContent, setTextContent] = createSignal(`(= (fact 0) 1)
 (= (fact $n) (* $n (fact (- $n 1))))
 (fact 5)`)
-    const [textFormat, setTextFormat] = createSignal("metta")
+	const [textFormat, setTextFormat] = createSignal("metta")
 
 	// Common state
 	const [activeTab, setActiveTab] = createSignal("url")
@@ -42,12 +44,12 @@ export const UploadPage: Component = () => {
 		}
 	}
 
-    const handleImport = async () => {
-        setIsLoading(true)
-        setResult(null) // Clear previous results
-        
-        try {
-            let response
+	const handleImport = async () => {
+		setIsLoading(true)
+		setResult(null) // Clear previous results
+
+		try {
+			let response
 
 			switch (activeTab()) {
 				case "url":
@@ -56,7 +58,7 @@ export const UploadPage: Component = () => {
 						toast("URL is required",)
 						return
 					}
-					response = await importSpace(namespace().join("/"), uri())
+					response = await importSpace(formatedNamespace(), uri())
 					let success_msg = "Successfully imported to space"
 					let error_msg = "Error importing to space"
 					if (response) {
@@ -68,57 +70,57 @@ export const UploadPage: Component = () => {
 					}
 					break
 
-                case "file":
-                    console.log("Importing from file...")
-                    if (!selectedFile()) {
-                        toast.error("Please select a file to upload")
-                        return
-                    }
-                    const formData = new FormData()
-                    formData.append("file", selectedFile()!)
-                    
-                    response = await importData("file", formData, "metta") // Assume metta format for files
-                    if (response.status === "success") {
-                        setResult({ data: response.data, status: "success" })
-                        toast.success(response.message)
-                    } else {
-                        setResult({ error: response.message, status: "error" })
-                        toast.error(response.message)
-                    }
-                    break
+				case "file":
+					console.log("Importing from file...")
+					if (!selectedFile()) {
+						toast.error("Please select a file to upload")
+						return
+					}
+					const formData = new FormData()
+					formData.append("file", selectedFile()!)
 
-                case "text":
-                    console.log("Importing text content...")
-                    if (!textContent().trim()) {
-                        toast.error("Text content is required")
-                        return
-                    }
+					response = await importData("file", formData, "metta") // Assume metta format for files
+					if (response.status === "success") {
+						setResult({ data: response.data, status: "success" })
+						toast.success(response.message)
+					} else {
+						setResult({ error: response.message, status: "error" })
+						toast.error(response.message)
+					}
+					break
 
-                    try {
-                        const cleanText = textContent().replace(/[\r\n]+/g, '\n').trim();
-                        const response = await upload("$x", "$x", cleanText, textFormat());
-                        setResult({ data: response, status: "success" });
-                        toast.success("Text uploaded successfully");
-                    } catch (error) {
-                        const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
-                        setResult({ error: errorMessage, status: "error" });
-                        toast.error(errorMessage);
-                    }
-                    break
+				case "text":
+					console.log("Importing text content...")
+					if (!textContent().trim()) {
+						toast.error("Text content is required")
+						return
+					}
+
+					try {
+						const cleanText = textContent().replace(/[\r\n]+/g, '\n').trim();
+						const response = await upload("$x", "$x", cleanText, textFormat());
+						setResult({ data: response, status: "success" });
+						toast.success("Text uploaded successfully");
+					} catch (error) {
+						const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
+						setResult({ error: errorMessage, status: "error" });
+						toast.error(errorMessage);
+					}
+					break
 
 				default:
 					throw new Error("Invalid tab selection")
 			}
 
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred"
-            console.error("Import error:", error)
-            setResult({ error: errorMessage, status: "error" })
-            toast.error(errorMessage)
-        } finally {
-            setIsLoading(false)
-        }
-    }
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred"
+			console.error("Import error:", error)
+			setResult({ error: errorMessage, status: "error" })
+			toast.error(errorMessage)
+		} finally {
+			setIsLoading(false)
+		}
+	}
 
 	const formatFileSize = (bytes: number) => {
 		if (bytes === 0) return "0 Bytes";
@@ -203,58 +205,61 @@ export const UploadPage: Component = () => {
 					</TabsContent>
 
 					<TabsContent value="file" class="space-y-4">
-						<div class="space-y-4">
-							<div class="space-y-2">
-								<TextField>
-									<TextFieldLabel for="file-upload">Select File</TextFieldLabel>
-									<TextFieldInput
-										id="file-upload"
-										type="file"
-										ref={fileInputRef}
-										onChange={handleFileSelect}
-										disabled={isLoading()}
-										class="cursor-pointer"
-										accept=".json,.metta,.csv,.txt"
-									/>
-								</TextField>
-								<p class="text-xs text-muted-foreground">
-									Supported formats: JSON, MeTTa, CSV, TXT
-								</p>
-							</div>
-
-							<Show when={selectedFile()}>
-								<div class="flex items-center gap-2 p-3 bg-muted rounded-md">
-									<File class="h-4 w-4" />
-									<div class="flex-1">
-										<p class="text-sm font-medium">{selectedFile()!.name}</p>
-										<p class="text-xs text-muted-foreground">
-											{formatFileSize(selectedFile()!.size)} • {selectedFile()!.type || "Unknown type"}
-										</p>
-									</div>
+						<Show when={isFileUploadImplemented} fallback={<NotImplemented name="File Upload" />}>
+							<div class="space-y-4">
+								<div class="space-y-2">
+									<TextField>
+										<TextFieldLabel for="file-upload">Select File</TextFieldLabel>
+										<TextFieldInput
+											id="file-upload"
+											type="file"
+											ref={fileInputRef}
+											onChange={handleFileSelect}
+											disabled={isLoading()}
+											class="cursor-pointer"
+											accept=".json,.metta,.csv,.txt"
+										/>
+									</TextField>
+									<p class="text-xs text-muted-foreground">
+										Supported formats: JSON, MeTTa, CSV, TXT
+									</p>
 								</div>
-							</Show>
-						</div>
+
+								<Show when={selectedFile()}>
+									<div class="flex items-center gap-2 p-3 bg-muted rounded-md">
+										<File class="h-4 w-4" />
+										<div class="flex-1">
+											<p class="text-sm font-medium">{selectedFile()!.name}</p>
+											<p class="text-xs text-muted-foreground">
+												{formatFileSize(selectedFile()!.size)} • {selectedFile()!.type || "Unknown type"}
+											</p>
+										</div>
+									</div>
+								</Show>
+							</div>
+						</Show>
+
 					</TabsContent>
 
 					<TabsContent value="text" class="space-y-4">
 						<div class="space-y-4">
 							<div class="space-y-2">
-                                <TextField>
-								    <TextFieldLabel for="text-format">Format</TextFieldLabel>
-                                    <Select
-                                        value={textFormat()}
-                                        onChange={setTextFormat}
-                                        disabled={isLoading()}
-                                        options={["metta", "json", "raw"]}
-                                        itemComponent={(props) => <SelectItem item={props.item}>{props.item.rawValue}</SelectItem>}
-                                        placeholder="Select format"
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue>{textFormat()}</SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent />
-                                    </Select>
-                                </TextField>
+								<TextField>
+									<TextFieldLabel for="text-format">Format</TextFieldLabel>
+									<Select
+										value={textFormat()}
+										onChange={setTextFormat}
+										disabled={isLoading()}
+										options={["metta", "json", "raw"]}
+										itemComponent={(props) => <SelectItem item={props.item}>{props.item.rawValue}</SelectItem>}
+										placeholder="Select format"
+									>
+										<SelectTrigger>
+											<SelectValue>{textFormat()}</SelectValue>
+										</SelectTrigger>
+										<SelectContent />
+									</Select>
+								</TextField>
 							</div>
 
 							<TextField>
@@ -282,20 +287,23 @@ export const UploadPage: Component = () => {
 					</TabsContent>
 				</Tabs>
 
-				<Button onClick={handleImport} disabled={isLoading() || !isFormValid()} class="w-40">
-					<Show
-						when={isLoading()}
-						fallback={
-							<>
-								<Upload_ class="mr-2 h-4 w-4" />
-								{activeTab() === "url" ? "Import from URL" : activeTab() === "file" ? "Upload File" : "Upload Text"}
-							</>
-						}
-					>
-						<Loader class="mr-2 h-4 w-4 animate-spin" />
-						Processing...
-					</Show>
-				</Button>
+				<Show when={activeTab() !== "file" || isFileUploadImplemented}>
+					<Button onClick={handleImport} disabled={isLoading() || !isFormValid()} class="w-40">
+						<Show
+							when={isLoading()}
+							fallback={
+								<>
+									<Upload_ class="mr-2 h-4 w-4" />
+									{activeTab() === "url" ? "Import from URL" : activeTab() === "file" ? "Upload File" : "Upload Text"}
+								</>
+							}
+						>
+							<Loader class="mr-2 h-4 w-4 animate-spin" />
+							Processing...
+						</Show>
+					</Button>
+
+				</Show>
 
 				{
 					//<Show when={result()}>

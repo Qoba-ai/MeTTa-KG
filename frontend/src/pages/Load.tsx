@@ -250,7 +250,7 @@ const LoadPage = () => {
 			/>
 
 			{/* UI Controls - Floating on bottom right */}
-			<div class={`ui-card ${isControlsMinimized() ? 'minimized' : ''} bottom-right-lower`} style={isControlsMinimized() ? "width: 200px; height: auto; z-index: 1001;" : ""}>
+			{/* <div class={`ui-card ${isControlsMinimized() ? 'minimized' : ''} bottom-right-lower`} style={isControlsMinimized() ? "width: 200px; height: auto; z-index: 1001;" : ""}>
 				<div class="card-header">
 					<h3>Controls</h3>
 					<button class="minimize-btn" onClick={toggleControlsMinimize}>
@@ -271,7 +271,7 @@ const LoadPage = () => {
 						/>
 					</div>
 				</Show>
-			</div>
+			</div> */}
 
 			{/* Cytoscape Canvas - Main Background */}
 			<div class="absolute inset-0 w-full h-full" style="z-index: 0;">

@@ -255,13 +255,7 @@ impl Request for ImportRequest {
     fn path(&self) -> String {
         format!(
             "/import/{}/{}/?uri={}",
-            self.namespace.with_namespace(
-                &self
-                    .transform_input
-                    .patterns
-                    .first()
-                    .unwrap_or(&"$x".to_string())
-            ),
+            "$x",
             self.namespace.with_namespace(
                 &self
                     .transform_input
