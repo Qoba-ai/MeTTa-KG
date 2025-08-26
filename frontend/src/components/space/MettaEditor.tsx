@@ -70,8 +70,9 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
     props.onTextChange(textValue);
 
     // Perform real-time validation
-    const validation = validateSyntax(textValue);
-    setRealTimeErrors([...validation.errors, ...validation.warnings]);
+    // const validation = validateSyntax(textValue);
+    // setRealTimeErrors([...validation.errors, ...validation.warnings]);
+    setRealTimeErrors([]);
   };
 
   onMount(() => {
@@ -313,7 +314,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
         </div>
       </Show>
 
-      {/* Error Display Panel - Updated with theme colors */}
+      {/* Error Display Panel - Updated with theme colors
       {(realTimeErrors().length > 0 || props.parseErrors.length > 0) && (
         <div style="
           max-height: 120px;
@@ -362,7 +363,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
             </For>
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 };
