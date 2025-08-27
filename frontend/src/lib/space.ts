@@ -2,6 +2,7 @@ import { createResource } from 'solid-js';
 import { ExploreDetail, exploreSpace } from "~/lib/api"
 import parse from 's-expression';
 import { EdgeDataDefinition, ElementDefinition, NodeDataDefinition } from 'cytoscape';
+import { it } from 'node:test';
 
 interface SpaceNode {
 	id: string,
@@ -15,7 +16,7 @@ interface SpaceEdge {
 }
 
 
-function initNode(id: string, label: string, remoteData: { expr: string, token: Uint8Array}): SpaceNode {
+function initNode(id: string, label: string, remoteData: { expr: string, token: Uint8Array }): SpaceNode {
 	return {
 		id,
 		label,
@@ -43,9 +44,10 @@ function initNodeFromApiResponse(data: { token: Uint8Array, expr: string }): Spa
 
 // changes backend responses from `/explore` to correct `SpaceNode` representation
 // current format is `{token: Uint8Array, expr: string}`
-function initNodesFromApiResponse(data: { token: Uint8Array, expr: string }[]): SpaceNode[] {
+function initNodesFromApiResponse(data: { token: Uint8Array, expr: string }[], parentLabel?: string): SpaceNode[] {
 	const tokens = data.map((item) => tokenToString(item.token))
-	const labels = extractLabels(data)
+	const labels = extractLabels(data).map(item => item || "[Malformed Expr]")
+
 	let nodes = []
 
 	for (let i = 0; i < tokens.length; i++) {
@@ -83,117 +85,66 @@ function extractLabel(expr: string): string {
 	return "Expr"
 }
 
+function flattenNodes(parsed: any): string[] {
+	const nodes: string[] = [];
 
-function extractLabels(details: ExploreDetail[]): string[] {
-	// Helper function to flatten parsed S-expression into a list of nodes
-	function flattenNodes(parsed: any): string[] {
-		const nodes: string[] = [];
-
-		function traverse(item: any) {
-			if (Array.isArray(item)) {
-				item.forEach(traverse);
-			} else if (item instanceof String) {
-				nodes.push(`'${item}'`); // Convert String object to single-quoted string
-			} else if (typeof item === 'string') {
-				nodes.push(item);
-			}
-		}
-
-		traverse(parsed);
-		return nodes;
-	}
-
-	// Parse and flatten all expressions
-	const parsedExpressions = details.map(d => {
-		try {
-			const parsed = parse(d.expr);
-			return flattenNodes(parsed);
-		} catch (error) {
-			console.warn(`Failed to parse expression "${d}": ${error.message}`);
-			return null; // Use null to indicate malformed
-		}
-	});
-
-	// Initialize result array
-	const result: string[] = details.map((_, i) => {
-		if (parsedExpressions[i] === null) {
-			return '[Malformed]';
-		}
-		return '';
-	});
-
-	// Find the maximum length of nodes across valid expressions
-	const validParsed = parsedExpressions.filter(nodes => nodes !== null) as string[][];
-	if (validParsed.length === 0) {
-		return result;
-	}
-	const maxLength = Math.max(...validParsed.map(nodes => nodes.length));
-
-	// Check if all valid expressions are identical
-	const allIdentical = validParsed.every(nodes =>
-		nodes.length === validParsed[0].length &&
-		nodes.every((node, pos) => node === validParsed[0][pos])
-	);
-
-	if (allIdentical) {
-		const lastNode = validParsed[0].length > 0 ? validParsed[0][validParsed[0].length - 1] : '';
-		details.forEach((_, i) => {
-			if (parsedExpressions[i] !== null) {
-				result[i] = lastNode;
-			}
-		});
-		return result;
-	}
-
-	// Compare nodes at each position for non-identical cases
-	for (let pos = 0; pos < maxLength; pos++) {
-		const nodesAtPos = parsedExpressions.map(nodes => nodes !== null ? (nodes[pos] || '') : '');
-		const uniqueNodes = new Set(nodesAtPos.filter(node => node !== ''));
-
-		// If all nodes at this position are the same (or empty), continue to next position
-		if (uniqueNodes.size <= 1) continue;
-
-		// For each expression, check if the node at this position is unique
-		for (let i = 0; i < details.length; i++) {
-			if (result[i] === '' && nodesAtPos[i]) {
-				// Check if this node is unique among others at this position
-				const isUnique = parsedExpressions.every((nodes, j) => {
-					if (i === j || nodes === null) return true;
-					return (nodes[pos] || '') !== nodesAtPos[i];
-				});
-				if (isUnique) {
-					result[i] = nodesAtPos[i];
-				}
-			}
-		}
-
-		// If all expressions have a unique node, we can stop
-		if (result.every(node => node !== '' || parsedExpressions[result.indexOf(node)] === null)) break;
-	}
-
-	// For expressions without a unique node, use the first non-common node if available
-	for (let i = 0; i < details.length; i++) {
-		if (result[i] === '' && parsedExpressions[i] !== null) {
-			const nodes = parsedExpressions[i] as string[];
-			for (let pos = 0; pos < nodes.length; pos++) {
-				const isCommon = parsedExpressions.every((otherNodes, j) => {
-					if (i === j || otherNodes === null) return true;
-					return (otherNodes[pos] || '') === nodes[pos];
-				});
-				if (!isCommon && nodes[pos]) {
-					result[i] = nodes[pos];
-					break;
-				}
-			}
-			// If still empty (all common, but since not all identical, this shouldn't happen), set to last
-			if (result[i] === '') {
-				result[i] = nodes.length > 0 ? nodes[nodes.length - 1] : '';
-			}
+	function traverse(item: any) {
+		if (Array.isArray(item)) {
+			item.forEach(traverse);
+		} else if (item instanceof String) {
+			nodes.push(`'${item}'`); // Convert String object to single-quoted string
+		} else if (typeof item === 'string') {
+			nodes.push(item);
 		}
 	}
 
-	return result;
+	traverse(parsed);
+	return nodes;
 }
+
+
+function extractLabels(details: ExploreDetail[], parent?: string): (string | null)[] {
+	// Helper function to flatten parsed S-expression into a list of nodes
+
+	const flatExprs = details.map(detail => flattenNodes(parse(detail.expr)));
+
+	// Find the maximum length of the flattened expressions
+	const maxLength = Math.max(...flatExprs.map(arr => arr.length));
+
+	// loop throught the maxLength build labels
+	for (let i = 0; i < maxLength; i++) {
+		const column = flatExprs.map(arr => arr[i] || null);
+
+		// Check if column values are identical
+		if (column.every(val => val === column[0]))
+			continue;
+
+		return column;
+	}
+
+	return []
+}
+window.extractLabels = extractLabels
+
+window.testExtractLabels = [
+	{
+		expr: `(Head (Date (Value "2007-03-08T23:00:00.000Z")))`,
+		token: Uint8Array.from([])
+	},
+	{
+		expr: `(Head (Date (HasDay True)))`,
+		token: Uint8Array.from([])
+	},
+	{
+		expr: `(Head (Date (HasYear True)))`,
+		token: Uint8Array.from([])
+	},
+	{
+		expr: `(Head (Date (HasMonth True)))`,
+		token: Uint8Array.from([])
+	},
+]
+
 
 // wraps elements(nodes or edges) insde `data` keys.
 // TODO: Deprecate
@@ -203,7 +154,7 @@ function elementsToCyInput(eles: SpaceNode[] | SpaceEdge[]): ElementDefinition[]
 		el.remoteData = undefined
 		return {
 			data: el,
-			scratch: scratchData 
+			scratch: scratchData
 		}
 	})
 }
@@ -237,5 +188,6 @@ export {
 	stringToToken,
 	extractLabel,
 	extractLabels,
+	flattenNodes,
 	elementsToCyInput
 }

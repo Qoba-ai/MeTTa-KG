@@ -1,9 +1,10 @@
 import cytoscape from 'cytoscape';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import { Accessor, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
-import { elementsToCyInput, initEdge, initNode, initNodesFromApiResponse, SpaceNode } from '~/lib/space';
+import { elementsToCyInput, flattenNodes, initEdge, initNode, initNodesFromApiResponse, SpaceNode } from '~/lib/space';
 import { exploreSpace } from '~/lib/api';
 import { formatedNamespace, namespace } from '~/lib/state';
+import parse from 's-expression';
 
 cytoscape.use(coseBilkent);
 
@@ -110,13 +111,32 @@ const SpaceGraph = (props: SpaceGraphProps) => {
 		return node;
 	}
 
-	const fetchChildren = async (node: cytoscape.NodeSingular) => {
+	const fetchChildren = async (node: cytoscape.NodeSingular): Promise<[SpaceNode[], boolean]> => {
 		let children = JSON.parse(await exploreSpace(formatedNamespace(), props.pattern(), node.scratch().token) as any);
 		//children = Array.from(children)
 		//children = children.map(item => { return item.token})
 		const newNodes = initNodesFromApiResponse(children);
+		const expr: string = node.scratch().expr;
 
-		return newNodes;
+		if (newNodes.length > 0) {
+			return [newNodes, false];
+		}
+
+		if (newNodes.length === 0 && expr && expr.trim() !== "") {
+			// if no children are found, and the node is root (no expr) -j
+			// return the child of the tapped node
+			let flatNodes = flattenNodes(parse(expr));
+
+			let valueNode = initNode(
+				node.id() + "-value",
+				flatNodes[flatNodes.length - 1] || "[Malformed Expr]",
+				{ token: Uint8Array.from([-1]), expr: ""}
+			)
+			return [[valueNode], true]
+		}
+
+		return [[], false];
+
 
 	}
 
@@ -153,11 +173,15 @@ const SpaceGraph = (props: SpaceGraphProps) => {
 	}
 
 	const expandNode = async (node: cytoscape.NodeSingular) => {
-		fetchChildren(node).then(newNodes => {
+		fetchChildren(node).then(([newNodes, isValueNode]) => {
 			const newEdges = newNodes.map(newNode => initEdge(node.id(), newNode.id));
 			const graphNodes = elementsToCyInput(newNodes)
 			const graphEdges = elementsToCyInput(newEdges)
 			graphNodes.forEach(n => n.position = { x: node.position().x, y: node.position().y })
+
+			if (isValueNode) {
+				graphNodes.forEach(n => n.style = { "background-color": "purple" });
+			}
 
 			cy.add(graphNodes);
 			cy.add(graphEdges);
