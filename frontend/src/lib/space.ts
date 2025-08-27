@@ -15,7 +15,7 @@ interface SpaceEdge {
 }
 
 
-function initNode(id: string, label: string, remoteData?: any): SpaceNode {
+function initNode(id: string, label: string, remoteData: { expr: string, token: Uint8Array}): SpaceNode {
 	return {
 		id,
 		label,
@@ -229,7 +229,6 @@ export type {
 }
 
 export {
-	subSpace,
 	initNode,
 	initEdge,
 	initNodeFromApiResponse,

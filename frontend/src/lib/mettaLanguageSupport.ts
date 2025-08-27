@@ -92,9 +92,6 @@ export const toJSON = (doc: string) => {
 	const trie = toTrie(doc);
 
 	const reconstruction = reconstruct(trie);
-
-	console.log(trie)
-	console.log(reconstruction)
 }
 
 export const toTrie = (doc: string) => {

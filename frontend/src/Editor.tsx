@@ -540,7 +540,6 @@ const App: Component = () => {
 	}
 
 	const read = async (token?: Token) => {
-		console.log(`Reading ${token?.namespace}`)
 		const resp = await fetch(`${BACKEND_URL}/spaces${token?.namespace}`, {
 			method: 'GET',
 			headers: {

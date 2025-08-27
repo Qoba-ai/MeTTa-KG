@@ -47,16 +47,13 @@ const LoadPage = () => {
 		}),
 		async ({ path, expr, token }) => { // Destructure the object
 			let pathStr = `/${path.join("/")}`
-			console.log("path: ", pathStr)
-			console.log("expr: ", expr)
-			console.log("token: ", token)
 			let res = await exploreSpace(pathStr, expr, token);
 			res = JSON.parse(res as any);
 			return res;
 		}
 	);
+
 	createEffect(() => {
-		console.log("new space: ", subSpace())
 		if (subSpace() && setSpaceGraph) {
 			setSpaceGraph(initNodesFromApiResponse(subSpace()!));
 		}

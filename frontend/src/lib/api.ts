@@ -125,8 +125,6 @@ export const exploreSpace = (path: string, pattern: string, token: Uint8Array | 
 		token = Uint8Array.from(token);
 	}
 
-	console.log("token before: ", token)
-	console.log("token after: ", new TextDecoder().decode(token))
 	return request<ExploreDetail[]>(`/explore/spaces${path}`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },

@@ -65,10 +65,7 @@ const extensionToImportFormat = (file: File): ImportFormat | undefined => {
 	}
 }
 
-
-
 const CodeEditor = (props: any) => {
-	console.log("space: ", typeof props.space)
 	const [editorContent, setEditorContent] = createSignal<string>(props.space)
 	const [activeImportFile, setActiveImportFile] = createSignal<File>()
 	const [editorView, setEditorView] = createSignal<EditorView>()
@@ -151,7 +148,6 @@ const CodeEditor = (props: any) => {
 
 	createEffect(() => {
 		const content = editorContent();
-		console.log("content: ", content)
 		if (editorView() !== undefined && editorView()?.state.doc.toString() !== content) {
 			editorView()?.dispatch({
 				changes: {

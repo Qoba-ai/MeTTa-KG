@@ -53,7 +53,6 @@ export const UploadPage: Component = () => {
 
 			switch (activeTab()) {
 				case "url":
-					console.log("Hello world!!!")
 					if (!uri().trim()) {
 						toast("URL is required",)
 						return
@@ -71,7 +70,6 @@ export const UploadPage: Component = () => {
 					break
 
 				case "file":
-					console.log("Importing from file...")
 					if (!selectedFile()) {
 						toast.error("Please select a file to upload")
 						return
@@ -90,7 +88,6 @@ export const UploadPage: Component = () => {
 					break
 
 				case "text":
-					console.log("Importing text content...")
 					if (!textContent().trim()) {
 						toast.error("Text content is required")
 						return

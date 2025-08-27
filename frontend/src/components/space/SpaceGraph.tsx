@@ -29,11 +29,10 @@ const SpaceGraph = (props: SpaceGraphProps) => {
 	let cyContainer: HTMLDivElement;
 	let cy: cytoscape.Core;
 	const [initNodes, setInitNodes] = createSignal(props.rootNodes());
-	const [rootNode, setRootNode] = createSignal(initRootNode(props.pattern()))
+	const [rootNode, setRootNode] = createSignal(initRootNode(""))
 
 	createEffect(() => {
 		setInitNodes(props.rootNodes());
-		setRootNode(initRootNode(props.pattern()))
 		if (cy) {
 			cy.destroy();
 		}
@@ -96,8 +95,6 @@ const SpaceGraph = (props: SpaceGraphProps) => {
 				expandNode(node);
 			}
 		});
-
-
 	}
 
 	function initRootNode(pattern: string): cytoscape.ElementDefinition {
@@ -106,7 +103,7 @@ const SpaceGraph = (props: SpaceGraphProps) => {
 				initNode(
 					"root",
 					"",
-					{ token: Uint8Array.from([]), pattern: pattern })
+					{ token: Uint8Array.from([]), expr: pattern })
 			]
 		)[0];
 		node.style = { "background-color": "blue" };
@@ -118,14 +115,9 @@ const SpaceGraph = (props: SpaceGraphProps) => {
 		//children = Array.from(children)
 		//children = children.map(item => { return item.token})
 		const newNodes = initNodesFromApiResponse(children);
-		const newEdges = newNodes.map(newNode => initEdge(node.id(), newNode.id));
-		const graphNodes = elementsToCyInput(newNodes)
-		const graphEdges = elementsToCyInput(newEdges)
-		graphNodes.forEach(n => n.position = { x: node.position().x, y: node.position().y })
 
-		cy.add(graphNodes);
-		cy.add(graphEdges);
-		runLayout();
+		return newNodes;
+
 	}
 
 	const runLayout = () => {
@@ -160,84 +152,94 @@ const SpaceGraph = (props: SpaceGraphProps) => {
 		};
 	}
 
-	const expandNode = (node: cytoscape.NodeSingular) => {
-		fetchChildren(node);
+	const expandNode = async (node: cytoscape.NodeSingular) => {
+		fetchChildren(node).then(newNodes => {
+			const newEdges = newNodes.map(newNode => initEdge(node.id(), newNode.id));
+			const graphNodes = elementsToCyInput(newNodes)
+			const graphEdges = elementsToCyInput(newEdges)
+			graphNodes.forEach(n => n.position = { x: node.position().x, y: node.position().y })
+
+			cy.add(graphNodes);
+			cy.add(graphEdges);
+			runLayout();
+		}).catch(err => {
+			console.error("Failed to fetch children: ", err);
+		});
 	};
 
-	function zoomIn() {
-		if (cy && !cy.animated()) {
-			const currentZoom = cy.zoom();
-			cy.animate({
-				zoom: {
-					level: Math.min(currentZoom * 1.2, 4),
-					renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
-				}
-			}, {
-				duration: 300,
-				easing: 'ease-out'
-			});
-		}
-	};
 
-	function zoomOut() {
-		if (cy && !cy.animated()) {
-			const currentZoom = cy.zoom();
-			cy.animate({
-				zoom: {
-					level: Math.max(currentZoom * 0.8, 0.2),
-					renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
-				}
-			}, {
-				duration: 300,
-				easing: 'ease-out'
-			});
-		}
-	};
+function zoomIn() {
+	if (cy && !cy.animated()) {
+		const currentZoom = cy.zoom();
+		cy.animate({
+			zoom: {
+				level: Math.min(currentZoom * 1.2, 4),
+				renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
+			}
+		}, {
+			duration: 300,
+			easing: 'ease-out'
+		});
+	}
+};
 
-	function recenter() {
-		if (cy) {
-			cy.animate({
-				fit: { eles: cy.elements(), padding: 200 }
-			}, {
-				duration: 500,
-				easing: 'ease-in-out'
-			});
-		}
-	};
+function zoomOut() {
+	if (cy && !cy.animated()) {
+		const currentZoom = cy.zoom();
+		cy.animate({
+			zoom: {
+				level: Math.max(currentZoom * 0.8, 0.2),
+				renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 }
+			}
+		}, {
+			duration: 300,
+			easing: 'ease-out'
+		});
+	}
+};
 
-	const graphColors = {
-		nodeBackground: '#21C45D',
-		nodeBackgroundHover: '#5a87ff',
-		nodeBackgroundSelected: '#3a6bff',
+function recenter() {
+	if (cy) {
+		cy.animate({
+			fit: { eles: cy.elements(), padding: 200 }
+		}, {
+			duration: 500,
+			easing: 'ease-in-out'
+		});
+	}
+};
 
-		nodeText: '#e7ecf9',
-		edge: '#7aa2ff',
-		edgeArrow: '#7aa2ff',
-	};
+const graphColors = {
+	nodeBackground: '#21C45D',
+	nodeBackgroundHover: '#5a87ff',
+	nodeBackgroundSelected: '#3a6bff',
 
-	onMount(() => {
-		setSpaceGraph()
+	nodeText: '#e7ecf9',
+	edge: '#7aa2ff',
+	edgeArrow: '#7aa2ff',
+};
 
-		props.ref?.({
-			zoomIn,
-			zoomOut,
-			recenter,
-			// applyLayout,
-			// stopLayout,
-			// setShowLabels,
-			// exportPNG,
-			// exportPDF,
-		}, setSpaceGraph);
+onMount(() => {
+	props.ref?.({
+		zoomIn,
+		zoomOut,
+		recenter,
+		// applyLayout,
+		// stopLayout,
+		// setShowLabels,
+		// exportPNG,
+		// exportPDF,
+	}, setSpaceGraph);
 
-	});
+});
 
-	onCleanup(() => {
-		if (cy) {
-			cy.destroy();
-		}
-	});
+onCleanup(() => {
+	if (cy) {
+		cy.destroy();
+	}
+});
 
-	return <div class="w-full h-full" ref={cyContainer!} />;
+return <div class="w-full h-full" ref={cyContainer!} />;
 };
 
 export default SpaceGraph;
