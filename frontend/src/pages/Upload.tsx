@@ -193,7 +193,7 @@ export const UploadPage: Component = () => {
 									itemComponent={(props) => <SelectItem item={props.item}>{props.item.rawValue}</SelectItem>}
 								>
 									<SelectTrigger id="url-format">
-										<SelectValue />
+										<SelectValue>{urlFormat()}</SelectValue>
 									</SelectTrigger>
 									<SelectContent />
 								</Select>
