@@ -5,6 +5,7 @@ use rocket_cors::AllowedOrigins;
 
 mod db;
 mod model;
+mod mork_api;
 mod routes;
 mod schema;
 
@@ -12,6 +13,9 @@ mod schema;
 fn rocket() -> Rocket<Build> {
     // TODO: move hardcoded allowed origins to database,
     // or get backend and frontend hosted under same domain
+
+    dotenv::dotenv().ok();
+
     let allowed_origins =
         AllowedOrigins::some_exact(&["http://localhost:3000", "https://metta-kg.vercel.app"]);
 
@@ -30,6 +34,7 @@ fn rocket() -> Rocket<Build> {
         .mount(
             "/",
             routes![
+                routes::upload::upload,
                 routes::translations::create_from_csv,
                 routes::translations::create_from_nt,
                 routes::translations::create_from_jsonld,
@@ -41,11 +46,13 @@ fn rocket() -> Rocket<Build> {
                 routes::tokens::delete,
                 routes::tokens::delete_batch,
                 routes::spaces::read,
+                // routes::spaces::upload,
                 routes::spaces::import,
-                routes::spaces::transform
+                routes::spaces::transform,
+                routes::spaces::explore
             ],
         )
-        .mount("/public", FileServer::from("static"))
+        //.mount("/public", FileServer::from("static"))
         .attach(cors.clone())
         .manage(cors)
 }

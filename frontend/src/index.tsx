@@ -1,28 +1,25 @@
 /* @refresh reload */
 import { render } from "solid-js/web";
-import { Route, Router } from "@solidjs/router";
-
-import Editor from "./Editor";
-import Tokens from "./Tokens";
-
-import './styles/global.scss';
+import { ColorModeProvider, ColorModeScript, createLocalStorageManager } from "@kobalte/core"
+import App from "~/pages/index";
+import './app.css'
 
 import 'solid-devtools'
 
 const root = document.getElementById("root");
 
-if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
-  throw new Error(
-    "Root element not found. Did you forget to add it to your index.html? Or maybe the id attribute got misspelled?"
-  );
+if (!root) {
+	throw new Error("Wrapper div not found");
 }
 
-render(
-  () => (
-    <Router>
-      <Route path="/" component={Editor} />
-      <Route path="/tokens" component={Tokens} />
-    </Router>
-  ),
-  root!
-);
+render(() => {
+	const storageManager = createLocalStorageManager("vite-ui-theme")
+	return (
+		<>
+			<ColorModeScript storageType={storageManager.type} />
+			<ColorModeProvider storageManager={storageManager}>
+				<App />
+			</ColorModeProvider>
+		</>
+	)
+}, root);
