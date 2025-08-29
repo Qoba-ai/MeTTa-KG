@@ -5,13 +5,15 @@ use std::fs::File;
 use std::io::prelude::*;
 use url::Url;
 use uuid::Uuid;
+use rocket::tokio::io::AsyncReadExt;
 
-use rocket::{get, post};
+use rocket::{get, post, Data};
+use rocket::response::status::Custom;
 use std::path::PathBuf;
 
 use crate::model::Token;
 use crate::mork_api::{
-    ExploreRequest, ImportRequest, MorkApiClient, ReadRequest, Request, TransformDetails,
+    ExploreRequest, ImportRequest, MorkApiClient, ReadRequest, Request, TransformDetails, UploadRequest,
     TransformRequest,
 };
 
@@ -34,7 +36,7 @@ pub struct ExploreOutput {
     pub token: String
 }
 
-#[post("/spaces/<path..>", data = "<transformation>")]
+#[post("/spaces/<path..>", data = "<transformation>", rank = 2)]
 pub async fn transform(
     token: Token,
     path: PathBuf,
@@ -64,33 +66,41 @@ pub async fn transform(
     }
 }
 
-#[post("/spaces/<path..>", data = "<space_data>")]
-pub async fn upload(token: Token, path: PathBuf, space_data: String) -> Result<Json<bool>, Status> {
-    // TODO: this is not a valid implementation of the API
-    if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
-        return Err(Status::Unauthorized);
+#[post("/spaces/upload/<path..>", data = "<data>", rank=1)]
+pub async fn upload(
+    token: Token,
+    path: PathBuf,
+    data: Data<'_>,
+) -> Result<Json<String>, Custom<String>> {
+    let token_namespace = token.namespace.strip_prefix("/").unwrap();
+    if !path.starts_with(token_namespace) || !token.permission_write {
+        return Err(Custom(Status::Unauthorized, "Unauthorized".to_string()));
+    }
+    
+    let mut body = String::new();
+    if let Err(e) = data.open(rocket::data::ByteUnit::Mebibyte(20)).read_to_string(&mut body).await {
+        eprintln!("Failed to read body: {e}");
+        return Err(Custom(Status::BadRequest, format!("Failed to read body: {e}")));
     }
 
-    let file_id = Uuid::new_v4();
-    let file_path = format!("static/{}.metta", file_id);
-
-    if let Ok(mut file) = File::create(&file_path) {
-        if file.write_all(space_data.as_bytes()).is_err() {
-            return Err(Status::InternalServerError);
-        }
+    let pattern = "$x";
+    let namespace_str = path.to_str().unwrap_or("").trim_matches('/');
+    let template = if namespace_str.is_empty() {
+        "$x".to_string()
     } else {
-        return Err(Status::InternalServerError);
-    }
-
-    let _path_serialized = path.to_str().unwrap_or_default();
-    let import_file_url = format!("/public/{}.metta", file_id);
+        format!("({} $x)", namespace_str)
+    };
 
     let mork_api_client = MorkApiClient::new();
-    let request = ImportRequest::new().namespace(path).uri(import_file_url);
+    let request = UploadRequest::new()
+        .namespace(path)
+        .pattern(pattern.to_string())
+        .template(template)
+        .data(body);
 
     match mork_api_client.dispatch(request).await {
-        Ok(_) => Ok(Json(true)),
-        Err(e) => Err(e),
+        Ok(text) => Ok(Json(text)),
+        Err(e) => Err(Custom(Status::InternalServerError, format!("Failed to contact backend: {e}"))),
     }
 }
 
