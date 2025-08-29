@@ -3,6 +3,7 @@ use rocket::http::Status;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
+use std::any::Any;
 use url::form_urlencoded::byte_serialize;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -107,7 +108,18 @@ impl MorkApiClient {
         let url = format!("{}{}", self.base_url, request.path());
         let mut http_request = self.client.request(request.method(), &url);
 
-        if let Some(body) = request.body() {
+        if request.path().starts_with("/upload/") {
+            if let Some(body) = request.body() {
+                if let Some(body_str) = (&body as &dyn Any).downcast_ref::<String>() {
+                    http_request = http_request
+                        .header("Content-Type", "text/plain")
+                        .body(body_str.clone());
+                } else {
+                    eprintln!("Upload endpoint called with non-string body type");
+                    return Err(Status::InternalServerError);
+                }
+            }
+        } else if let Some(body) = request.body() {
             http_request = http_request.json(&body);
         }
 
@@ -125,18 +137,10 @@ impl MorkApiClient {
             }
         }
     }
-    pub async fn post_upload(&self, url: &str, body: String) -> Result<reqwest::Response, reqwest::Error> {
-        self.client
-            .post(format!("{}{}", self.base_url, url))
-            .body(body)
-            .header("Content-Type", "text/plain")
-            .send()
-            .await
-    }
 }
 
 pub trait Request {
-    type Body: Serialize;
+    type Body: Serialize + Any;
     fn method(&self) -> Method;
     fn path(&self) -> String;
     fn body(&self) -> Option<Self::Body> {
@@ -367,6 +371,64 @@ impl Request for ExploreRequest {
             self.namespace.with_namespace(&self.pattern),
             self.token
         )
+    }
+}
+
+#[derive(Default)]
+pub struct UploadRequest {
+    namespace: Namespace,
+    pattern: String,
+    template: String,
+    data: String,
+}
+
+impl UploadRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(if ns.to_string_lossy().is_empty() {
+            PathBuf::from("/")
+        } else {
+            ns.to_path_buf()
+        });
+        self
+    }
+
+    pub fn pattern(mut self, pattern: String) -> Self {
+        self.pattern = pattern;
+        self
+    }
+
+    pub fn template(mut self, template: String) -> Self {
+        self.template = template;
+        self
+    }
+
+    pub fn data(mut self, data: String) -> Self {
+        self.data = data;
+        self
+    }
+}
+
+impl Request for UploadRequest {
+    type Body = String;
+
+    fn method(&self) -> Method {
+        Method::POST
+    }
+
+    fn path(&self) -> String {
+        format!(
+            "/upload/{}/{}",
+            urlencoding::encode(&self.pattern),
+            urlencoding::encode(&self.template)
+        )
+    }
+
+    fn body(&self) -> Option<Self::Body> {
+        Some(self.data.clone())
     }
 }
 
