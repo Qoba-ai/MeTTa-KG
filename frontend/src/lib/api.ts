@@ -374,26 +374,3 @@ export const uploadTextToSpace = (path: string, data: string): Promise<string> =
         body: data,
     });
 };
-
-export const uploadTextDirectly = async (path: string, data: string): Promise<string> => {
-    const url = `${API_URL}/upload${path}`; // e.g., http://localhost:8000/upload/hello
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'text/plain',
-            'Authorization': `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
-        },
-        body: data,
-    });
-
-    const responseText = await response.text();
-
-    if (!response.ok) {
-        // If the response is not OK, throw an error with the text from the body.
-        throw new Error(responseText || `Upload failed with status: ${response.status}`);
-    }
-
-    // On success, return the plain text response.
-    return responseText;
-};
