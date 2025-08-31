@@ -1,15 +1,18 @@
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use uuid::Uuid;
 
-use rocket::{get, post};
+use rocket::{get, post, put};
 use std::path::PathBuf;
 
-use crate::mork_api::{ImportRequest, MorkApiClient, ReadRequest, TransformRequest, TransformSetter};
 use crate::model::Token;
+use crate::mork_api::{
+    ImportRequest, MorkApiClient, ReadRequest, TransformRequest, TransformSetter,
+};
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Transformation {
@@ -44,7 +47,7 @@ pub async fn transform(
     }
 }
 
-#[post("/spaces/<path..>", data = "<space_data>")]
+#[put("/spaces/<path..>", data = "<space_data>")]
 pub async fn import(token: Token, path: PathBuf, space_data: String) -> Result<Json<bool>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
         return Err(Status::Unauthorized);
@@ -61,7 +64,9 @@ pub async fn import(token: Token, path: PathBuf, space_data: String) -> Result<J
         return Err(Status::InternalServerError);
     }
 
-    let import_file_url = format!("/public/{}.metta", file_id);
+    let origin = env::var("METTA_KG_ORIGIN_URL").unwrap();
+
+    let import_file_url = format!("{}/public/{}.metta", origin, file_id);
 
     let mork_api_client = MorkApiClient::new();
     let request = ImportRequest::new()
@@ -81,8 +86,7 @@ pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
     }
 
     let mork_api_client = MorkApiClient::new();
-    let request = ReadRequest::new()
-        .space(path.to_path_buf());
+    let request = ReadRequest::new().space(path.to_path_buf());
 
     mork_api_client.dispatch(request).await.map(Json)
 }

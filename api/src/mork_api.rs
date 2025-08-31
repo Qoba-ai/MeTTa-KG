@@ -239,7 +239,7 @@ impl Request for ImportRequest {
     type Body = ();
 
     fn method(&self) -> Method {
-        Method::POST
+        Method::GET
     }
 
     fn path(&self) -> String {
@@ -290,18 +290,32 @@ impl Request for ReadRequest {
     }
 
     fn path(&self) -> String {
-        format!(
-            "/export/({0} ({1}))/({0} ({2}))/",
-            self.transform_input.space.to_str().unwrap_or("/"),
-            self.transform_input
-                .patterns
-                .first()
-                .unwrap_or(&String::from("&x")),
-            self.transform_input
-                .templates
-                .first()
-                .unwrap_or(&String::from("&x")),
-        )
+        return if self.transform_input.space.components().count() == 0 {
+            format!(
+                "/export/{0}/{1}/",
+                self.transform_input
+                    .patterns
+                    .first()
+                    .unwrap_or(&String::from("&x")),
+                self.transform_input
+                    .templates
+                    .first()
+                    .unwrap_or(&String::from("&x")),
+            )
+        } else {
+            format!(
+                "/export/({0} {1})/({0} {2})/",
+                self.transform_input.space.to_str().unwrap_or("/"),
+                self.transform_input
+                    .patterns
+                    .first()
+                    .unwrap_or(&String::from("&x")),
+                self.transform_input
+                    .templates
+                    .first()
+                    .unwrap_or(&String::from("&x")),
+            )
+        };
     }
 }
 

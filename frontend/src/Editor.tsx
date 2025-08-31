@@ -524,9 +524,9 @@ const App: Component = () => {
         const content = editorContent()
 
         await fetch(
-            `${BACKEND_URL}/spaces`, // ${token()?.namespace}${selectedNamespace()}
+            `${BACKEND_URL}/spaces${token()?.namespace}${selectedNamespace()}`,
             {
-                method: 'POST',
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: token()?.code ?? '',
@@ -539,13 +539,16 @@ const App: Component = () => {
     }
 
     const read = async (token?: Token) => {
-        const resp = await fetch(`${BACKEND_URL}/spaces`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: token?.code ?? '',
-            },
-        })
+        const resp = await fetch(
+            `${BACKEND_URL}/spaces${token?.namespace}${selectedNamespace()}`,
+            {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: token?.code ?? '',
+                },
+            }
+        )
 
         const metta: string = await resp.json()
 
