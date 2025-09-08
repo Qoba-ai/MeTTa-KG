@@ -1,17 +1,8 @@
-import {
-	Upload,
-	Database,
-	X,
-	RotateCcw,
-	Download,
-	Key,
-	Network,
-	ChevronsLeft,
-	ChevronsRight,
-} from "lucide-solid"
+import Network from "lucide-solid/icons/network"
+import ChevronsLeft from "lucide-solid/icons/chevron-left"
+import ChevronsRight from "lucide-solid/icons/chevron-right"
 import { Accessor, createSignal } from "solid-js"
 import { Button } from "~/components/ui/button"
-import { Badge } from "../ui/badge"
 import { A } from "@solidjs/router"
 
 interface SidbarProps {
@@ -20,7 +11,7 @@ interface SidbarProps {
 	sidebarSections: any
 }
 
-export default function Sidbar({activeTab, setActiveTab, sidebarSections}: SidbarProps) {
+export default function Sidbar({ activeTab, setActiveTab, sidebarSections }: SidbarProps) {
 	// const [activeTab, setActiveTab] = createSignal("explore")
 	const [isCollapsed, setIsCollapsed] = createSignal(true)
 
@@ -28,9 +19,8 @@ export default function Sidbar({activeTab, setActiveTab, sidebarSections}: Sidba
 	return (
 		<>
 			<div
-				class={`relative transition-all duration-300 ease-in-out ${
-					isCollapsed() ? "w-16" : "w-80"
-				} bg-sidebar border-r border-sidebar-border`}
+				class={`relative transition-all duration-300 ease-in-out ${isCollapsed() ? "w-16" : "w-80"
+					} bg-sidebar border-r border-sidebar-border`}
 			>
 				<Button
 					variant="ghost"
@@ -45,13 +35,12 @@ export default function Sidbar({activeTab, setActiveTab, sidebarSections}: Sidba
 				</Button>
 				<div class={`p-6 ${isCollapsed() ? "px-3" : ""}`}>
 					<div
-						class={`flex items-center gap-2 mb-8 ${
-							isCollapsed() ? "justify-center" : ""
-						}`}
+						class={`flex items-center gap-2 mb-8 ${isCollapsed() ? "justify-center" : ""
+							}`}
 					>
 						<Network class="h-8 w-8 text-primary" />
 						{!isCollapsed() && (
-							<h1 class="text-xl font-bold text-sidebar-foreground">MORK-KG</h1>
+							<h1 class="text-xl font-bold text-sidebar-foreground">METTA-KG</h1>
 						)}
 					</div>
 
@@ -74,14 +63,13 @@ export default function Sidbar({activeTab, setActiveTab, sidebarSections}: Sidba
 												<Button
 													// key={item.id}
 													variant={activeTab() === item.id ? "default" : "ghost"}
-													class={`w-full gap-3 h-auto py-2 px-3 ${
-														isCollapsed() ? "justify-center" : "justify-start"
-													}`}
+													class={`w-full gap-3 h-auto py-2 px-3 ${isCollapsed() ? "justify-center" : "justify-start"
+														}`}
 													onClick={() => setActiveTab(item.id)}
 												>
 													<div class="flex items-center justify-center w-4 h-4">
 														{typeof Icon === "function" &&
-														Icon.name === undefined ? (
+															Icon.name === undefined ? (
 															<Icon />
 														) : (
 															<Icon class="h-4 w-4" />

@@ -1,4 +1,5 @@
-import { Sun, Moon } from "lucide-solid"
+import Sun from "lucide-solid/icons/sun"
+import Moon from "lucide-solid/icons/moon"
 import NameSpace from "./nameSpace"
 import { Accessor, createSignal } from "solid-js"
 import { Button } from "../ui/button"
