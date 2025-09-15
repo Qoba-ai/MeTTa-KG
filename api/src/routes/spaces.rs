@@ -66,42 +66,62 @@ pub async fn transform(
     }
 }
 
-#[post("/spaces/upload/<path..>", data = "<data>", rank=1)]
-pub async fn upload(
-    token: Token,
-    path: PathBuf,
-    data: Data<'_>,
-) -> Result<Json<String>, Custom<String>> {
-    let token_namespace = token.namespace.strip_prefix("/").unwrap();
-    if !path.starts_with(token_namespace) || !token.permission_write {
-        return Err(Custom(Status::Unauthorized, "Unauthorized".to_string()));
-    }
-    
-    let mut body = String::new();
-    if let Err(e) = data.open(rocket::data::ByteUnit::Mebibyte(20)).read_to_string(&mut body).await {
-        eprintln!("Failed to read body: {e}");
-        return Err(Custom(Status::BadRequest, format!("Failed to read body: {e}")));
-    }
-
-    let pattern = "$x";
-    let namespace_str = path.to_str().unwrap_or("").trim_matches('/');
-    let template = if namespace_str.is_empty() {
-        "$x".to_string()
-    } else {
-        format!("({} $x)", namespace_str)
-    };
-
-    let mork_api_client = MorkApiClient::new();
-    let request = UploadRequest::new()
-        .namespace(path)
-        .pattern(pattern.to_string())
-        .template(template)
-        .data(body);
-
-    match mork_api_client.dispatch(request).await {
-        Ok(text) => Ok(Json(text)),
-        Err(e) => Err(Custom(Status::InternalServerError, format!("Failed to contact backend: {e}"))),
-    }
+/// Handles file upload requests to MORK server with hierarchical namespace formatting.  
+///   
+/// This endpoint accepts data uploads and applies namespace transformations to ensure  
+/// compatibility with MORK's S-expression parsing requirements. The namespace is  
+/// automatically converted from filesystem-style paths to proper S-expressions.  
+///   
+/// # Arguments  
+/// * `token` - Authentication token containing user permissions and namespace scope  
+/// * `path` - Hierarchical namespace path (e.g., "/parent/child/")  
+/// * `data` - Raw data stream containing MeTTa expressions, JSON, or CSV content  
+///   
+/// # Returns  
+/// * `Ok(Json<String>)` - Success response from MORK server  
+/// * `Err(Custom<String>)` - Error with appropriate HTTP status code  
+///   
+/// # Security  
+/// - Validates token permissions for write access  
+/// - Ensures upload path is within token's authorized namespace scope  
+///   
+/// # MORK Integration  
+/// Uses the updated UploadRequest with automatic namespace formatting that generates  
+/// proper S-expressions compatible with MORK's upload command parsing.  
+#[post("/spaces/upload/<path..>", data = "<data>", rank=1)]  
+pub async fn upload(  
+    token: Token,  
+    path: PathBuf,  
+    data: Data<'_>,  
+) -> Result<Json<String>, Custom<String>> {  
+    // Extract and validate token namespace permissions  
+    let token_namespace = token.namespace.strip_prefix("/").unwrap();  
+    if !path.starts_with(token_namespace) || !token.permission_write {  
+        return Err(Custom(Status::Unauthorized, "Unauthorized".to_string()));  
+    }  
+      
+    // Read request body with size limit (20MB max)  
+    let mut body = String::new();  
+    if let Err(e) = data.open(rocket::data::ByteUnit::Mebibyte(20)).read_to_string(&mut body).await {  
+        eprintln!("Failed to read body: {e}");  
+        return Err(Custom(Status::BadRequest, format!("Failed to read body: {e}")));  
+    }  
+  
+    // Create upload request with automatic namespace formatting  
+    // by convert the filesystem-style path to proper S-expressions
+    // using the get_formatted_template() method  
+    let mork_api_client = MorkApiClient::new();  
+    let request = UploadRequest::new()  
+        .namespace(path)                  
+        .pattern("$x".to_string())         
+        .template("$x".to_string())         
+        .data(body);                         
+  
+    // Dispatch to MORK server with properly formatted namespace expressions  
+    match mork_api_client.dispatch(request).await {  
+        Ok(text) => Ok(Json(text)),  
+        Err(e) => Err(Custom(Status::InternalServerError, format!("Failed to contact backend: {e}"))),  
+    }  
 }
 
 #[post("/spaces/<path..>?<uri>")]
