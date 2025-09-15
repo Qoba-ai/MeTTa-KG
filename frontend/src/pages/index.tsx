@@ -2,6 +2,7 @@ import { Route, Router } from "@solidjs/router";
 import LoadPage from "./Load";
 import UploadPage from "./Upload";
 import TransformPage from "./Transform";
+import ExportPage from "./Export";
 import TokensPage from "./Tokens";
 import { createSignal } from "solid-js";
 import Sidebar from "~/components/common/sidebar";
@@ -13,6 +14,7 @@ import RotateCcw from "lucide-solid/icons/rotate-ccw"
 import Download from "lucide-solid/icons/download"
 import Key from "lucide-solid/icons/key"
 import NotImplemented from "~/components/common/NotImplemented";
+import { C } from "node_modules/@kobalte/core/dist/collapsible-trigger-6358fcd4";
 
 
 const sidebarSections = [
@@ -87,7 +89,7 @@ const sidebarSections = [
 		title: "Utility",
 		items: [
 			{ id: "upload", label: "Import", icon: Upload, to: "/upload", component: UploadPage },
-			{ id: "export", label: "Export", icon: Download, to: "/export" },
+			{ id: "export", label: "Export", icon: Download, to: "/export", component: ExportPage },
 			{
 				id: "tokens",
 				label: "Tokens",
