@@ -4,15 +4,16 @@ import { TextField, TextFieldInput, TextFieldLabel } from "~/components/ui/text-
 import { Select, SelectTrigger, SelectItem, SelectContent, SelectValue } from "~/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs"
 import { CodeInputField } from "~/components/upload/codeInputField"
+import { OutputViewer } from "~/components/upload/outputViewer"
 import { CommandCard } from "~/components/upload/commandCard"
-import toast from 'solid-toast'
+import { showToast, ToastViewport } from "~/components/ui/toast"
 import Loader from 'lucide-solid/icons/loader'
 import Upload_ from 'lucide-solid/icons/upload'
 import Link from 'lucide-solid/icons/link'
 import FileText from 'lucide-solid/icons/file-text'
 import File from 'lucide-solid/icons/file'
-import { importSpace, importData, uploadTextToSpace } from '~/lib/api'; // <-- add upload
-import { formatedNamespace } from "~/lib/state"
+import { importSpace, importData, uploadTextToSpace} from '~/lib/api';
+import { formatedNamespace, namespace } from "~/lib/state"
 import NotImplemented from "~/components/common/NotImplemented"
 
 
@@ -54,33 +55,38 @@ export const UploadPage: Component = () => {
 			switch (activeTab()) {
 				case "url":
 					if (!uri().trim()) {
-						toast(
-							"Missing URL" +
-							"Please enter a valid URL to import data from.",
-						)
+						showToast({
+							title: "Missing URL",
+							description: "Please enter a valid URL to import data from.",
+							variant: "destructive"
+						})
 						return
 					}
 					response = await importSpace(formatedNamespace(), uri())
 					if (response) {
 						setResult("Successfully imported to space")
-						toast(
-							"Import Successful. " +
-							`Data was imported from "${uri()}" into the "${formatedNamespace()}" space.`,
-						)
+						showToast({
+							title: "Import Successful",
+							description: `Data was imported from "${uri()}" into the "${formatedNamespace()}" space.`,
+							variant: "default"
+						})
 					} else {
-						toast(
-							"Import Failed. " +
-							"The server could not import data from the provided URL.",
-						)
+						setResult("Error importing to space")
+						showToast({
+							title: "Import Failed",
+							description: "The server could not import data from the provided URL.",
+							variant: "destructive"
+						})
 					}
 					break
 
 				case "file":
 					if (!selectedFile()) {
-						toast(
-							"No File Selected. " +
-							"Please select a file to upload.",
-						)
+						showToast({
+							title: "No File Selected",
+							description: "Please select a file to upload.",
+							variant: "destructive"
+						})
 						return
 					}
 					const formData = new FormData()
@@ -88,50 +94,56 @@ export const UploadPage: Component = () => {
 					response = await importData("file", formData, "metta")
 					if (response.status === "success") {
 						setResult({ data: response.data, status: "success" })
-						toast(
-							"File Uploaded. " +
-							`File "${selectedFile()!.name}" was uploaded successfully.`,
-						)
+						showToast({
+							title: "File Uploaded",
+							description: `File "${selectedFile()!.name}" was uploaded successfully.`,
+							variant: "default"
+						})
 					} else {
 						setResult({ error: response.message, status: "error" })
-						toast(
-							"File Upload Failed. " +
-							response.message || "The server could not process the uploaded file.",
-						)
+						showToast({
+							title: "File Upload Failed",
+							description: response.message || "The server could not process the uploaded file.",
+							variant: "destructive"
+						})
 					}
 					break
 
 				case "text":
 					if (!textContent().trim()) {
-						toast(
-							"Missing Text Content. " +
-							"Please enter S-expression text to upload.",
-						)
+						showToast({
+							title: "Missing Text Content",
+							description: "Please enter S-expression text to upload.",
+							variant: "destructive"
+						})
 						return
 					}
 					try {
 						const cleanText = textContent().replace(/[\r\n]+/g, '\n').trim();
 						const response = await uploadTextToSpace(formatedNamespace(), cleanText);
 						setResult({ data: response, status: "success" });
-						toast(
-							"Text Uploaded. " +
-							`Your S-expression text was uploaded to the "${formatedNamespace()}" space.`,
-						)
+						showToast({
+							title: "Text Uploaded",
+							description: `Your S-expression text was uploaded to the "${formatedNamespace()}" space.`,
+							variant: "default"
+						})
 					} catch (error) {
 						const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
 						setResult({ error: errorMessage, status: "error" });
-						toast(
-							"Text Upload Failed. " +
-							errorMessage,
-						)
+						showToast({
+							title: "Text Upload Failed",
+							description: errorMessage,
+							variant: "destructive"
+						})
 					}
 					break
 
 				default:
-					toast(
-						"Invalid Tab. " +
-						"Please select a valid import method.",
-					)
+					showToast({
+						title: "Invalid Tab",
+						description: "Please select a valid import method.",
+						variant: "destructive"
+					})
 					throw new Error("Invalid tab selection")
 			}
 
@@ -139,10 +151,11 @@ export const UploadPage: Component = () => {
 			const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred"
 			console.error("Import error:", error)
 			setResult({ error: errorMessage, status: "error" })
-			toast(
-				"Unexpected Error. " +
-				errorMessage,
-			)
+			showToast({
+				title: "Unexpected Error",
+				description: errorMessage,
+				variant: "destructive"
+			})
 		} finally {
 			setIsLoading(false)
 		}
@@ -171,6 +184,7 @@ export const UploadPage: Component = () => {
 
 	return (
 		<>
+			<ToastViewport />
 			<div class="ml-10 mt-8">
 				<CommandCard
 					title="Import & Upload Data"
