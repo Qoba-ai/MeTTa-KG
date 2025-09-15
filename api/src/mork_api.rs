@@ -31,47 +31,73 @@ impl Default for TransformDetails {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Namespace {
-    pub ns: PathBuf,
-}
-
-impl Namespace {
-    pub fn new() -> Self {
-        Namespace::default()
-    }
-
-    pub fn ns(mut self, ns: PathBuf) -> Self {
-        self.ns = ns;
-        self
-    }
-
-    pub fn encoded(&self) -> String {
-        self.ns.to_string_lossy().replace("/", "|")
-    }
-
-    pub fn with_namespace(&self, value: &str) -> String {
-        format!("({} {})", self.encoded(), value)
-    }
-
-    pub fn is_valid(&self) -> bool {
-        self.ns.starts_with("/") && self.ns.ends_with("/")
-    }
-}
-
-impl From<PathBuf> for Namespace {
-    fn from(ns: PathBuf) -> Self {
-        Namespace::new().ns(ns)
-    }
-}
-
-impl Default for Namespace {
-    fn default() -> Self {
-        Namespace {
-            ns: PathBuf::from("/"),
-        }
-    }
-}
+#[derive(Serialize, Deserialize, Clone)]  
+pub struct Namespace {  
+    pub ns: PathBuf,  
+}  
+  
+impl Namespace {  
+    pub fn new() -> Self {  
+        Namespace::default()  
+    }  
+  
+    pub fn ns(mut self, ns: PathBuf) -> Self {  
+        self.ns = ns;  
+        self  
+    }  
+  
+    pub fn to_mork_namespace(&self) -> String {  
+        let path_string = self.ns.to_string_lossy().to_string();  
+        let clean_path = path_string  
+            .trim_start_matches('/')  
+            .trim_end_matches('/');  
+          
+        if clean_path.is_empty() {  
+            // Root namespace  
+            "{}".to_string()  
+        } else {  
+            // Convert hierarchical path to nested S-expressions  
+            let parts: Vec<&str> = clean_path.split('/').collect();  
+            parts.iter().rev().fold("{}".to_string(), |acc, part| {  
+                format!("({} {})", part, acc)  
+            })  
+        }  
+    }  
+  
+    pub fn with_namespace(&self, value: &str) -> String {  
+        self.to_mork_namespace().replace("{}", value)  
+    }  
+  
+    pub fn is_valid(&self) -> bool {  
+        self.ns.starts_with("/") && self.ns.ends_with("/")  
+    }  
+  
+    // Legacy method for backward compatibility (deprecated)  
+    #[deprecated(note = "Use to_mork_namespace() instead")]  
+    pub fn encoded(&self) -> String {  
+        let path_string = self.ns.to_string_lossy().to_string();  
+        let trimmed = path_string.trim_matches('/');  
+        if trimmed.is_empty() {  
+            String::new()  
+        } else {  
+            trimmed.replace('/', "|")  
+        }  
+    }  
+}  
+  
+impl From<PathBuf> for Namespace {  
+    fn from(ns: PathBuf) -> Self {  
+        Namespace::new().ns(ns)  
+    }  
+}  
+  
+impl Default for Namespace {  
+    fn default() -> Self {  
+        Namespace {  
+            ns: PathBuf::from("/"),  
+        }  
+    }  
+} 
 
 #[allow(dead_code)]
 impl TransformDetails {
@@ -374,62 +400,73 @@ impl Request for ExploreRequest {
     }
 }
 
-#[derive(Default)]
-pub struct UploadRequest {
-    namespace: Namespace,
-    pattern: String,
-    template: String,
-    data: String,
-}
-
-impl UploadRequest {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn namespace(mut self, ns: PathBuf) -> Self {
-        self.namespace = Namespace::from(if ns.to_string_lossy().is_empty() {
-            PathBuf::from("/")
-        } else {
-            ns.to_path_buf()
-        });
-        self
-    }
-
-    pub fn pattern(mut self, pattern: String) -> Self {
-        self.pattern = pattern;
-        self
-    }
-
-    pub fn template(mut self, template: String) -> Self {
-        self.template = template;
-        self
-    }
-
-    pub fn data(mut self, data: String) -> Self {
-        self.data = data;
-        self
-    }
-}
-
-impl Request for UploadRequest {
-    type Body = String;
-
-    fn method(&self) -> Method {
-        Method::POST
-    }
-
-    fn path(&self) -> String {
-        format!(
-            "/upload/{}/{}",
-            urlencoding::encode(&self.pattern),
-            urlencoding::encode(&self.template)
-        )
-    }
-
-    fn body(&self) -> Option<Self::Body> {
-        Some(self.data.clone())
-    }
+#[derive(Default)]  
+pub struct UploadRequest {  
+    namespace: Namespace,  
+    pattern: String,  
+    template: String,  
+    data: String,  
+}  
+  
+impl UploadRequest {  
+    pub fn new() -> Self {  
+        Self::default()  
+    }  
+  
+    pub fn namespace(mut self, ns: PathBuf) -> Self {  
+        self.namespace = Namespace::from(if ns.to_string_lossy().is_empty() {  
+            PathBuf::from("/")  
+        } else {  
+            ns.to_path_buf()  
+        });  
+        self  
+    }  
+  
+    pub fn pattern(mut self, pattern: String) -> Self {  
+        self.pattern = pattern;  
+        self  
+    }  
+  
+    pub fn template(mut self, template: String) -> Self {  
+        self.template = template;  
+        self  
+    }  
+  
+    pub fn data(mut self, data: String) -> Self {  
+        self.data = data;  
+        self  
+    }  
+  
+    // New method to generate namespace-formatted template  
+    fn get_formatted_template(&self) -> String {  
+        if self.template == "$x" {  
+            // Use namespace formatting for the default pattern  
+            self.namespace.with_namespace("$x")  
+        } else {  
+            // Use custom template as-is  
+            self.template.clone()  
+        }  
+    }  
+}  
+  
+impl Request for UploadRequest {  
+    type Body = String;  
+  
+    fn method(&self) -> Method {  
+        Method::POST  
+    }  
+  
+    fn path(&self) -> String {  
+        format!(  
+            "/upload/{}/{}",  
+            urlencoding::encode(&self.pattern),  
+            urlencoding::encode(&self.get_formatted_template())  
+        )  
+    }  
+  
+    fn body(&self) -> Option<Self::Body> {  
+        Some(self.data.clone())  
+    }  
 }
 
 #[cfg(test)]
