@@ -189,3 +189,21 @@ pub async fn export(
         Err(e) => Err(e),    
     }    
 }
+
+#[get("/spaces/clear/<path..>")]
+pub async fn clear(token: Token, path: PathBuf) -> Result<Json<bool>, Status> {
+    let token_namespace = token.namespace.strip_prefix("/").unwrap();
+    if !path.starts_with(token_namespace) || !token.permission_write {
+        return Err(Status::Unauthorized);
+    }
+
+    let mork_api_client = MorkApiClient::new();
+    let request = ClearRequest::new()
+        .namespace(path)
+        .expr("$x".to_string());
+
+    match mork_api_client.dispatch(request).await {
+        Ok(_) => Ok(Json(true)),
+        Err(e) => Err(e),
+    }
+}
