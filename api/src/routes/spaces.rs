@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use crate::model::Token;
 use crate::mork_api::{
     ExploreRequest, ImportRequest, MorkApiClient, ReadRequest, Request, TransformDetails, UploadRequest,
-    TransformRequest, ExportRequest, ExportFormat
+    TransformRequest, ExportRequest, ExportFormat,
 };
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -34,6 +34,12 @@ pub struct ExploreInput {
 pub struct ExploreOutput {
     pub expr: String,
     pub token: String
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ExportInput {
+    pub pattern: String,
+    pub template: String,
 }
 
 #[post("/spaces/<path..>", data = "<transformation>", rank = 2)]
