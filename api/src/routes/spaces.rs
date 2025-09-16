@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use crate::model::Token;
 use crate::mork_api::{
     ExploreRequest, ImportRequest, MorkApiClient, ReadRequest, Request, TransformDetails, UploadRequest,
-    TransformRequest, ExportRequest, ExportFormat,
+    TransformRequest, ExportRequest, ExportFormat, ClearRequest
 };
 
 #[derive(Default, Serialize, Deserialize, Clone)]
