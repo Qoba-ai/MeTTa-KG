@@ -119,7 +119,7 @@ impl MorkApiClient {
         let url = format!("{}{}", self.base_url, request.path());
         let mut http_request = self.client.request(request.method(), &url);
 
-        if request.path().starts_with("/upload/") {
+        if request.path().starts_with("/upload/") || request.path() == "/transform" {
             if let Some(body) = request.body() {
                 if let Some(body_str) = (&body as &dyn Any).downcast_ref::<String>() {
                     http_request = http_request
@@ -218,20 +218,22 @@ impl TransformRequest {
 }
 
 impl Request for TransformRequest {
-    type Body = ();
+    type Body = String;
 
     fn method(&self) -> Method {
         Method::POST
     }
 
     fn path(&self) -> String {
-        format!("/transform/{}", &self.transform_code())
+        "/transform".to_string()
     }
 
     fn body(&self) -> Option<Self::Body> {
-        Some(())
+        Some(self.transform_code())
     }
 }
+
+
 
 #[derive(Default)]
 pub struct ImportRequest {
