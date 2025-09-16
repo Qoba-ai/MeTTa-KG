@@ -1,10 +1,8 @@
 import { Component, createSignal, onCleanup, Show } from 'solid-js';
 import MettaEditor from '../components/space/MettaEditor';
-import { OutputViewer } from "~/components/upload/outputViewer";
 import { CommandCard } from "~/components/upload/commandCard";
 import { transform, isPathClear, Transformation } from '~/lib/api';
 import { formatedNamespace } from "~/lib/state";
-import toast from 'solid-toast';
 import { showToast } from '~/components/ui/toast';
 
 interface ParseResult {  
@@ -19,7 +17,6 @@ const TransformPage: Component = () => {
 )`);
   const [isLoading, setIsLoading] = createSignal(false);
   const [isPolling, setIsPolling] = createSignal(false);
-  const [result, setResult] = createSignal<any>(null);
   
   let pollingIntervalId: NodeJS.Timeout | null = null;
 
@@ -38,8 +35,6 @@ const TransformPage: Component = () => {
         const isClear = await isPathClear(spacePath);
         if (isClear) {
           stopPolling();
-          setResult("Successfully transformed the space 🎉");
-          toast.success("Transform completed!");
           showToast({ title: "Transform Completed", description: "The space has been successfully transformed." });
         }
       } catch (error) {
@@ -191,12 +186,15 @@ function serializeSExpr(expr: SExpr): string {
 
   const handleTransform = async () => {  
     if (!sExpr().trim()) {  
-      toast.error("Please enter a transform expression.");  
+      showToast({
+        title: "Error",
+        description: "Please enter a transform expression.",
+        variant: "destructive"
+      });  
       return;  
     }  
       
     setIsLoading(true);  
-    setResult(null);  
     stopPolling();  
     
     let spacePath = formatedNamespace();  
@@ -287,16 +285,6 @@ function serializeSExpr(expr: SExpr): string {
               Transforming...
             </Show>
           </button>
-
-          <Show when={result()}>
-            {(res) => (
-              <OutputViewer
-                title="Transform Results"
-                data={res()}
-                status={res().error ? 'error' : 'success'}
-              />
-            )}
-          </Show>
       </CommandCard>
     </div>
   );
