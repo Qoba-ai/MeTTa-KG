@@ -264,58 +264,6 @@ export interface ImportDataResponse {
     data?: any;
     message: string;
 }
-// export async function importData(type: string, data: any = null, format: string = "metta"): Promise<ImportDataResponse> {
-//     try {
-//         switch (type) {
-//             case "text": {
-//                 // Split lines and use as patterns/templates
-//                 const exprs = (data as string).split('\n').filter(line => line.trim() !== "");
-//                 const transformation: Transformation = {
-//                     space: "",
-//                     patterns: exprs,
-//                     templates: exprs
-//                 };
-//                 const response = await fetch(`${API_URL}/spaces`, {
-//                     method: "POST",
-//                     headers: {
-//                         "Content-Type": "application/json",
-//                         "Authorization": `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
-//                     },
-//                     body: JSON.stringify(transformation),
-//                 });
-
-//                 if (!response.ok) {
-//                     const errorText = await response.text();
-//                     return {
-//                         status: "error",
-//                         message: errorText || `HTTP error! status: ${response.status}`,
-//                     };
-//                 }
-
-//                 const responseText = await response.text();
-//                 return {
-//                     status: "success",
-//                     data: responseText,
-//                     message: "Text imported successfully",
-//                 };
-//             }
-
-//             case "file":
-//                 return {
-//                     status: "error",
-//                     message: "File upload not implemented yet",
-//                 };
-
-//             default:
-//                 throw new Error(`Unsupported import type: ${type}`);
-//         }
-//     } catch (error) {
-//         return {
-//             status: "error",
-//             message: error instanceof Error ? error.message : "Failed to import data",
-//         };
-//     }
-// }
 
 export async function importData(
     type: string,
@@ -382,5 +330,11 @@ export const exportSpace = async (path: string, exportInput: ExportInput): Promi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(exportInput),
+    });
+};
+
+export const clearSpace = (path: string) => {
+    return request<boolean>(`/spaces/clear${path}`, {
+        method: 'GET',
     });
 };
