@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use crate::model::Token;
 use crate::mork_api::{
     ExploreRequest, ImportRequest, MorkApiClient, ReadRequest, Request, TransformDetails, UploadRequest,
-    TransformRequest, ExportRequest, ExportFormat, ClearRequest
+    TransformRequest, ExportRequest, ExportFormat, ClearRequest,
 };
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -126,7 +126,7 @@ pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<boo
     }
 }
 
-#[get("/spaces/<path..>")]
+#[get("/spaces/<path..>",  rank = 2)]
 pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
         return Err(Status::Unauthorized);
