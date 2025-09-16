@@ -31,73 +31,58 @@ impl Default for TransformDetails {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]  
-pub struct Namespace {  
-    pub ns: PathBuf,  
-}  
-  
-impl Namespace {  
-    pub fn new() -> Self {  
-        Namespace::default()  
-    }  
-  
-    pub fn ns(mut self, ns: PathBuf) -> Self {  
-        self.ns = ns;  
-        self  
-    }  
-  
-    pub fn to_mork_namespace(&self) -> String {  
-        let path_string = self.ns.to_string_lossy().to_string();  
-        let clean_path = path_string  
-            .trim_start_matches('/')  
-            .trim_end_matches('/');  
-          
-        if clean_path.is_empty() {  
-            // Root namespace  
-            "{}".to_string()  
-        } else {  
-            // Convert hierarchical path to nested S-expressions  
-            let parts: Vec<&str> = clean_path.split('/').collect();  
-            parts.iter().rev().fold("{}".to_string(), |acc, part| {  
-                format!("({} {})", part, acc)  
-            })  
-        }  
-    }  
-  
-    pub fn with_namespace(&self, value: &str) -> String {  
-        self.to_mork_namespace().replace("{}", value)  
-    }  
-  
-    pub fn is_valid(&self) -> bool {  
-        self.ns.starts_with("/") && self.ns.ends_with("/")  
-    }  
-  
-    // Legacy method for backward compatibility (deprecated)  
-    #[deprecated(note = "Use to_mork_namespace() instead")]  
-    pub fn encoded(&self) -> String {  
-        let path_string = self.ns.to_string_lossy().to_string();  
-        let trimmed = path_string.trim_matches('/');  
-        if trimmed.is_empty() {  
-            String::new()  
-        } else {  
-            trimmed.replace('/', "|")  
-        }  
-    }  
-}  
-  
-impl From<PathBuf> for Namespace {  
-    fn from(ns: PathBuf) -> Self {  
-        Namespace::new().ns(ns)  
-    }  
-}  
-  
-impl Default for Namespace {  
-    fn default() -> Self {  
-        Namespace {  
-            ns: PathBuf::from("/"),  
-        }  
-    }  
-} 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Namespace {
+    pub ns: PathBuf,
+}
+
+impl Namespace {
+    pub fn new() -> Self {
+        Namespace::default()
+    }
+
+    pub fn ns(mut self, ns: PathBuf) -> Self {
+        self.ns = ns;
+        self
+    }
+
+    pub fn encoded(&self) -> String {
+        let path_str = self.ns.to_string_lossy();
+        let trimmed = path_str.trim_matches('/');
+        if trimmed.is_empty() {
+            String::new()
+        } else {
+            trimmed.replace('/', "|")
+        }
+    }
+
+    pub fn with_namespace(&self, value: &str) -> String {
+        let encoded_ns = self.encoded();
+        if encoded_ns.is_empty() {
+            value.to_string()
+        } else {
+            format!("({} {})", encoded_ns, value)
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.ns.starts_with("/") && self.ns.ends_with("/")
+    }
+}
+
+impl From<PathBuf> for Namespace {
+    fn from(ns: PathBuf) -> Self {
+        Namespace::new().ns(ns)
+    }
+}
+
+impl Default for Namespace {
+    fn default() -> Self {
+        Namespace {
+            ns: PathBuf::from("/"),
+        }
+    }
+}
 
 #[allow(dead_code)]
 impl TransformDetails {
