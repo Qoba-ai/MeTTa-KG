@@ -234,7 +234,6 @@ impl Request for TransformRequest {
 }
 
 
-
 #[derive(Default)]
 pub struct ImportRequest {
     namespace: Namespace,
@@ -525,6 +524,53 @@ impl Request for ExportRequest {
         }  
   
         path  
+    }  
+  
+    fn body(&self) -> Option<Self::Body> {  
+        None  
+    }  
+}
+
+#[derive(Default)]  
+pub struct ClearRequest {  
+    namespace: Namespace,  
+    expr: String,  
+}  
+  
+impl ClearRequest {  
+    pub fn new() -> Self {  
+        Self::default()  
+    }  
+  
+    pub fn namespace(mut self, ns: PathBuf) -> Self {  
+        self.namespace = Namespace::from(if ns.to_string_lossy().is_empty() {  
+            PathBuf::from("/")  
+        } else {  
+            ns.to_path_buf()  
+        });  
+        self  
+    }  
+  
+    pub fn expr(mut self, expr: String) -> Self {  
+        self.expr = expr;  
+        self  
+    }  
+}  
+  
+impl Request for ClearRequest {  
+    type Body = ();  
+  
+    fn method(&self) -> Method {  
+        Method::GET  
+    }  
+  
+    fn path(&self) -> String {      
+        let expr_to_use = self.namespace.with_namespace(&self.expr);   
+    
+        format!(      
+            "/clear/{}",       
+            urlencoding::encode(&expr_to_use)      
+        )      
     }  
   
     fn body(&self) -> Option<Self::Body> {  
