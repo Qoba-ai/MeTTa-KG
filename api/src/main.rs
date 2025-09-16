@@ -50,6 +50,7 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::transform,
                 routes::spaces::explore,
                 routes::spaces::export,
+                routes::spaces::clear,
             ],
         )
         // .mount("/public", FileServer::from("static"))
