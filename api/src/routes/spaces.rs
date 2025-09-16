@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use crate::model::Token;
 use crate::mork_api::{
     ExploreRequest, ImportRequest, MorkApiClient, ReadRequest, Request, TransformDetails, UploadRequest,
-    TransformRequest,
+    TransformRequest, ExportRequest, ExportFormat
 };
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -154,4 +154,32 @@ pub async fn explore(
     let response = mork_api_client.dispatch(request).await.map(Json);
     println!("explore response: {:?}", response);
     response
+}
+
+#[post("/spaces/export/<path..>", data = "<export_input>")]    
+pub async fn export(    
+    token: Token,    
+    path: PathBuf,    
+    export_input: Json<ExportInput>,    
+) -> Result<Json<String>, Status> {    
+    if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {    
+        return Err(Status::Unauthorized);    
+    }    
+    
+    let mork_api_client = MorkApiClient::new();    
+    let request = ExportRequest::new()    
+        .namespace(path)    
+        .pattern(export_input.pattern.clone())    
+        .template(export_input.template.clone())    
+        .format(ExportFormat::Metta);
+    
+    println!("Dispatching export request to Mork: {}", request.path());    
+    
+    match mork_api_client.dispatch(request).await {    
+        Ok(data) => {    
+            println!("Received export response from Mork: {:?}", data);    
+            Ok(Json(data))    
+        },    
+        Err(e) => Err(e),    
+    }    
 }
