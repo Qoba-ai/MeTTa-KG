@@ -50,7 +50,7 @@ impl Namespace {
         let path_str = self.ns.to_string_lossy();
         let trimmed = path_str.trim_matches('/');
         if trimmed.is_empty() {
-            String::new()
+            "|".to_string()
         } else {
             trimmed.replace('/', "|")
         }
