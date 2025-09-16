@@ -1,7 +1,7 @@
 import type { Component, JSX } from "solid-js";
 import { createResource, createSignal, For, onMount, Show } from "solid-js";
 import { A } from "@solidjs/router";
-import toast, { Toaster } from "solid-toast";
+import { showToast, ToastViewport } from "~/components/ui/toast";
 
 // Import UI Components
 import { Button } from "~/components/ui/button";
@@ -51,10 +51,10 @@ const fetchTokens = async (root: string | null): Promise<Token[]> => {
             headers: { 'Content-Type': 'application/json', Authorization: root },
         });
         const tokens = await resp.json();
-        toast.success(`Loaded ${tokens.length} tokens.`);
+        showToast({ title: "Success", description: `Loaded ${tokens.length} tokens.` });
         return tokens;
     } catch (e) {
-        toast.error(`Failed to fetch tokens`);
+        showToast({ title: "Error", description: "Failed to fetch tokens", variant: "destructive" });
         return [];
     }
 };
@@ -174,9 +174,9 @@ export const TokensPage: Component = () => {
         try {
             const created = await createToken(rootTokenCode(), description, namespace, read, write, shareRead, shareWrite, shareShare);
             mutateTokens(prev => [...(prev || []), created]);
-            toast.success("Token created successfully!");
+            showToast({ title: "Success", description: "Token created successfully!" });
         } catch (error) {
-            toast.error("Failed to create token.");
+            showToast({ title: "Error", description: "Failed to create token.", variant: "destructive" });
         }
     };
 
@@ -187,7 +187,7 @@ export const TokensPage: Component = () => {
             ...(currentTokens?.filter(t => !selectedIds.has(t.id)) || []),
             ...results,
         ]);
-        toast.success(`Refreshed ${results.length} tokens.`);
+        showToast({ title: "Success", description: `Refreshed ${results.length} tokens.` });
         setSelectedTokens([]);
     };
 
@@ -196,17 +196,17 @@ export const TokensPage: Component = () => {
         try {
             await deleteTokens(rootTokenCode(), selectedTokens());
             mutateTokens(currentTokens => currentTokens?.filter(t => !selectedIds.has(t.id)) || []);
-            toast.success(`Deleted ${selectedTokens().length} tokens.`);
+            showToast({ title: "Success", description: `Deleted ${selectedTokens().length} tokens.` });
             setSelectedTokens([]);
         } catch (error) {
-            toast.error("Failed to delete tokens.");
+            showToast({ title: "Error", description: "Failed to delete tokens.", variant: "destructive" });
         }
     };
     
     const handleCopyToken = (token: Token) => {
         navigator.clipboard.writeText(token.code);
         setCopiedTokenId(token.id);
-        toast.success("Token code copied to clipboard!");
+        showToast({ title: "Success", description: "Token code copied to clipboard!" });
         setTimeout(() => setCopiedTokenId(null), 2000);
     };
 
@@ -476,7 +476,7 @@ export const TokensPage: Component = () => {
                     </div>
                 </CommandCard>
             </Show>
-            <Toaster position="bottom-right" />
+            <ToastViewport />
         </div>
     );
 };
