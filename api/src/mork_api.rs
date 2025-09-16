@@ -385,73 +385,62 @@ impl Request for ExploreRequest {
     }
 }
 
-#[derive(Default)]  
-pub struct UploadRequest {  
-    namespace: Namespace,  
-    pattern: String,  
-    template: String,  
-    data: String,  
-}  
-  
-impl UploadRequest {  
-    pub fn new() -> Self {  
-        Self::default()  
-    }  
-  
-    pub fn namespace(mut self, ns: PathBuf) -> Self {  
-        self.namespace = Namespace::from(if ns.to_string_lossy().is_empty() {  
-            PathBuf::from("/")  
-        } else {  
-            ns.to_path_buf()  
-        });  
-        self  
-    }  
-  
-    pub fn pattern(mut self, pattern: String) -> Self {  
-        self.pattern = pattern;  
-        self  
-    }  
-  
-    pub fn template(mut self, template: String) -> Self {  
-        self.template = template;  
-        self  
-    }  
-  
-    pub fn data(mut self, data: String) -> Self {  
-        self.data = data;  
-        self  
-    }  
-  
-    // New method to generate namespace-formatted template  
-    fn get_formatted_template(&self) -> String {  
-        if self.template == "$x" {  
-            // Use namespace formatting for the default pattern  
-            self.namespace.with_namespace("$x")  
-        } else {  
-            // Use custom template as-is  
-            self.template.clone()  
-        }  
-    }  
-}  
-  
-impl Request for UploadRequest {  
-    type Body = String;  
-  
-    fn method(&self) -> Method {  
-        Method::POST  
-    }  
-  
-    fn path(&self) -> String {  
-        format!(  
-            "/upload/{}/{}",  
-            urlencoding::encode(&self.pattern),  
-            urlencoding::encode(&self.get_formatted_template())  
-        )  
-    }  
-  
-    fn body(&self) -> Option<Self::Body> {  
-        Some(self.data.clone())  
-    }  
+#[derive(Default)]
+pub struct UploadRequest {
+    namespace: Namespace,
+    pattern: String,
+    template: String,
+    data: String,
+}
+
+impl UploadRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(if ns.to_string_lossy().is_empty() {
+            PathBuf::from("/")
+        } else {
+            ns.to_path_buf()
+        });
+        self
+    }
+
+    pub fn pattern(mut self, pattern: String) -> Self {
+        self.pattern = pattern;
+        self
+    }
+
+    pub fn template(mut self, template: String) -> Self {
+        self.template = template;
+        self
+    }
+
+    pub fn data(mut self, data: String) -> Self {
+        self.data = data;
+        self
+    }
+}
+
+impl Request for UploadRequest {
+    type Body = String;
+
+    fn method(&self) -> Method {
+        Method::POST
+    }
+
+    fn path(&self) -> String {
+        format!(
+            "/upload/{}/{}",
+            urlencoding::encode(&self.pattern),
+            urlencoding::encode(&self.template)
+        )
+    }
+
+    fn body(&self) -> Option<Self::Body> {
+        Some(self.data.clone())
+    }
 }
 
 #[cfg(test)]
