@@ -1,6 +1,5 @@
-use rocket::fs::FileServer;
 use rocket::http::Method;
-use rocket::{self, launch, routes, tokio, Build, Rocket};
+use rocket::{self, launch, routes, Build, Rocket};
 use rocket_cors::AllowedOrigins;
 
 mod db;

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Install frontend deps
+        run: cd frontend && pnpm ci
+      - name: Lint frontend
+        run: cd frontend && pnpm run lint && npm run format:check
+      - name: Test frontend
+        run: cd frontend && pnpm test -- --ci --watchAll=false
+
+      - name: Lint backend
+        run: cd backend && cargo clippy -- -D warnings
+      - name: Format backend
+        run: cd backend && cargo fmt -- --check
+      - name: Test backend
+        run: cd backend && cargo test --all

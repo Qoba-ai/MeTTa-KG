@@ -1,6 +1,6 @@
-use crate::{schema::tokens};
+use crate::schema::tokens;
 use chrono::NaiveDateTime;
-use diesel::{QueryableByName, Insertable, Queryable, Selectable};
+use diesel::{Insertable, Queryable, QueryableByName, Selectable};
 use rocket::serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Insertable, Clone)]
