@@ -1,10 +1,20 @@
-import { Component, onMount, createSignal, createEffect, For, Show } from 'solid-js';
-import { ParseError } from '../../types';
-import { EditorView, basicSetup } from 'codemirror';
-import { EditorState } from '@codemirror/state';
-import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-import { mettaLanguage } from '../../syntax/mettaLanguage';
-import toast from 'solid-toast';
+import {
+  Component,
+  onMount,
+  createSignal,
+  createEffect,
+  For,
+  Show,
+} from "solid-js";
+import { ParseError } from "../../types";
+import { EditorView, basicSetup } from "codemirror";
+import { EditorState } from "@codemirror/state";
+import {
+  syntaxHighlighting,
+  defaultHighlightStyle,
+} from "@codemirror/language";
+import { mettaLanguage } from "../../syntax/mettaLanguage";
+import toast from "solid-toast";
 
 // Component Prop Interfaces
 export interface MettaEditorProps {
@@ -22,41 +32,47 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
   let editorView: EditorView | undefined;
 
   // Simple syntax validation for standalone component
-  const validateSyntax = (textValue: string): { errors: ParseError[]; warnings: ParseError[] } => {
+  const validateSyntax = (
+    textValue: string
+  ): { errors: ParseError[]; warnings: ParseError[] } => {
     const errors: ParseError[] = [];
     const warnings: ParseError[] = [];
-    const lines = textValue.split('\n');
+    const lines = textValue.split("\n");
 
     lines.forEach((line, index) => {
       const lineNumber = index + 1;
       const trimmedLine = line.trim();
 
       // Check for unmatched parentheses
-      if (trimmedLine.includes('(') && !trimmedLine.includes(')')) {
+      if (trimmedLine.includes("(") && !trimmedLine.includes(")")) {
         errors.push({
           line: lineNumber,
-          column: trimmedLine.indexOf('(') + 1,
-          message: 'Unmatched opening parenthesis',
-          severity: 'error'
+          column: trimmedLine.indexOf("(") + 1,
+          message: "Unmatched opening parenthesis",
+          severity: "error",
         });
       }
 
-      if (trimmedLine.includes(')') && !trimmedLine.includes('(')) {
+      if (trimmedLine.includes(")") && !trimmedLine.includes("(")) {
         errors.push({
           line: lineNumber,
-          column: trimmedLine.indexOf(')') + 1,
-          message: 'Unmatched closing parenthesis',
-          severity: 'error'
+          column: trimmedLine.indexOf(")") + 1,
+          message: "Unmatched closing parenthesis",
+          severity: "error",
         });
       }
 
       // Check for empty expressions
-      if (trimmedLine.startsWith('(') && trimmedLine.endsWith(')') && trimmedLine.length <= 2) {
+      if (
+        trimmedLine.startsWith("(") &&
+        trimmedLine.endsWith(")") &&
+        trimmedLine.length <= 2
+      ) {
         warnings.push({
           line: lineNumber,
           column: 1,
-          message: 'Empty expression',
-          severity: 'warning'
+          message: "Empty expression",
+          severity: "warning",
         });
       }
     });
@@ -94,7 +110,8 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
         EditorView.theme({
           "&": {
             fontSize: "13px",
-            fontFamily: "'Courier New', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
+            fontFamily:
+              "'Courier New', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
             lineHeight: "1.5",
             background: "hsl(var(--background))",
             color: "hsl(var(--foreground))",
@@ -112,7 +129,8 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
           },
           ".cm-gutters": {
             borderRight: "1px solid hsl(var(--border))",
-            fontFamily: "'Courier New', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
+            fontFamily:
+              "'Courier New', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
             fontSize: "13px",
             lineHeight: "1.5",
             padding: "0px 4px",
@@ -178,8 +196,8 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
           changes: {
             from: 0,
             to: 0,
-            insert: props.initialText
-          }
+            insert: props.initialText,
+          },
         });
         editorView.dispatch(transaction);
         setText(props.initialText);
@@ -194,12 +212,12 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
         changes: {
           from: 0,
           to: editorView.state.doc.length,
-          insert: ''
-        }
+          insert: "",
+        },
       });
       editorView.dispatch(transaction);
-      setText('');
-      props.onTextChange('');
+      setText("");
+      props.onTextChange("");
     }
   };
 
@@ -208,7 +226,10 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
       <h3 class="m-0 mb-3 text-sm font-semibold flex-shrink-0 leading-tight text-foreground">
         {realTimeErrors().length > 0 && (
           <span class="ml-2 text-xs font-normal text-destructive">
-            ({realTimeErrors().filter(e => e.severity === 'error').length} errors, {realTimeErrors().filter(e => e.severity === 'warning').length} warnings)
+            ({realTimeErrors().filter((e) => e.severity === "error").length}{" "}
+            errors,{" "}
+            {realTimeErrors().filter((e) => e.severity === "warning").length}{" "}
+            warnings)
           </span>
         )}
       </h3>
@@ -216,10 +237,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
       {/* Editor Container */}
       <div class="relative flex-1 min-h-0 mb-2 border border-border rounded bg-background overflow-hidden transition-all duration-300 ease-linear">
         {/* CodeMirror Editor */}
-        <div
-          ref={editorRef}
-          class="h-full w-full bg-background"
-        />
+        <div ref={editorRef} class="h-full w-full bg-background" />
       </div>
 
       {/* Action Buttons */}
@@ -228,7 +246,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
           <button
             class="px-2 py-1 text-xs border border-border rounded-sm bg-background text-foreground cursor-pointer transition-all duration-200 ease-linear hover:bg-accent hover:border-primary"
             onClick={() => {
-                props.onPatternLoad(text())
+              props.onPatternLoad(text());
             }}
           >
             Load Pattern

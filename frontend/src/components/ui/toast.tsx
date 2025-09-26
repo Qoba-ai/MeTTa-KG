@@ -1,33 +1,33 @@
-import { createSignal, For, Show, onCleanup } from "solid-js"
-import { Portal } from "solid-js/web"
-import X from 'lucide-solid/icons/x'
+import { createSignal, For, Show, onCleanup } from "solid-js";
+import { Portal } from "solid-js/web";
+import X from "lucide-solid/icons/x";
 
-type ToastVariant = "default" | "destructive"
+type ToastVariant = "default" | "destructive";
 
 interface ToastOptions {
-  title?: string
-  description?: string
-  variant?: ToastVariant
-  duration?: number
+  title?: string;
+  description?: string;
+  variant?: ToastVariant;
+  duration?: number;
 }
 
 interface ToastData extends ToastOptions {
-  id: number
+  id: number;
 }
 
-let toastId = 0
-const [toasts, setToasts] = createSignal<ToastData[]>([])
+let toastId = 0;
+const [toasts, setToasts] = createSignal<ToastData[]>([]);
 
 export function showToast(options: ToastOptions) {
-  const id = ++toastId
-  setToasts((prev) => [...prev, { ...options, id }])
-  const duration = options.duration ?? 5000 // Increased default duration
-  const timer = setTimeout(() => removeToast(id), duration)
-  onCleanup(() => clearTimeout(timer))
+  const id = ++toastId;
+  setToasts((prev) => [...prev, { ...options, id }]);
+  const duration = options.duration ?? 5000; // Increased default duration
+  const timer = setTimeout(() => removeToast(id), duration);
+  onCleanup(() => clearTimeout(timer));
 }
 
 export function removeToast(id: number) {
-  setToasts((prev) => prev.filter((t) => t.id !== id))
+  setToasts((prev) => prev.filter((t) => t.id !== id));
 }
 
 export function ToastViewport() {
@@ -38,24 +38,25 @@ export function ToastViewport() {
           {(toast) => {
             const isDestructive = toast.variant === "destructive";
             const emoji = isDestructive ? "🔥" : "✨";
-            
+
             return (
               <div
                 class={`group pointer-events-auto relative flex w-full items-start space-x-4 overflow-hidden rounded-xl border p-4 pr-8 shadow-lg transition-all
-                  ${isDestructive
-                    ? "border-destructive/50 bg-destructive/10 text-destructive"
-                    : "border-border bg-background text-foreground"
+                  ${
+                    isDestructive
+                      ? "border-destructive/50 bg-destructive/10 text-destructive"
+                      : "border-border bg-background text-foreground"
                   }`}
               >
-                <div class="flex-shrink-0 text-2xl mt-0.5">
-                  {emoji}
-                </div>
+                <div class="flex-shrink-0 text-2xl mt-0.5">{emoji}</div>
                 <div class="flex-1">
                   <Show when={toast.title}>
                     <div class="text-sm font-semibold">{toast.title}</div>
                   </Show>
                   <Show when={toast.description}>
-                    <div class="text-sm opacity-90 mt-1">{toast.description}</div>
+                    <div class="text-sm opacity-90 mt-1">
+                      {toast.description}
+                    </div>
                   </Show>
                 </div>
                 <button
@@ -66,10 +67,10 @@ export function ToastViewport() {
                   <X class="h-4 w-4" />
                 </button>
               </div>
-            )
+            );
           }}
         </For>
       </div>
     </Portal>
-  )
+  );
 }

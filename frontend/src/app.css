@@ -3,99 +3,99 @@
 @tailwind utilities;
 
 @layer base {
-	:root {
-	  --background: 40 25% 97%; /* Warm off-white */
-	  --foreground: 240 6% 10%;
+  :root {
+    --background: 40 25% 97%; /* Warm off-white */
+    --foreground: 240 6% 10%;
 
-	  --muted: 45 20% 92%;
-	  --muted-foreground: 240 4% 46%;
+    --muted: 45 20% 92%;
+    --muted-foreground: 240 4% 46%;
 
-	  --popover: 0 0% 99%;
-	  --popover-foreground: 240 6% 10%;
+    --popover: 0 0% 99%;
+    --popover-foreground: 240 6% 10%;
 
-	  --border: 45 15% 85%;
-	  --input: 45 15% 85%;
+    --border: 45 15% 85%;
+    --input: 45 15% 85%;
 
-	  --card: 0 0% 100%;
-	  --card-foreground: 240 6% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 6% 10%;
 
-	  /* ✅ Vibrant emerald green for buttons, links, active states */
-	  --primary: 142 71% 45%;
-	  --primary-foreground: 0 0% 100%;
+    /* ✅ Vibrant emerald green for buttons, links, active states */
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 100%;
 
-	  --secondary: 45 30% 92%;
-	  --secondary-foreground: 240 6% 10%;
+    --secondary: 45 30% 92%;
+    --secondary-foreground: 240 6% 10%;
 
-	  --accent: 162 45% 85%; /* Softer teal-green accent */
-	  --accent-foreground: 162 70% 20%;
+    --accent: 162 45% 85%; /* Softer teal-green accent */
+    --accent-foreground: 162 70% 20%;
 
-	  --destructive: 0 84.2% 60.2%;
-	  --destructive-foreground: 0 0% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
 
-	  /* ✅ Informational colors */
-	  --info: 204 94% 94%;
-	  --info-foreground: 199 89% 48%;
+    /* ✅ Informational colors */
+    --info: 204 94% 94%;
+    --info-foreground: 199 89% 48%;
 
-	  --success: 142 60% 90%; /* Green-tinted success */
-	  --success-foreground: 142 70% 25%;
+    --success: 142 60% 90%; /* Green-tinted success */
+    --success-foreground: 142 70% 25%;
 
-	  --warning: 38 96% 89%; /* Warm amber warning */
-	  --warning-foreground: 32 95% 44%;
+    --warning: 38 96% 89%; /* Warm amber warning */
+    --warning-foreground: 32 95% 44%;
 
-	  --error: 0 93% 94%;
-	  --error-foreground: 0 84% 60%;
+    --error: 0 93% 94%;
+    --error-foreground: 0 84% 60%;
 
-	  --ring: 142 71% 45%;
+    --ring: 142 71% 45%;
 
-	  --radius: 0.5rem;
-	}
+    --radius: 0.5rem;
+  }
 
-	.dark,
-	[data-kb-theme="dark"] {
-	  --background: 240 5% 12%; /* Deep charcoal */
-	  --foreground: 45 20% 95%;
+  .dark,
+  [data-kb-theme="dark"] {
+    --background: 240 5% 12%; /* Deep charcoal */
+    --foreground: 45 20% 95%;
 
-	  --muted: 240 5% 18%;
-	  --muted-foreground: 240 5% 70%;
+    --muted: 240 5% 18%;
+    --muted-foreground: 240 5% 70%;
 
-	  --popover: 240 5% 15%;
-	  --popover-foreground: 45 20% 95%;
+    --popover: 240 5% 15%;
+    --popover-foreground: 45 20% 95%;
 
-	  --border: 240 5% 22%;
-	  --input: 240 5% 22%;
+    --border: 240 5% 22%;
+    --input: 240 5% 22%;
 
-	  --card: 240 5% 15%;
-	  --card-foreground: 45 20% 95%;
+    --card: 240 5% 15%;
+    --card-foreground: 45 20% 95%;
 
-	  /* ✅ Vibrant green again for dark mode */
-	  --primary: 142 71% 45%;
-	  --primary-foreground: 0 0% 100%;
+    /* ✅ Vibrant green again for dark mode */
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 100%;
 
-	  --secondary: 240 5% 20%;
-	  --secondary-foreground: 45 20% 95%;
+    --secondary: 240 5% 20%;
+    --secondary-foreground: 45 20% 95%;
 
-	  --accent: 142 30% 25%; /* Dark green accent */
-	  --accent-foreground: 142 70% 85%;
+    --accent: 142 30% 25%; /* Dark green accent */
+    --accent-foreground: 142 70% 85%;
 
-	  --destructive: 0 62.8% 30.6%;
-	  --destructive-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
 
-	  --info: 204 70% 20%;
-	  --info-foreground: 204 90% 80%;
+    --info: 204 70% 20%;
+    --info-foreground: 204 90% 80%;
 
-	  --success: 142 40% 20%; /* Dark green success */
-	  --success-foreground: 142 70% 80%;
+    --success: 142 40% 20%; /* Dark green success */
+    --success-foreground: 142 70% 80%;
 
-	  --warning: 32 50% 20%; /* Dark amber warning */
-	  --warning-foreground: 38 90% 80%;
+    --warning: 32 50% 20%; /* Dark amber warning */
+    --warning-foreground: 38 90% 80%;
 
-	  --error: 0 50% 20%;
-	  --error-foreground: 0 90% 80%;
+    --error: 0 50% 20%;
+    --error-foreground: 0 90% 80%;
 
-	  --ring: 142 71% 45%;
+    --ring: 142 71% 45%;
 
-	  --radius: 0.5rem;
-	}
+    --radius: 0.5rem;
+  }
 }
 
 @layer base {

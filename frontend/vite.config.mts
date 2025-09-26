@@ -1,39 +1,36 @@
-import { defineConfig } from 'vite';
-import solid from 'vite-plugin-solid';
-import devtools from 'solid-devtools/vite';
-import path from "path"
-import tsconfigPaths from 'vite-tsconfig-paths';
+import { defineConfig } from "vite";
+import solid from "vite-plugin-solid";
+import devtools from "solid-devtools/vite";
+import path from "path";
+import tsconfigPaths from "vite-tsconfig-paths";
 //import tailwindcss from '@tailwindcss/vite'; // Optional: remove if unnecessary
 
 export default defineConfig({
-	plugins: [
-		tsconfigPaths(),
-		//tailwindcss(), // ⚠️ Optional — Tailwind works without this
-		devtools(),
-		solid(),
-	],
-	server: {
-		port: 3000,
-	},
-	build: {
-		target: 'esnext',
-		//sourcemap: mode === 'development'
-	},
-	optimizeDeps: {
-		include: ['@codemirror/state', '@codemirror/view', '**/*.module.scss'],
-	},
-	css: {
-		modules: {
-
-		}
-	},
-	resolve: {
-		alias: {
-			"~": path.resolve(__dirname, "./src")
-		}
-	}
+  plugins: [
+    tsconfigPaths(),
+    //tailwindcss(), // ⚠️ Optional — Tailwind works without this
+    devtools(),
+    solid(),
+  ],
+  server: {
+    port: 3000,
+  },
+  build: {
+    target: "esnext",
+    //sourcemap: mode === 'development'
+  },
+  optimizeDeps: {
+    include: ["@codemirror/state", "@codemirror/view", "**/*.module.scss"],
+  },
+  css: {
+    modules: {},
+  },
+  resolve: {
+    alias: {
+      "~": path.resolve(__dirname, "./src"),
+    },
+  },
 });
-
 
 //export default defineConfig({
 //  plugins: [
@@ -49,7 +46,6 @@ export default defineConfig({
 //  },
 //});
 //
-
 
 //import solid from 'vite-plugin-solid';
 //import { defineConfig } from "vite"
