@@ -1,11 +1,4 @@
-import {
-  Component,
-  onMount,
-  createSignal,
-  createEffect,
-  For,
-  Show,
-} from "solid-js";
+import { Component, onMount, createSignal, createEffect, Show } from "solid-js";
 import { ParseError } from "../../types";
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState } from "@codemirror/state";
@@ -14,7 +7,6 @@ import {
   defaultHighlightStyle,
 } from "@codemirror/language";
 import { mettaLanguage } from "../../syntax/mettaLanguage";
-import toast from "solid-toast";
 
 // Component Prop Interfaces
 export interface MettaEditorProps {
@@ -30,55 +22,6 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
   const [realTimeErrors, setRealTimeErrors] = createSignal<ParseError[]>([]);
   let editorRef: HTMLDivElement | undefined;
   let editorView: EditorView | undefined;
-
-  // Simple syntax validation for standalone component
-  const validateSyntax = (
-    textValue: string
-  ): { errors: ParseError[]; warnings: ParseError[] } => {
-    const errors: ParseError[] = [];
-    const warnings: ParseError[] = [];
-    const lines = textValue.split("\n");
-
-    lines.forEach((line, index) => {
-      const lineNumber = index + 1;
-      const trimmedLine = line.trim();
-
-      // Check for unmatched parentheses
-      if (trimmedLine.includes("(") && !trimmedLine.includes(")")) {
-        errors.push({
-          line: lineNumber,
-          column: trimmedLine.indexOf("(") + 1,
-          message: "Unmatched opening parenthesis",
-          severity: "error",
-        });
-      }
-
-      if (trimmedLine.includes(")") && !trimmedLine.includes("(")) {
-        errors.push({
-          line: lineNumber,
-          column: trimmedLine.indexOf(")") + 1,
-          message: "Unmatched closing parenthesis",
-          severity: "error",
-        });
-      }
-
-      // Check for empty expressions
-      if (
-        trimmedLine.startsWith("(") &&
-        trimmedLine.endsWith(")") &&
-        trimmedLine.length <= 2
-      ) {
-        warnings.push({
-          line: lineNumber,
-          column: 1,
-          message: "Empty expression",
-          severity: "warning",
-        });
-      }
-    });
-
-    return { errors, warnings };
-  };
 
   // Handle text changes from CodeMirror
   const handleTextChange = (textValue: string) => {

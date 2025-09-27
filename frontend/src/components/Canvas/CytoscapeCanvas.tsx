@@ -3,10 +3,14 @@ import cytoscape, { Core } from "cytoscape";
 import type { LayoutAlgorithm, LayoutOptions } from "../../types";
 
 export interface CytoscapeCanvasProps {
-  data?: any[];
+  data?: any[] /* eslint-disable-line @typescript-eslint/no-explicit-any */;
   onZoomChange?: (zoom: number) => void;
-  onNodeClick?: (node: any) => void;
-  onEdgeClick?: (edge: any) => void;
+  onNodeClick?: (
+    node: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+  ) => void;
+  onEdgeClick?: (
+    edge: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+  ) => void;
   className?: string;
 }
 
@@ -321,7 +325,9 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
     // stop any running layout first
     try {
       currentLayout?.stop();
-    } catch {}
+    } catch {
+      console.error("failed to stop layout");
+    }
 
     const anim = opts.animationDuration ?? 1500;
 
@@ -385,10 +391,12 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
   const stopLayout = () => {
     try {
       currentLayout?.stop();
-    } catch {}
+    } catch {
+      console.log("failed to stop layout");
+    }
     currentLayout = undefined;
     // Notify UI: layout stopped
-    window.dispatchEvent(new CustomEvent("cy:layoutstop", { detail: {} }));
+    window.dispatchEvent(new CustomEvent("cy:layoutstop"));
   };
 
   const setShowLabels = (show: boolean) => {
@@ -418,7 +426,8 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
     if (!cy) return;
     const png = cy.png({ full: true, scale, bg: "#ffffff" });
     // Try jsPDF if present, else fallback to PNG
-    const anyWin = window as any;
+    const anyWin =
+      window as any; /* eslint-disable-line @typescript-eslint/no-explicit-any */
     if (anyWin.jspdf?.jsPDF) {
       const { jsPDF } = anyWin.jspdf;
       const w = cy.width() * scale;
@@ -490,12 +499,14 @@ const CytoscapeCanvas: Component<CytoscapeCanvasProps> = (props) => {
   onCleanup(() => {
     try {
       currentLayout?.stop();
-    } catch {}
+    } catch {
+      console.error("No layout to stop");
+    }
     if (cy) cy.destroy();
   });
 
   // Expose methods
-  (globalThis as any).cytoscapeControls = {
+  globalThis.cytoscapeControls = {
     zoomIn,
     zoomOut,
     recenter,

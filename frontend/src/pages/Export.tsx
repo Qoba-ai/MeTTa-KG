@@ -27,7 +27,10 @@ const ExportPage: Component = () => {
   const [isLoading, setIsLoading] = createSignal(false);
   const [pattern, setPattern] = createSignal("$x\n\n\n");
   const [template, setTemplate] = createSignal("$x\n\n\n");
-  const [result, setResult] = createSignal<any>(null);
+  const [result, setResult] =
+    createSignal<any /* eslint-disable-line @typescript-eslint/no-explicit-any */>(
+      null
+    );
 
   const handleExport = async () => {
     const spacePath = formatedNamespace();
@@ -48,7 +51,7 @@ const ExportPage: Component = () => {
         title: "Export Complete 📂",
         description: `Exported data with pattern: ${exportInput.pattern}`,
       });
-    } catch (error) {
+    } catch {
       showToast({
         title: "Error ☹️",
         description: "Failed to export data",

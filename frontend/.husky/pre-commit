@@ -1,2 +1,4 @@
 cd frontend
 pnpm test
+pnpm prettier:check
+pnpm lint

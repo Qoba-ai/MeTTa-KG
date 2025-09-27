@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import prettier from "eslint-config-prettier";
 import eslintPluginPrettier from "eslint-plugin-prettier";
+import solid from "eslint-plugin-solid/configs/typescript";
 
 export default [
   js.configs.recommended, // ESLint's recommended JS rules
@@ -9,6 +10,7 @@ export default [
   prettier, // disable conflicting ESLint style rules
   {
     files: ["**/*.ts", "**/*.tsx"],
+    ...solid,
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
@@ -23,9 +25,12 @@ export default [
       // Example rules — tweak as you like
       "@typescript-eslint/no-unused-vars": [
         "warn",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+        },
       ],
-      "no-console": "warn",
+      "no-console": "off", // TODO: configure logging
       eqeqeq: ["error", "always"],
       "prettier/prettier": "error", // Enforce Prettier rules as errors
     },
@@ -33,11 +38,16 @@ export default [
 
   {
     files: ["**/*.js", "**/*.jsx"],
+    ...solid,
     rules: {
       "no-unused-vars": [
         "warn",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+        },
       ],
+      "no-console": "off", // TODO: configure logging
     },
   },
 

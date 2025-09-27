@@ -8,7 +8,7 @@ import { A } from "@solidjs/router";
 interface SidbarProps {
   activeTab: Accessor<string>;
   setActiveTab: (tab: string) => void;
-  sidebarSections: any;
+  sidebarSections: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
 }
 
 export default function Sidbar({
@@ -53,57 +53,68 @@ export default function Sidbar({
 
           {/* <ScrollArea class="h-[calc(100vh-120px)]"> */}
           <nav class="space-y-6">
-            {sidebarSections.map((section: any, index: number) => (
-              <div>
-                {isCollapsed() ? (
-                  index > 0 && <div class="my-3 border-t border-border" />
-                ) : (
-                  <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
-                    {section.title}
-                  </h3>
-                )}
-                <div class="space-y-1">
-                  {section.items.map((item: any) => {
-                    const Icon = item.icon;
-                    return (
-                      <A href={item.to}>
-                        <Button
-                          // key={item.id}
-                          variant={
-                            activeTab() === item.id ? "default" : "ghost"
-                          }
-                          class={`w-full gap-3 h-auto py-2 px-3 ${
-                            isCollapsed() ? "justify-center" : "justify-start"
-                          }`}
-                          onClick={() => setActiveTab(item.id)}
-                        >
-                          <div class="flex items-center justify-center w-4 h-4">
-                            {typeof Icon === "function" &&
-                            Icon.name === undefined ? (
-                              <Icon />
-                            ) : (
-                              <Icon class="h-4 w-4" />
-                            )}
-                          </div>
-                          {!isCollapsed() && (
-                            <div class="flex-1 text-left">
-                              <div class="flex items-center gap-2">
-                                {item.label}
+            {sidebarSections.map(
+              (
+                section: any /* eslint-disable-line @typescript-eslint/no-explicit-any */,
+                index: number
+              ) => (
+                <div>
+                  {isCollapsed() ? (
+                    index > 0 && <div class="my-3 border-t border-border" />
+                  ) : (
+                    <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
+                      {section.title}
+                    </h3>
+                  )}
+                  <div class="space-y-1">
+                    {section.items.map(
+                      (
+                        item: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+                      ) => {
+                        const Icon = item.icon;
+                        return (
+                          <A href={item.to}>
+                            <Button
+                              // key={item.id}
+                              variant={
+                                activeTab() === item.id ? "default" : "ghost"
+                              }
+                              class={`w-full gap-3 h-auto py-2 px-3 ${
+                                isCollapsed()
+                                  ? "justify-center"
+                                  : "justify-start"
+                              }`}
+                              onClick={() => setActiveTab(item.id)}
+                            >
+                              <div class="flex items-center justify-center w-4 h-4">
+                                {typeof Icon === "function" &&
+                                Icon.name === undefined ? (
+                                  <Icon />
+                                ) : (
+                                  <Icon class="h-4 w-4" />
+                                )}
                               </div>
-                              {item.description && (
-                                <div class="text-xs text-muted-foreground mt-0.5">
-                                  {item.description}
+                              {!isCollapsed() && (
+                                <div class="flex-1 text-left">
+                                  <div class="flex items-center gap-2">
+                                    {item.label}
+                                  </div>
+                                  {item.description && (
+                                    <div class="text-xs text-muted-foreground mt-0.5">
+                                      {item.description}
+                                    </div>
+                                  )}
                                 </div>
                               )}
-                            </div>
-                          )}
-                        </Button>
-                      </A>
-                    );
-                  })}
+                            </Button>
+                          </A>
+                        );
+                      }
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            )}
           </nav>
           {/* </ScrollArea> */}
         </div>

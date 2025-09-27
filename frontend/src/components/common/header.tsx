@@ -1,14 +1,8 @@
 import Sun from "lucide-solid/icons/sun";
 import Moon from "lucide-solid/icons/moon";
 import NameSpace from "./nameSpace";
-import { Accessor, createSignal } from "solid-js";
 import { Button } from "../ui/button";
 import { useColorMode } from "@kobalte/core";
-
-interface HeaderProps {
-  activeTab: Accessor<string>;
-  setActiveTab: (tab: string) => void;
-}
 
 export default function Header() {
   const { colorMode, setColorMode } = useColorMode();

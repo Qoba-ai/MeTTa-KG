@@ -16,7 +16,7 @@ import {
   SpaceNode,
 } from "~/lib/space";
 import { exploreSpace } from "~/lib/api";
-import { formatedNamespace, namespace } from "~/lib/state";
+import { formatedNamespace } from "~/lib/state";
 import parse from "s-expression";
 
 cytoscape.use(coseBilkent);
@@ -46,7 +46,7 @@ const SpaceGraph = (props: SpaceGraphProps) => {
   let cyContainer: HTMLDivElement;
   let cy: cytoscape.Core;
   const [initNodes, setInitNodes] = createSignal(props.rootNodes());
-  const [rootNode, setRootNode] = createSignal(initRootNode(""));
+  const [rootNode, _setRootNode] = createSignal(initRootNode(""));
 
   createEffect(() => {
     setInitNodes(props.rootNodes());
@@ -105,7 +105,7 @@ const SpaceGraph = (props: SpaceGraphProps) => {
         name: "cose-bilkent",
         animate: false,
         fit: false,
-      } as any,
+      } as any /* eslint-disable-line @typescript-eslint/no-explicit-any */,
     });
     recenter();
 
@@ -135,7 +135,7 @@ const SpaceGraph = (props: SpaceGraphProps) => {
         formatedNamespace(),
         props.pattern(),
         node.scratch().token
-      )) as any
+      )) as any /* eslint-disable-line @typescript-eslint/no-explicit-any */
     );
     //children = Array.from(children)
     //children = children.map(item => { return item.token})
@@ -163,11 +163,13 @@ const SpaceGraph = (props: SpaceGraphProps) => {
   };
 
   const runLayout = () => {
-    const layout = cy.layout({
-      name: "cose-bilkent",
-      animate: true,
-      fit: false,
-    } as any);
+    const layout = cy.layout(
+      {
+        name: "cose-bilkent",
+        animate: true,
+        fit: false,
+      } as any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+    );
     layout.run();
   };
 

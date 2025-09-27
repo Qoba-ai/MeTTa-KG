@@ -7,7 +7,7 @@ import { Callout, CalloutContent } from "~/components/ui/callout";
 
 interface OutputViewerProps {
   title?: string;
-  data: any;
+  data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
   format?: "json" | "text" | "metta";
   status?: "success" | "error" | "loading";
 }

@@ -5,7 +5,6 @@ import {
   highlightStyle,
   languageSupport,
   mettaLinter,
-  toJSON,
 } from "~/lib/mettaLanguageSupport";
 import {
   bracketMatching,
@@ -23,12 +22,7 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import {
-  defaultKeymap,
-  historyKeymap,
-  history,
-  indentSelection,
-} from "@codemirror/commands";
+import { defaultKeymap, historyKeymap, history } from "@codemirror/commands";
 import { lintKeymap } from "@codemirror/lint";
 import {
   autocompletion,
@@ -41,10 +35,9 @@ import {
   ImportCSVDirection,
   ImportFormat,
   ParserParameters,
-  Token,
 } from "../../types";
-import { BACKEND_URL, TOKEN } from "../../urls";
-import toast, { Toaster } from "solid-toast";
+import { BACKEND_URL } from "../../urls";
+import toast from "solid-toast";
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
   const extension = file.name.split(".")[1];
@@ -65,16 +58,18 @@ const extensionToImportFormat = (file: File): ImportFormat | undefined => {
   }
 };
 
-const CodeEditor = (props: any) => {
+const CodeEditor = (
+  props: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+) => {
   const [editorContent, setEditorContent] = createSignal<string>(props.space);
   const [activeImportFile, setActiveImportFile] = createSignal<File>();
   const [editorView, setEditorView] = createSignal<EditorView>();
-  const [editorMode, setEditorMode] = createSignal<EditorMode>(
+  const [_editorMode, setEditorMode] = createSignal<EditorMode>(
     EditorMode.DEFAULT
   );
-  const [importCSVDelimiter, setImportCSVDelimiter] =
+  const [importCSVDelimiter, _setImportCSVDelimiter] =
     createSignal<string>("\u002C");
-  const [importCSVDirection, setImportCSVDirection] =
+  const [importCSVDirection, _setImportCSVDirection] =
     createSignal<ImportCSVDirection>(ImportCSVDirection.CELL_LABELED);
 
   const activeImportFileFormat = createMemo<ImportFormat | undefined>(() => {
@@ -121,7 +116,7 @@ const CodeEditor = (props: any) => {
         }
       }),
       EditorView.domEventHandlers({
-        drop: (event, view) => {
+        drop: (event, _view) => {
           // prevent pasting the original content along with its translation
           event.preventDefault();
 
@@ -203,7 +198,9 @@ const CodeEditor = (props: any) => {
       return;
     }
 
-    const parameters = new URLSearchParams(getParserParameters() as any);
+    const parameters = new URLSearchParams(
+      getParserParameters() as any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+    );
 
     try {
       const resp = await fetch(
