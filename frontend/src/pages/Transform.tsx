@@ -1,9 +1,9 @@
 import { Component, createSignal, onCleanup, Show } from "solid-js";
 import MettaEditor from "../components/space/MettaEditor";
-import { CommandCard } from "~/components/upload/commandCard";
+import { CommandCard } from "~/components/upload/CommandCard";
 import { transform, isPathClear, Transformation } from "~/lib/api";
 import { formatedNamespace } from "~/lib/state";
-import { showToast } from "~/components/ui/toast";
+import { showToast } from "~/components/ui/Toast";
 
 interface ParseResult {
   patterns: string[];

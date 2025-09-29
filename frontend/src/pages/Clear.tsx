@@ -1,7 +1,7 @@
 import { Component, createSignal, Show } from "solid-js";
-import { Button } from "~/components/ui/button";
-import { CommandCard } from "~/components/upload/commandCard";
-import { showToast } from "~/components/ui/toast";
+import { Button } from "~/components/ui/Button";
+import { CommandCard } from "~/components/upload/CommandCard";
+import { showToast } from "~/components/ui/Toast";
 import Loader2 from "lucide-solid/icons/loader-2";
 import { formatedNamespace } from "~/lib/state";
 import { clearSpace } from "~/lib/api";

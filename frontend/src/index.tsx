@@ -5,7 +5,7 @@ import {
   ColorModeScript,
   createLocalStorageManager,
 } from "@kobalte/core";
-import App from "~/pages/index";
+import App from "~/pages/Index";
 import "./app.css";
 
 import "solid-devtools";

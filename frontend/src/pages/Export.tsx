@@ -1,20 +1,20 @@
 import { createSignal, Show, Component } from "solid-js";
-import { Button } from "~/components/ui/button";
-import { CommandCard } from "~/components/upload/commandCard";
+import { Button } from "~/components/ui/Button";
+import { CommandCard } from "~/components/upload/CommandCard";
 import {
   TextField,
   TextFieldInput,
   TextFieldLabel,
-} from "~/components/ui/text-field";
+} from "~/components/ui/TextField";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "~/components/ui/select";
-import { OutputViewer } from "~/components/upload/outputViewer";
-import { showToast } from "~/components/ui/toast";
+} from "~/components/ui/Select";
+import { OutputViewer } from "~/components/upload/OutputViewer";
+import { showToast } from "~/components/ui/Toast";
 import Loader2 from "lucide-solid/icons/loader-2";
 import Download from "lucide-solid/icons/download";
 import MettaEditor from "~/components/space/MettaEditor";

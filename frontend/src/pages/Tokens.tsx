@@ -1,15 +1,15 @@
 import type { Component } from "solid-js";
 import { createResource, createSignal, For, Show } from "solid-js";
-import { showToast, ToastViewport } from "~/components/ui/toast";
+import { showToast, ToastViewport } from "~/components/ui/Toast";
 
 // Import UI Components
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui/Button";
 import {
   TextField,
   TextFieldInput,
   TextFieldLabel,
-} from "~/components/ui/text-field";
-import { CommandCard } from "~/components/upload/commandCard";
+} from "~/components/ui/TextField";
+import { CommandCard } from "~/components/upload/CommandCard";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogTrigger,
-} from "~/components/ui/dialog";
+} from "~/components/ui/Dialog";
 
 import Copy from "lucide-solid/icons/copy";
 import Trash2 from "lucide-solid/icons/trash-2";

@@ -1,21 +1,21 @@
 import { Component, createSignal, Show } from "solid-js";
-import { Button } from "~/components/ui/button";
+import { Button } from "~/components/ui/Button";
 import {
   TextField,
   TextFieldInput,
   TextFieldLabel,
-} from "~/components/ui/text-field";
+} from "~/components/ui/TextField";
 import {
   Select,
   SelectTrigger,
   SelectItem,
   SelectContent,
   SelectValue,
-} from "~/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/tabs";
-import { CodeInputField } from "~/components/upload/codeInputField";
-import { CommandCard } from "~/components/upload/commandCard";
-import { showToast, ToastViewport } from "~/components/ui/toast";
+} from "~/components/ui/Select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "~/components/ui/Tabs";
+import { CodeInputField } from "~/components/upload/CodeInputField";
+import { CommandCard } from "~/components/upload/CommandCard";
+import { showToast, ToastViewport } from "~/components/ui/Toast";
 import Loader from "lucide-solid/icons/loader";
 import Upload_ from "lucide-solid/icons/upload";
 import Link from "lucide-solid/icons/link";
