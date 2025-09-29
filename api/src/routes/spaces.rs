@@ -27,12 +27,6 @@ pub struct ExploreInput {
     pub token: String,
 }
 
-#[derive(Default, Serialize, Deserialize, Clone)]
-pub struct ExploreOutput {
-    pub expr: String,
-    pub token: String,
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct ExportInput {
     pub pattern: String,
