@@ -1,6 +1,5 @@
-import type { Component, JSX } from "solid-js";
-import { createResource, createSignal, For, onMount, Show } from "solid-js";
-import { A } from "@solidjs/router";
+import type { Component } from "solid-js";
+import { createResource, createSignal, For, Show } from "solid-js";
 import { showToast, ToastViewport } from "~/components/ui/toast";
 
 // Import UI Components
@@ -60,7 +59,7 @@ const fetchTokens = async (root: string | null): Promise<Token[]> => {
       description: `Loaded ${tokens.length} tokens.`,
     });
     return tokens;
-  } catch (e) {
+  } catch {
     showToast({
       title: "Error",
       description: "Failed to fetch tokens",
@@ -163,7 +162,7 @@ export const TokensPage: Component = () => {
   const [namespaceError, setNamespaceError] = createSignal("");
 
   // Resource for fetching tokens
-  const [tokens, { refetch: refetchTokens, mutate: mutateTokens }] =
+  const [tokens, { refetch: _refatchTokens, mutate: mutateTokens }] =
     createResource(rootTokenCode, fetchTokens, { initialValue: [] });
 
   const filteredAndSortedTokens = () => {
@@ -224,7 +223,7 @@ export const TokensPage: Component = () => {
         title: "Success",
         description: "Token created successfully!",
       });
-    } catch (error) {
+    } catch {
       showToast({
         title: "Error",
         description: "Failed to create token.",
@@ -260,7 +259,7 @@ export const TokensPage: Component = () => {
         description: `Deleted ${selectedTokens().length} tokens.`,
       });
       setSelectedTokens([]);
-    } catch (error) {
+    } catch {
       showToast({
         title: "Error",
         description: "Failed to delete tokens.",

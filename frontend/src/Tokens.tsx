@@ -1,5 +1,5 @@
 import type { Component, JSX, ResourceFetcherInfo } from "solid-js";
-import { createResource, createSignal, For, onMount, Show } from "solid-js";
+import { createResource, createSignal, onMount, For, Show } from "solid-js";
 import { BACKEND_URL } from "./urls";
 import { AiOutlineCopy } from "solid-icons/ai";
 import styles from "./Tokens.module.scss";
@@ -19,7 +19,7 @@ enum SortableColumns {
 
 const fetchTokens = async (
   root: string | null,
-  info: ResourceFetcherInfo<Token[], boolean>
+  _info: ResourceFetcherInfo<Token[], boolean>
 ): Promise<Token[]> => {
   localStorage.setItem("rootToken", root ?? "");
 
@@ -41,7 +41,7 @@ const fetchTokens = async (
     toast(`Loaded ${tokens.length} tokens.`);
 
     return tokens;
-  } catch (e) {
+  } catch {
     toast(`Failed to fetch tokens`);
     return [];
   }
@@ -171,7 +171,7 @@ const Tokens: Component = () => {
   >(null);
   const [copiedToken, setCopiedToken] = createSignal<Token | null>();
 
-  const [tokens, { refetch: refetchTokens, mutate: mutateTokens }] =
+  const [tokens, { refetch: _refetchTokens, mutate: mutateTokens }] =
     createResource<Token[], string, boolean>(rootTokenCode, fetchTokens, {
       initialValue: [],
     });
@@ -245,7 +245,7 @@ const Tokens: Component = () => {
         newTokenNamespaceInput.value = namespace;
 
         toast.success(
-          (t) => (
+          () => (
             <div>
               <span>Successfully created token.</span>
               <br />
@@ -260,7 +260,7 @@ const Tokens: Component = () => {
             duration: 1000 * 10,
           }
         );
-      } catch (e) {
+      } catch {
         toast(`Failed to create new token.`);
       }
     };
@@ -326,7 +326,7 @@ const Tokens: Component = () => {
       tokenTableSelectAllCheckbox.checked = false;
 
       toast(`Deleted ${count} tokens.`);
-    } catch (e) {
+    } catch {
       toast(`Failed to delete tokens.`);
     }
   };
@@ -853,7 +853,7 @@ const Tokens: Component = () => {
                                 setCopiedToken(null);
                               }, 1000 * 1);
                             }}
-                            onPointerLeave={(e) => {}}
+                            onPointerLeave={() => {}}
                           >
                             <div>
                               <AiOutlineCopy class={styles.CodeCellIcon} />

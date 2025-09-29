@@ -15,15 +15,8 @@ export interface Token {
 }
 export interface ApiResponse {
   status: "success" | "error";
-  data?: any;
+  data?: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
   message: string;
-}
-
-async function sanitizeResponse(response: Response) {
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `HTTP error! status: ${response.status}`);
-  }
 }
 
 export interface Transformation {
@@ -61,9 +54,6 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   };
 
   const response = await fetch(`${API_URL}${url}`, { ...options, headers });
-  if (!response.ok) {
-  }
-
   const res = await response.json();
   return res;
 }
@@ -186,7 +176,9 @@ export const createFromCSV = (file: File, params: CSVParserParameters) => {
   const formData = new FormData();
   formData.append("file", file);
   const url = new URL(`${API_URL}/translations/csv`);
-  url.search = new URLSearchParams(params as any).toString();
+  url.search = new URLSearchParams(
+    params as any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+  ).toString();
 
   return fetch(url.toString(), {
     method: "POST",
@@ -258,7 +250,7 @@ export async function isPathClear(path: string): Promise<boolean> {
     const result = response.status !== 503;
 
     return result;
-  } catch (error) {
+  } catch {
     // Assume clear to avoid getting stuck
     return true;
   }
@@ -266,13 +258,13 @@ export async function isPathClear(path: string): Promise<boolean> {
 
 export interface ImportDataResponse {
   status: "success" | "error";
-  data?: any;
+  data?: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
   message: string;
 }
 
 export async function importData(
   type: string,
-  data: any = null,
+  data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */ = null,
   format: string = "metta"
 ): Promise<ImportDataResponse> {
   try {

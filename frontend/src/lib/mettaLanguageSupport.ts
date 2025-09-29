@@ -6,17 +6,14 @@ import {
   LanguageSupport,
   LRLanguage,
   syntaxTree,
-  TreeIndentContext,
 } from "@codemirror/language";
 import { parser } from "../parser/parser";
 import { styleTags, tags as t } from "@lezer/highlight";
-import { IterMode, Tree } from "@lezer/common";
 import { tags } from "@lezer/highlight";
 import { SyntaxNodeRef } from "@lezer/common";
-import { EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { CompletionContext } from "@codemirror/autocomplete";
 import { linter } from "@codemirror/lint";
-import { Extension } from "@codemirror/state";
 import {
   CLOSING_PARENTHESIS,
   Expression,
@@ -75,9 +72,11 @@ const parserWithMetadata = parser.configure({
 
 export const enter = (
   n: SyntaxNodeRef,
-  parent: any[],
+  parent: any[] /* eslint-disable-line @typescript-eslint/no-explicit-any */,
   doc: string
-): any[] | undefined => {
+):
+  | any[] /* eslint-disable-line @typescript-eslint/no-explicit-any */
+  | undefined => {
   if (n.type.id === Expression || n.type.id === Space) {
     const child: [] = [];
 
@@ -112,7 +111,7 @@ export const enter = (
 export const toJSON = (doc: string) => {
   const trie = toTrie(doc);
 
-  const reconstruction = reconstruct(trie);
+  const _reconstruction = reconstruct(trie);
 };
 
 export const toTrie = (doc: string) => {
@@ -120,7 +119,8 @@ export const toTrie = (doc: string) => {
 
   const result = {};
   const expressionIndices: number[] = [];
-  const stack: any[] = [result];
+  const stack: any[] /* eslint-disable-line @typescript-eslint/no-explicit-any */ =
+    [result];
 
   tree.iterate({
     enter: (n) => {
@@ -169,7 +169,9 @@ export const toTrie = (doc: string) => {
   return result;
 };
 
-const reconstruct = (trie: any): any => {
+const reconstruct = (
+  trie: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+): any /* eslint-disable-line @typescript-eslint/no-explicit-any */ => {
   const keys = Object.keys(trie);
 
   if (keys.length === 0) {

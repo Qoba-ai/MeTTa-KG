@@ -23,9 +23,12 @@ export default [
       // Example rules — tweak as you like
       "@typescript-eslint/no-unused-vars": [
         "warn",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+        },
       ],
-      "no-console": "warn",
+      "no-console": "off", // TODO: configure logging
       eqeqeq: ["error", "always"],
       "prettier/prettier": "error", // Enforce Prettier rules as errors
     },
@@ -36,8 +39,12 @@ export default [
     rules: {
       "no-unused-vars": [
         "warn",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+        },
       ],
+      "no-console": "off", // TODO: configure logging
     },
   },
 

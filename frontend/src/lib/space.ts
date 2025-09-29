@@ -1,12 +1,6 @@
-import { createResource } from "solid-js";
-import { ExploreDetail, exploreSpace } from "~/lib/api";
+import { ExploreDetail } from "~/lib/api";
 import parse from "s-expression";
-import {
-  EdgeDataDefinition,
-  ElementDefinition,
-  NodeDataDefinition,
-} from "cytoscape";
-import { it } from "node:test";
+import { ElementDefinition } from "cytoscape";
 
 interface SpaceNode {
   id: string;
@@ -52,7 +46,7 @@ function initNodeFromApiResponse(data: {
 // current format is `{token: Uint8Array, expr: string}`
 function initNodesFromApiResponse(
   data: { token: Uint8Array; expr: string }[],
-  parentLabel?: string
+  _parentLabel?: string
 ): SpaceNode[] {
   const tokens = data.map((item) => tokenToString(item.token));
   const labels = extractLabels(data).map((item) => item || "[Malformed Expr]");
@@ -84,14 +78,18 @@ function stringToToken(token: string): Uint8Array {
 }
 
 // Extracts a label from an expression
-function extractLabel(expr: string): string {
+function extractLabel(_expr: string): string {
   return "Expr";
 }
 
-function flattenNodes(parsed: any): string[] {
+function flattenNodes(
+  parsed: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+): string[] {
   const nodes: string[] = [];
 
-  function traverse(item: any) {
+  function traverse(
+    item: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+  ) {
     if (Array.isArray(item)) {
       item.forEach(traverse);
     } else if (item instanceof String) {
@@ -107,7 +105,7 @@ function flattenNodes(parsed: any): string[] {
 
 function extractLabels(
   details: ExploreDetail[],
-  parent?: string
+  _parent?: string
 ): (string | null)[] {
   // Helper function to flatten parsed S-expression into a list of nodes
 
@@ -162,19 +160,6 @@ function elementsToCyInput(
       scratch: scratchData,
     };
   });
-}
-
-function spaceNodeToCyInput(node: SpaceNode): ElementDefinition {
-  return {
-    data: node,
-    scratch: node.remoteData,
-  };
-}
-
-function spaceEdgeToCyInput(edge: SpaceEdge): ElementDefinition {
-  return {
-    data: edge,
-  };
 }
 
 export type { SpaceNode, SpaceEdge };

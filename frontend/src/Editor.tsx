@@ -1,13 +1,8 @@
 import type { Component } from "solid-js";
-import {
-  AiFillFileMarkdown,
-  AiFillFolderOpen,
-  AiOutlineGithub,
-} from "solid-icons/ai";
+import { AiFillFolderOpen } from "solid-icons/ai";
 import { VsRunAll } from "solid-icons/vs";
 import { createMemo, createSignal, onMount, Show } from "solid-js";
 import styles from "./Editor.module.scss";
-import { A } from "@solidjs/router";
 import toast, { Toaster } from "solid-toast";
 import { BACKEND_URL, TOKEN } from "./urls";
 import hljs from "highlight.js/lib/core";
@@ -53,10 +48,7 @@ import {
   highlightStyle,
   languageSupport,
   mettaLinter,
-  toJSON,
 } from "./mettaLanguageSupport";
-import { parser } from "./parser/parser";
-import { Expression, Symbol, Variable } from "./parser/parser.terms";
 import { Header, PageType } from "./components/common/Header";
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
@@ -115,8 +107,6 @@ const App: Component = () => {
   });
 
   // TODO: replace tokens with namespaces to obtain tree-view of space
-  const [availableTokens, setAvailableTokens] = createSignal<Token[]>([]);
-
   const [isFullscreen, setIsFullscreen] = createSignal<boolean>(false);
 
   // controlled value of form input: move to separate component
@@ -168,7 +158,7 @@ const App: Component = () => {
         }
       }),
       EditorView.domEventHandlers({
-        drop: (event, view) => {
+        drop: (event) => {
           // prevent pasting the original content along with its translation
           event.preventDefault();
 
@@ -263,12 +253,12 @@ const App: Component = () => {
     };
 
     // clear file input after closing modal
-    importFileModal.addEventListener("close", function (event) {
+    importFileModal.addEventListener("close", function () {
       importFileFormInput.value = "";
     });
 
     // update fullscreen status when user exits fullscreen using ESC key
-    document.onfullscreenchange = async (event) => {
+    document.onfullscreenchange = async () => {
       if (!document.fullscreenElement) {
         setIsFullscreen(false);
       }
@@ -349,7 +339,9 @@ const App: Component = () => {
       return;
     }
 
-    const parameters = new URLSearchParams(getParserParameters() as any);
+    const parameters = new URLSearchParams(
+      getParserParameters() as any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+    );
 
     try {
       const resp = await fetch(
@@ -568,7 +560,7 @@ const App: Component = () => {
   };
 
   const transform = async () => {
-    const resp = await fetch(`${BACKEND_URL}/spaces`, {
+    await fetch(`${BACKEND_URL}/spaces`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

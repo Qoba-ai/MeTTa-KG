@@ -55,7 +55,10 @@ export default function NameSpace() {
         allTokens.map((t) => [normalizePath(t.namespace), t.description])
       );
 
-      const treeRoot = new Map<string, any>();
+      const treeRoot = new Map<
+        string,
+        any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+      >();
       const descendantPaths = new Set<string>();
       for (const t of allTokens) {
         if (
@@ -74,7 +77,13 @@ export default function NameSpace() {
         const parts = relativePath.split("/").filter((p) => p.length > 0);
         parts.forEach((part) => {
           if (!currentNode.has(part)) {
-            currentNode.set(part, new Map<string, any>());
+            currentNode.set(
+              part,
+              new Map<
+                string,
+                any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+              >()
+            );
           }
           currentNode = currentNode.get(part)!;
         });
@@ -82,7 +91,10 @@ export default function NameSpace() {
 
       const flattenedTree: TreeNode[] = [];
       const flatten = (
-        node: Map<string, any>,
+        node: Map<
+          string,
+          any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+        >,
         path: string[],
         parentPrefix: string
       ) => {

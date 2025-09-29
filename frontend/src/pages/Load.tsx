@@ -1,5 +1,4 @@
 import MettaEditor from "~/components/space/MettaEditor";
-import UIControls from "~/components/controls/UIControls";
 import ZoomControls from "~/components/controls/ZoomControls";
 import MinimizeControls from "~/components/controls/MinimizeControls";
 import SpaceGraph from "~/components/space/SpaceGraph";
@@ -11,22 +10,10 @@ import {
   createResource,
   createSignal,
 } from "solid-js";
-import {
-  ParseError,
-  LayoutAlgorithm,
-  LayoutOptions,
-  LayoutState,
-} from "../types";
+import { ParseError, LayoutState } from "../types";
 import { HiOutlineMinus, HiOutlinePlus } from "solid-icons/hi";
-import {
-  initNode,
-  initNodesFromApiResponse,
-  SpaceNode,
-  subSpace,
-} from "~/lib/space";
-import CytoscapeCanvas, {
-  CytoscapeCanvasHandle,
-} from "~/components/space/SpaceGraph";
+import { initNodesFromApiResponse, SpaceNode } from "~/lib/space";
+import { CytoscapeCanvasHandle } from "~/components/space/SpaceGraph";
 
 // Import the required CSS for the editor
 import "../styles/variables.css";
@@ -37,14 +24,13 @@ import { namespace } from "~/lib/state";
 const LoadPage = () => {
   // Editor state
   const [mettaText, setMettaText] = createSignal("$x");
-  const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
+  const [parseErrors, _setParseErrors] = createSignal<ParseError[]>([]);
   const [isMinimized, setIsMinimized] = createSignal(true);
   const [pattern, setPattern] = createSignal("$x");
 
   // UI Controls state
-  const [isControlsMinimized, setIsControlsMinimized] = createSignal(true);
-  const [showLabels, setShowLabels] = createSignal(true);
-  const [layoutState, setLayoutState] = createSignal<LayoutState>({
+  const [_isControlsMinimized, setIsControlsMinimized] = createSignal(true);
+  const [_layoutState] = createSignal<LayoutState>({
     isAnimating: false,
     progress: 0,
     algorithm: "force-directed",
@@ -53,13 +39,6 @@ const LoadPage = () => {
   });
   let canvas!: CytoscapeCanvasHandle;
   let setSpaceGraph: (eles: SpaceNode[]) => void;
-  const rootNode: SpaceNode = initNode("root", "", {
-    token: Uint8Array.from([]),
-    expr: "",
-  });
-  let progressTimer: number | undefined;
-
-  const [newNodeLabel, setNewNodeLabel] = createSignal("");
 
   const [subSpace] = createResource(
     () => ({
@@ -71,7 +50,9 @@ const LoadPage = () => {
       // Destructure the object
       const pathStr = `/${path.join("/")}`;
       let res = await exploreSpace(pathStr, expr, token);
-      res = JSON.parse(res as any);
+      res = JSON.parse(
+        res as any /* eslint-disable-line @typescript-eslint/no-explicit-any */
+      );
       return res;
     }
   );
@@ -81,40 +62,6 @@ const LoadPage = () => {
       setSpaceGraph(initNodesFromApiResponse(subSpace()!));
     }
   });
-
-  const handleNewNodeLabelChange = (e: any) => {
-    setNewNodeLabel(e.target.value);
-  };
-
-  const handleAddNewNode = (e: any) => {
-    if (e.key === "Enter") {
-      const labels = newNodeLabel()
-        .split("\n")
-        .filter((label) => label.trim() !== "");
-      // @ts-ignore
-      window.newNodes = labels.map((label) => initNode(label, label));
-      setNewNodeLabel("");
-    }
-  };
-
-  const startProgressSim = (durationMs = 1500) => {
-    stopProgressSim();
-    const start = performance.now();
-    const tick = (t: number) => {
-      const elapsed = t - start;
-      const p = Math.min(0.98, elapsed / durationMs);
-      setLayoutState((prev) => ({ ...prev, progress: p }));
-      if (p < 0.98 && layoutState().isAnimating) {
-        progressTimer = requestAnimationFrame(tick) as unknown as number;
-      }
-    };
-    progressTimer = requestAnimationFrame(tick) as unknown as number;
-  };
-
-  const stopProgressSim = () => {
-    if (progressTimer) cancelAnimationFrame(progressTimer);
-    progressTimer = undefined;
-  };
 
   // Editor event handlers
   const handleTextChange = (text: string) => {
@@ -127,51 +74,6 @@ const LoadPage = () => {
 
   const toggleMinimize = () => {
     setIsMinimized(!isMinimized());
-  };
-
-  const toggleControlsMinimize = () => {
-    setIsControlsMinimized(!isControlsMinimized());
-  };
-
-  // UI Controls event handlers
-  const handleApplyLayout = (
-    algorithm: LayoutAlgorithm,
-    options?: LayoutOptions
-  ) => {
-    // Call Cytoscape
-    (window as any).cytoscapeControls?.applyLayout(algorithm, options);
-
-    setLayoutState((prev) => ({
-      ...prev,
-      isAnimating: true,
-      algorithm,
-      startTime: Date.now(),
-      duration: options?.animationDuration || 1500,
-      progress: 0,
-    }));
-    startProgressSim(options?.animationDuration || 1500);
-  };
-
-  const handleStopLayout = () => {
-    (window as any).cytoscapeControls?.stopLayout();
-    setLayoutState((prev) => ({
-      ...prev,
-      isAnimating: false,
-    }));
-    stopProgressSim();
-  };
-
-  const handleExportPDF = () => {
-    (window as any).cytoscapeControls?.exportPDF(2);
-  };
-
-  const handleExportPNG = () => {
-    (window as any).cytoscapeControls?.exportPNG(2);
-  };
-
-  const handleToggleLabels = (show: boolean) => {
-    setShowLabels(show);
-    (window as any).cytoscapeControls?.setShowLabels(show);
   };
 
   // Zoom Controls event handlers
@@ -205,36 +107,6 @@ const LoadPage = () => {
       handleMinimizeAll();
     }
   }
-
-  // Layout event listeners
-  const handleLayoutStart = (e: Event) => {
-    const detail = (e as CustomEvent).detail || {};
-    setLayoutState((prev) => ({
-      ...prev,
-      algorithm: detail.algorithm ?? prev.algorithm,
-      isAnimating: true,
-      progress: 0,
-    }));
-  };
-
-  const handleLayoutStop = () => {
-    stopProgressSim();
-    setLayoutState((prev) => ({ ...prev, isAnimating: false, progress: 1 }));
-    setTimeout(() => setLayoutState((prev) => ({ ...prev, progress: 0 })), 500);
-  };
-
-  // Add event listeners when component mounts
-  const setupEventListeners = () => {
-    window.addEventListener("cy:layoutstart", handleLayoutStart);
-    window.addEventListener("cy:layoutstop", handleLayoutStop);
-
-    // Cleanup function
-    return () => {
-      window.removeEventListener("cy:layoutstart", handleLayoutStart);
-      window.removeEventListener("cy:layoutstop", handleLayoutStop);
-      stopProgressSim();
-    };
-  };
 
   // Setup event listeners on mount
   //const cleanup = setupEventListeners();
