@@ -29,26 +29,36 @@ const LoadPage = () => {
   } = useSpaceGraph();
 
   return (
-    <div class="relative w-full h-full">
-      {/* This is the UI for the Pattern Editor Card from the original file */}
+    <div class="relative h-full w-full bg-background">
+      {/* Pattern Editor Card */}
       <div
-        class={`ui-card ${isMinimized() ? "minimized" : "metta-editor-card"} top-left`}
-        style={
-          isMinimized() ? "width: 300px; height: auto; z-index: 1001;" : ""
-        }
+        class={`
+          absolute top-2.5 left-2.5 z-[1001] p-3
+          rounded-lg border border-border bg-card/80 text-card-foreground 
+          shadow-lg backdrop-blur-md transition-all duration-300 ease-in-out
+          ${
+            isMinimized()
+              ? "h-auto w-[300px] max-h-[50px] resize-none"
+              : "flex h-[calc(100vh-80px)] min-h-[200px] w-[320px] min-w-[250px] max-w-[50vw] resize flex-col overflow-hidden"
+          }
+        `}
       >
-        <div class="card-header">
-          <h3>Pattern</h3>
-          <button class="minimize-btn" onClick={toggleMinimize}>
+        <div class="mb-3 -m-3 flex items-center justify-between rounded-t-lg border-b border-border bg-muted p-3">
+          <h3 class="text-sm font-semibold text-foreground">Pattern</h3>
+          <button
+            class="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-all duration-200 hover:border-primary hover:bg-accent hover:text-primary"
+            onClick={toggleMinimize}
+          >
             {isMinimized() ? (
-              <HiOutlinePlus class="w-4 h-4" />
+              <HiOutlinePlus class="h-4 w-4" />
             ) : (
-              <HiOutlineMinus class="w-4 h-4" />
+              <HiOutlineMinus class="h-4 w-4" />
             )}
           </button>
         </div>
+
         <Show when={!isMinimized()}>
-          <div class="card-content">
+          <div class="min-h-0 flex-1 overflow-y-auto pr-1 custom-scrollbar">
             <MettaEditor
               initialText={mettaText()}
               onTextChange={handleTextChange}
@@ -59,18 +69,25 @@ const LoadPage = () => {
         </Show>
       </div>
 
-      <ZoomControls
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onRecenter={handleRecenter}
-      />
+      {/* Zoom Controls */}
+      <div class="absolute top-2.5 right-2.5 z-10">
+        <ZoomControls
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onRecenter={handleRecenter}
+        />
+      </div>
 
-      <MinimizeControls onToggleCards={handleToggleCard} />
+      {/* Minimize Controls */}
+      <div class="absolute top-2.5 right-[74px] z-10">
+        <MinimizeControls onToggleCards={handleToggleCard} />
+      </div>
 
-      <div class="absolute inset-0 w-full h-full" style="z-index: 0;">
+      {/* Cytoscape Canvas */}
+      <div class="absolute inset-0 z-0 h-full w-full">
         <Suspense
           fallback={
-            <div class="flex items-center justify-center h-full text-lg text-muted-foreground">
+            <div class="flex h-full items-center justify-center text-lg text-muted-foreground">
               Loading graph...
             </div>
           }
@@ -78,9 +95,9 @@ const LoadPage = () => {
           <Show
             when={subSpace()}
             fallback={
-              <div class="flex items-center justify-center h-full text-destructive">
-                <div class="text-center p-8">
-                  <div class="text-lg mb-2">Error loading space data</div>
+              <div class="flex h-full items-center justify-center text-destructive">
+                <div class="p-8 text-center">
+                  <div class="mb-2 text-lg">Error loading space data</div>
                   <div class="text-sm opacity-70">
                     Check server logs for details
                   </div>
@@ -91,7 +108,7 @@ const LoadPage = () => {
             <Show
               when={subSpace()!.length > 0}
               fallback={
-                <div class="flex items-center justify-center h-full text-lg text-muted-foreground">
+                <div class="flex h-full items-center justify-center text-lg text-muted-foreground">
                   No data loaded on this path/namespace
                 </div>
               }
