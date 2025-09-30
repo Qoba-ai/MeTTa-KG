@@ -14,11 +14,18 @@ use crate::mork_api::{
     ReadRequest, Request, TransformDetails, TransformRequest, UploadRequest,
 };
 
+/// The input for a transformation operation.
+/// see mm2 operations for more    // TODO: Add links
 #[derive(Default, Serialize, Deserialize, Clone)]
-pub struct Transformation {
-    pub space: PathBuf,
+pub struct Mm2InputMulti {
     pub patterns: Vec<String>,
     pub templates: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Mm2Input {
+    pub pattern: String,
+    pub template: String,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -27,34 +34,25 @@ pub struct ExploreInput {
     pub token: String,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ExportInput {
-    pub pattern: String,
-    pub template: String,
-}
-
 #[post("/spaces/<_path..>", data = "<transformation>", rank = 2)]
 pub async fn transform(
     token: Token,
-    _path: PathBuf, // TODO: use namespace from here rather than `Transformation`
-    transformation: Json<Transformation>,
+    path: PathBuf,
+    mm2: Json<Mm2InputMulti>,
 ) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix("/").unwrap();
 
-    if !transformation.space.starts_with(token_namespace)
-        || !token.permission_read
-        || !token.permission_write
-    {
+    if path.starts_with(token_namespace) || !token.permission_read || !token.permission_write {
         return Err(Status::Unauthorized);
     }
 
     let mork_api_client = MorkApiClient::new();
     let request = TransformRequest::new()
-        .namespace(transformation.space.to_path_buf())
+        .namespace(path.to_path_buf())
         .transform_input(
             TransformDetails::new()
-                .patterns(transformation.patterns.clone())
-                .templates(transformation.templates.clone()),
+                .patterns(mm2.patterns.clone())
+                .templates(mm2.templates.clone()),
         );
 
     match mork_api_client.dispatch(request).await {
@@ -167,7 +165,7 @@ pub async fn explore(
 pub async fn export(
     token: Token,
     path: PathBuf,
-    export_input: Json<ExportInput>,
+    export_input: Json<Mm2Input>,
 ) -> Result<Json<String>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
         return Err(Status::Unauthorized);
