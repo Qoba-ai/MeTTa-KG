@@ -10,7 +10,7 @@
   .warning-line {
     @apply bg-amber-500/10 border-l-4 border-amber-500 pl-1.5 -ml-2;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
   }
