@@ -101,12 +101,24 @@ pub struct MorkApiClient {
     client: Client,
 }
 
+impl Default for MorkApiClient {
+    fn default() -> Self {
+        Self {
+            base_url: "http://localhost:8001".to_string(), // According to Dockerfile.mork
+            client: Client::new(),
+        }
+    }
+}
+
 impl MorkApiClient {
     pub fn new() -> Self {
-        let mork_url = env::var("METTA_KG_MORK_URL").expect("METTA_KG_MORK_URL must be set");
-        Self {
-            base_url: mork_url,
-            client: Client::new(),
+        if let Ok(mork_url) = env::var("METTA_KG_MORK_URL") {
+            Self {
+                base_url: mork_url,
+                client: Client::new(),
+            }
+        } else {
+            Self::default()
         }
     }
 

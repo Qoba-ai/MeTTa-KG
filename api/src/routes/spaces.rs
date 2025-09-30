@@ -34,7 +34,23 @@ pub struct ExploreInput {
     pub token: String,
 }
 
-#[post("/spaces/<_path..>", data = "<transformation>", rank = 2)]
+/// Fetches the `<path..>` space content. Use cautously as it will load everything.
+/// It is recommended to use the `/spaces/<path..>?op=explore` instead for large queries
+#[get("/spaces/<path..>", rank = 1)]
+pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
+    if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
+        return Err(Status::Unauthorized);
+    }
+
+    let mork_api_client = MorkApiClient::new();
+    let request = ReadRequest::new().namespace(path);
+
+    let response = mork_api_client.dispatch(request).await.map(Json);
+    response
+}
+
+/// Performs a transformation operation on the `<path..>` space
+#[post("/spaces/<path..>?op=transform", data = "<mm2>")]
 pub async fn transform(
     token: Token,
     path: PathBuf,
@@ -55,13 +71,15 @@ pub async fn transform(
                 .templates(mm2.templates.clone()),
         );
 
+    // TODO: use server sent events instead
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),
         Err(e) => Err(e),
     }
 }
 
-#[post("/spaces/upload/<path..>", data = "<data>", rank = 1)]
+/// Upload to the `<path..>` space. Exectes mm2 on the imported data.
+#[post("/spaces/<path..>?op=upload", data = "<data>", rank = 1)]
 pub async fn upload(
     token: Token,
     path: PathBuf,
@@ -105,7 +123,8 @@ pub async fn upload(
     }
 }
 
-#[post("/spaces/<path..>?<uri>")]
+/// Imports data from `<uri>` into the `<path..>` space. Exectes mm2 on the imported data.
+#[post("/spaces/<path..>?op=import&<uri>")]
 pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<bool>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
         return Err(Status::Unauthorized);
@@ -125,24 +144,13 @@ pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<boo
     }
 }
 
-#[get("/spaces/<path..>", rank = 2)]
-pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
-    if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
-        return Err(Status::Unauthorized);
-    }
-
-    let mork_api_client = MorkApiClient::new();
-    let request = ReadRequest::new().namespace(path);
-
-    let response = mork_api_client.dispatch(request).await.map(Json);
-    response
-}
-
-#[post("/explore/spaces/<path..>", data = "<data>")]
+/// Performs an explore operation on the `<path..>` space. Get the result that
+/// matches the `<pattern>` by incrementally traversing the resulting space.
+#[post("/spaces/<path..>?op=explore", data = "<explore_input>")]
 pub async fn explore(
     token: Token,
     path: PathBuf,
-    data: Json<ExploreInput>,
+    explore_input: Json<ExploreInput>,
 ) -> Result<Json<String>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
         return Err(Status::Unauthorized);
@@ -151,8 +159,8 @@ pub async fn explore(
     let mork_api_client = MorkApiClient::new();
     let request = ExploreRequest::new()
         .namespace(path)
-        .pattern(data.pattern.clone())
-        .token(data.token.clone());
+        .pattern(explore_input.pattern.clone())
+        .token(explore_input.token.clone());
 
     println!("explore path: {:?}", request.path());
 
@@ -161,7 +169,9 @@ pub async fn explore(
     response
 }
 
-#[post("/spaces/export/<path..>", data = "<export_input>")]
+/// Performs an export operation on the `<path..>` space. Get the result that
+/// matches the `<pattern>` by incrementally traversing the resulting space.
+#[post("/spaces/<path..>?op=export", data = "<export_input>")]
 pub async fn export(
     token: Token,
     path: PathBuf,
@@ -189,7 +199,7 @@ pub async fn export(
     }
 }
 
-#[get("/spaces/clear/<path..>")]
+#[post("/spaces/<path..>?op=clear")]
 pub async fn clear(token: Token, path: PathBuf) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix("/").unwrap();
     if !path.starts_with(token_namespace) || !token.permission_write {
