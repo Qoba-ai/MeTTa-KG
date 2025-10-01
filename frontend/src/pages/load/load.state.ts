@@ -28,7 +28,7 @@ export const [subSpace] = createResource(
   }),
   async ({ path, expr, token }) => {
     try {
-      const responseString = await exploreSpace(path, expr);
+      const responseString = await exploreSpace(path, expr, token);
       const data: ExploreResponse[] = JSON.parse(responseString);
       showToast({
         title: "Success",
