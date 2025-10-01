@@ -1,25 +1,17 @@
-import { Component, createSignal, Show, createEffect } from "solid-js";
+import { Component, Show } from "solid-js";
 import { Button } from "~/components/ui/Button";
 import { CommandCard } from "~/components/common/CommandCard";
 import MettaEditor from "~/components/common/MettaEditor";
 import Loader2 from "lucide-solid/icons/loader-2";
 import { formatedNamespace } from "~/lib/state";
-import { useClearSpace } from "./hooks/useClearSpace";
+import {
+  expression,
+  setExpression,
+  isLoading,
+  handleClear,
+} from "./clear.state";
 
 const ClearPage: Component = () => {
-  const [expression, setExpression] = createSignal("$x \n \n \n");
-  const [spacePath, setSpacePath] = createSignal(formatedNamespace());
-
-  createEffect(() => {
-    setSpacePath(formatedNamespace());
-  });
-
-  const { isLoading, executeClear } = useClearSpace(spacePath);
-
-  const handleClear = () => {
-    executeClear(expression());
-  };
-
   return (
     <div class="ml-10 mt-8">
       <CommandCard
@@ -37,7 +29,7 @@ const ClearPage: Component = () => {
 
           <div class="flex items-center gap-4 pt-2">
             <Button
-              onClick={handleClear}
+              onClick={() => handleClear(formatedNamespace())}
               disabled={isLoading() || !expression().trim()}
               variant="destructive"
               class="w-36"

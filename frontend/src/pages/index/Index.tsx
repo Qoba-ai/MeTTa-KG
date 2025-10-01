@@ -1,11 +1,11 @@
 import { Route, Router } from "@solidjs/router";
+import { createSignal, For } from "solid-js";
 import LoadPage from "../load/Load";
 import UploadPage from "../upload/Upload";
 import TransformPage from "../transform/Transform";
 import ExportPage from "../export/Export";
 import TokensPage from "../tokens/Tokens";
 import ClearPage from "../clear/Clear";
-import { createSignal } from "solid-js";
 import Sidebar from "~/pages/index/components/Sidebar";
 import Header from "~/pages/index/components/Header";
 import Upload from "lucide-solid/icons/upload";
@@ -162,30 +162,30 @@ const AppLayout = (
   );
 };
 
+const NotImplementedWrapper = (name: string) => () => (
+  <NotImplemented name={name} />
+);
+
 const App = () => {
   return (
     <div class="flex">
       <div class="flex-1 flex flex-col">
         <Router>
           <Route path="*" component={AppLayout}>
-            {sidebarSections.map((section) => {
-              {
-                return section.items.map((item) => {
-                  return (
+            <For each={sidebarSections}>
+              {(section) => (
+                <For each={section.items}>
+                  {(item) => (
                     <Route
                       path={item.to}
                       component={
-                        item.component ? (
-                          <item.component />
-                        ) : (
-                          <NotImplemented name={item.label} />
-                        )
+                        item.component || NotImplementedWrapper(item.label)
                       }
                     />
-                  );
-                });
-              }
-            })}
+                  )}
+                </For>
+              )}
+            </For>
           </Route>
         </Router>
       </div>

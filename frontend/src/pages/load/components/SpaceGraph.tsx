@@ -15,7 +15,7 @@ import {
   initNodesFromApiResponse,
   SpaceNode,
 } from "~/lib/space";
-import { exploreSpace } from "../lib/api";
+import { exploreSpace } from "~/lib/api";
 import { formatedNamespace } from "~/lib/state";
 import parse from "s-expression";
 

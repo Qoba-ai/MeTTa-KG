@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
 import type { Component } from "solid-js";
-import { SortableColumns, Token } from "../lib/types";
+import { Token } from "~/lib/types";
+import { SortableColumns } from "../tokens.state";
 import { Button } from "~/components/ui/Button";
 import { showToast } from "~/components/ui/Toast";
 import Copy from "lucide-solid/icons/copy";

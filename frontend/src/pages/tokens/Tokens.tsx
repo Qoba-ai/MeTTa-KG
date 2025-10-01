@@ -1,46 +1,45 @@
-import type { Component } from "solid-js";
-import { Show } from "solid-js";
-import { useTokens } from "./hooks/useTokens";
+import { Component, Show } from "solid-js";
+import { CommandCard } from "~/components/common/CommandCard";
 import { RootTokenForm } from "./components/RootTokenForm";
 import { CreateTokenForm } from "./components/CreateTokenForm";
 import { TokenTable } from "./components/TokenTable";
-import { CommandCard } from "~/components/common/CommandCard";
-import { ToastViewport } from "~/components/ui/Toast";
 import { Button } from "~/components/ui/Button";
-import { TextField, TextFieldInput } from "~/components/ui/TextField";
+
+import {
+  TextField,
+  TextFieldInput,
+  TextFieldLabel,
+} from "~/components/ui/TextField";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
   DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
 } from "~/components/ui/Dialog";
-import Trash2 from "lucide-solid/icons/trash-2";
-import RefreshCw from "lucide-solid/icons/refresh-cw";
+import {
+  rootTokenCode,
+  setRootTokenCode,
+  mutateTokens,
+  filteredAndSortedTokens,
+  selectedTokens,
+  handleRefresh,
+  handleDelete,
+  setNamespaceFilter,
+  setDescriptionFilter,
+  sortColumn,
+  sortDirection,
+  handleSort,
+  handleSelectAll,
+  handleSelectToken,
+  isTokenSelected,
+} from "./tokens.state";
 
 export const TokensPage: Component = () => {
-  const {
-    rootTokenCode,
-    setRootTokenCode,
-    mutateTokens,
-    filteredAndSortedTokens,
-    selectedTokens,
-    handleRefresh,
-    handleDelete,
-    setNamespaceFilter,
-    setDescriptionFilter,
-    sortState,
-    handleSort,
-    handleSelectAll,
-    handleSelectToken,
-    isTokenSelected,
-  } = useTokens();
-
   const isRootTokenSelected = () =>
     selectedTokens().some((t) => t.code === rootTokenCode());
-
   return (
     <div class="ml-10 mt-8 space-y-8">
       <CommandCard
@@ -67,83 +66,112 @@ export const TokensPage: Component = () => {
         </CommandCard>
 
         <CommandCard
-          title="Available Tokens"
-          description="A list of all tokens accessible with your current root token."
+          title="Existing Tokens"
+          description="View and manage your current tokens."
         >
           <div class="space-y-4">
-            <div class="flex justify-between items-center">
-              <div class="flex gap-4">
-                <TextField>
-                  <TextFieldInput
-                    placeholder="Filter by namespace..."
-                    onInput={(e) => setNamespaceFilter(e.currentTarget.value)}
-                  />
-                </TextField>
-                <TextField>
-                  <TextFieldInput
-                    placeholder="Filter by description..."
-                    onInput={(e) => setDescriptionFilter(e.currentTarget.value)}
-                  />
-                </TextField>
-              </div>
+            {/* ✅ Combined row with filters and buttons */}
+            <div class="flex gap-4 items-end">
+              <TextField class="flex-1">
+                <TextFieldLabel>Filter by Namespace</TextFieldLabel>
+                <TextFieldInput
+                  placeholder="Enter namespace..."
+                  onInput={(e) => setNamespaceFilter(e.currentTarget.value)}
+                />
+              </TextField>
+              <TextField class="flex-1">
+                <TextFieldLabel>Filter by Description</TextFieldLabel>
+                <TextFieldInput
+                  placeholder="Enter description..."
+                  onInput={(e) => setDescriptionFilter(e.currentTarget.value)}
+                />
+              </TextField>
+
+              {/* Buttons aligned to bottom */}
               <div class="flex gap-2">
                 <Dialog>
                   <DialogTrigger
                     as={Button}
-                    variant="outline"
-                    disabled={
-                      selectedTokens().length === 0 || isRootTokenSelected()
-                    }
+                    disabled={selectedTokens().length === 0}
                   >
-                    <RefreshCw class="mr-2" size={16} /> Refresh (
-                    {selectedTokens().length})
+                    Refresh ({selectedTokens().length})
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Refresh Selected Tokens?</DialogTitle>
+                      <DialogTitle>Refresh Tokens</DialogTitle>
                       <DialogDescription>
-                        This will invalidate the old token codes and generate
-                        new ones. This action cannot be undone.
+                        Are you sure you want to refresh{" "}
+                        {selectedTokens().length} token(s)? This will generate
+                        new codes for the selected tokens.
                       </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                      <Button variant="destructive" onClick={handleRefresh}>
-                        Confirm Refresh
+                      <Button
+                        variant="outline"
+                        onClick={(e) =>
+                          e.currentTarget.closest("dialog")?.close()
+                        }
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          await handleRefresh();
+                          document.querySelector("dialog")?.close();
+                        }}
+                      >
+                        Refresh
                       </Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
+
                 <Dialog>
                   <DialogTrigger
                     as={Button}
-                    variant="destructive"
                     disabled={
                       selectedTokens().length === 0 || isRootTokenSelected()
                     }
+                    variant="destructive"
                   >
-                    <Trash2 class="mr-2" size={16} /> Delete (
-                    {selectedTokens().length})
+                    Delete ({selectedTokens().length})
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Delete Selected Tokens?</DialogTitle>
+                      <DialogTitle>Delete Tokens</DialogTitle>
                       <DialogDescription>
-                        This will permanently delete the selected tokens and any
-                        sub-tokens. This action cannot be undone.
+                        Are you sure you want to delete{" "}
+                        {selectedTokens().length} token(s)? This action cannot
+                        be undone.
                       </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                      <Button variant="destructive" onClick={handleDelete}>
-                        Confirm Deletion
+                      <Button
+                        variant="outline"
+                        onClick={(e) =>
+                          e.currentTarget.closest("dialog")?.close()
+                        }
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        onClick={async () => {
+                          await handleDelete();
+                          document.querySelector("dialog")?.close();
+                        }}
+                      >
+                        Delete
                       </Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
               </div>
             </div>
+
             <TokenTable
               tokens={filteredAndSortedTokens()}
-              sortState={sortState}
+              sortState={{ column: sortColumn, direction: sortDirection }}
               onSort={handleSort}
               onSelectAll={handleSelectAll}
               onSelectToken={handleSelectToken}
@@ -152,7 +180,6 @@ export const TokensPage: Component = () => {
           </div>
         </CommandCard>
       </Show>
-      <ToastViewport />
     </div>
   );
 };

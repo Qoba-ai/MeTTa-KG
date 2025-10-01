@@ -2,32 +2,30 @@ import { Show, Suspense } from "solid-js";
 import MettaEditor from "~/components/common/MettaEditor";
 import ZoomControls from "./components/ZoomControls";
 import MinimizeControls from "./components/MinimizeControls";
-import SpaceGraph from "~/pages/load/components/SpaceGraph";
+import SpaceGraph from "./components/SpaceGraph";
 import { HiOutlineMinus, HiOutlinePlus } from "solid-icons/hi";
 import { initNodesFromApiResponse } from "~/lib/space";
 import { ToastViewport } from "~/components/ui/Toast";
-import { useSpaceGraph } from "./hooks/useSpaceGraph";
+import {
+  mettaText,
+  handleTextChange,
+  parseErrors,
+  isMinimized,
+  toggleMinimize,
+  pattern,
+  handlePatternLoad,
+  subSpace,
+  handleZoomIn,
+  handleZoomOut,
+  handleRecenter,
+  handleToggleCard,
+  setupGraphRefs,
+} from "./load.state";
 
 import "../../styles/variables.css";
 import "../../styles/components.css";
 
 const LoadPage = () => {
-  const {
-    mettaText,
-    handleTextChange,
-    parseErrors,
-    isMinimized,
-    toggleMinimize,
-    pattern,
-    handlePatternLoad,
-    subSpace,
-    handleZoomIn,
-    handleZoomOut,
-    handleRecenter,
-    handleToggleCard,
-    setupGraphRefs,
-  } = useSpaceGraph();
-
   return (
     <div class="relative h-full w-full bg-background">
       {/* Pattern Editor Card */}

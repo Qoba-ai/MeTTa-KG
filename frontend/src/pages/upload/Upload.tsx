@@ -9,31 +9,33 @@ import Link from "lucide-solid/icons/link";
 import FileText from "lucide-solid/icons/file-text";
 import File from "lucide-solid/icons/file";
 import { formatedNamespace } from "~/lib/state";
-import { useUpload } from "./hooks/useUpload";
+import {
+  uri,
+  setUri,
+  urlFormat,
+  setUrlFormat,
+  selectedFile,
+  textContent,
+  setTextContent,
+  textFormat,
+  setTextFormat,
+  activeTab,
+  setActiveTab,
+  isLoading,
+  isFileUploadImplemented,
+  handleFileSelect,
+  handleImport,
+  formatFileSize,
+  isFormValid,
+} from "./upload.state";
 import { UrlImportForm } from "./components/UrlImportForm";
 import { FileUploadForm } from "./components/FileUploadForm";
 import { TextInputForm } from "./components/TextInputForm";
 
 export const UploadPage: Component = () => {
-  const {
-    uri,
-    setUri,
-    urlFormat,
-    setUrlFormat,
-    selectedFile,
-    textContent,
-    setTextContent,
-    textFormat,
-    setTextFormat,
-    activeTab,
-    setActiveTab,
-    isLoading,
-    isFileUploadImplemented,
-    handleFileSelect,
-    handleImport,
-    formatFileSize,
-    isFormValid,
-  } = useUpload(formatedNamespace);
+  const handleImportClick = () => {
+    handleImport(formatedNamespace());
+  };
 
   return (
     <>
@@ -89,7 +91,7 @@ export const UploadPage: Component = () => {
 
           <Show when={activeTab() !== "file" || isFileUploadImplemented}>
             <Button
-              onClick={handleImport}
+              onClick={handleImportClick}
               disabled={isLoading() || !isFormValid()}
               class="w-40 mt-4"
             >

@@ -6,6 +6,7 @@ import {
   createLocalStorageManager,
 } from "@kobalte/core";
 import App from "~/pages/index/Index";
+import { ToastViewport } from "~/components/ui/Toast";
 import "./app.css";
 
 import "solid-devtools";
@@ -23,6 +24,7 @@ render(() => {
       <ColorModeScript storageType={storageManager.type} />
       <ColorModeProvider storageManager={storageManager}>
         <App />
+        <ToastViewport />
       </ColorModeProvider>
     </>
   );

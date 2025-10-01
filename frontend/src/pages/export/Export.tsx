@@ -13,29 +13,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/Select";
-import { OutputViewer } from "~/pages/export/components/OutputViewer";
+import { OutputViewer } from "./components/OutputViewer";
 import Loader2 from "lucide-solid/icons/loader-2";
 import Download from "lucide-solid/icons/download";
 import MettaEditor from "~/components/common/MettaEditor";
 import { formatedNamespace } from "~/lib/state";
-import { useExport } from "./hooks/useExport";
+import {
+  uri,
+  setUri,
+  format,
+  setFormat,
+  isLoading,
+  pattern,
+  setPattern,
+  template,
+  setTemplate,
+  result,
+  exportError,
+  handleExport,
+} from "./export.state";
 
 const ExportPage: Component = () => {
-  const {
-    uri,
-    setUri,
-    format,
-    setFormat,
-    isLoading,
-    pattern,
-    setPattern,
-    template,
-    setTemplate,
-    result,
-    exportError,
-    handleExport,
-  } = useExport(formatedNamespace);
-
   return (
     <div class="ml-10 mt-8">
       <CommandCard
@@ -103,7 +101,7 @@ const ExportPage: Component = () => {
 
         <div class="mt-4">
           <Button
-            onClick={handleExport}
+            onClick={() => handleExport(formatedNamespace())}
             disabled={isLoading() || !pattern().trim() || !template().trim()}
             class="w-36"
           >
@@ -122,11 +120,12 @@ const ExportPage: Component = () => {
           </Button>
         </div>
 
-        <Show when={result()}>
+        {/* Show OutputViewer for both success and error cases */}
+        <Show when={result() || exportError()}>
           <div class="mt-4">
             <OutputViewer
               title="Export Result"
-              data={result()}
+              data={exportError() ? exportError()!.message : result()}
               status={exportError() ? "error" : "success"}
             />
           </div>

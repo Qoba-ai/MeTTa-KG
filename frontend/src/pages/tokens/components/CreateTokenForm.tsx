@@ -1,7 +1,7 @@
 import { createSignal, Show } from "solid-js";
 import type { Component } from "solid-js";
-import { createToken } from "../lib/api";
-import type { Token } from "../lib/types";
+import { createToken } from "~/lib/api";
+import type { Token } from "~/lib/types";
 import { Button } from "~/components/ui/Button";
 import {
   TextField,
@@ -41,7 +41,6 @@ export const CreateTokenForm: Component<CreateTokenFormProps> = (props) => {
     `^/(([a-zA-Z0-9])+([a-zA-Z0-9]|[-_])*([a-zA-Z0-9])/)*$`
   );
 
-  // FIX: Update the logic to handle the full property names
   const handlePermissionChange = (perm: PermissionKey, checked: boolean) => {
     setNewToken((prev) => {
       const next = { ...prev };
@@ -98,27 +97,17 @@ export const CreateTokenForm: Component<CreateTokenFormProps> = (props) => {
     e.preventDefault();
     if (namespaceError()) return;
     try {
-      // FIX: Destructure the newToken object and pass properties as individual arguments
-      // This exactly mirrors the logic from the original Tokens.tsx file.
-      const {
-        description,
-        namespace,
-        permission_read,
-        permission_write,
-        permission_share_read,
-        permission_share_write,
-        permission_share_share,
-      } = newToken();
+      const token = newToken();
 
       const created = await createToken(
         props.rootToken,
-        description,
-        namespace,
-        permission_read,
-        permission_write,
-        permission_share_read,
-        permission_share_write,
-        permission_share_share
+        token.description,
+        token.namespace,
+        token.permission_read,
+        token.permission_write,
+        token.permission_share_read,
+        token.permission_share_write,
+        token.permission_share_share
       );
 
       props.onTokenCreated(created);
