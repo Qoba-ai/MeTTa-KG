@@ -13,16 +13,16 @@ export interface Token {
   permission_share_write: boolean;
   parent: number | null;
 }
+
 export interface ApiResponse {
   status: "success" | "error";
   data?: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
   message: string;
 }
 
-export interface Transformation {
-  space: string;
-  patterns: string[];
-  templates: string[];
+export interface Mm2Input {
+  pattern: string[] | string;
+  template: string[] | string;
 }
 
 export enum CSVParseDirection {
@@ -41,25 +41,33 @@ export interface ExploreDetail {
   expr: string;
   token: Uint8Array;
 }
-export interface ExportInput {
-  pattern: string;
-  template: string;
+
+export interface ImportDataResponse {
+  status: "success" | "error";
+  data?: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+  message: string;
 }
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = {
     ...options.headers,
-    //'Authorization': `${localStorage.getItem("token")}`,
     Authorization: `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
   };
-
   const response = await fetch(`${API_URL}${url}`, { ...options, headers });
   const res = await response.json();
   return res;
 }
 
-export const transform = (transformation: Transformation) => {
-  return request<boolean>("/spaces", {
+export const transform = (path: string, transformation: Mm2Input) => {
+  if (typeof transformation.pattern === "string") {
+    transformation.pattern = [transformation.pattern];
+  }
+
+  if (typeof transformation.template === "string") {
+    transformation.template = [transformation.template];
+  }
+
+  return request<boolean>(`/spaces${path}?op=transform`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(transformation),
@@ -73,7 +81,7 @@ export const transform = (transformation: Transformation) => {
 };
 
 export const importSpace = (path: string, uri: string) => {
-  return request<boolean>(`/spaces${path}?uri=${uri}`, {
+  return request<boolean>(`/spaces${path}?op=import&uri=${uri}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -83,50 +91,16 @@ export const readSpace = (path: string) => {
   return request<string>(`/spaces${path}`);
 };
 
-function quoteFromBytes(data: Uint8Array): string {
-  let result = "";
-
-  for (let i = 0; i < data?.length; i++) {
-    const byte = data[i];
-
-    // Safe characters: alphanumeric and -_.~
-    if (
-      (byte >= 0x30 && byte <= 0x39) || // 0-9
-      (byte >= 0x41 && byte <= 0x5a) || // A-Z
-      (byte >= 0x61 && byte <= 0x7a) || // a-z
-      byte === 0x2d ||
-      byte === 0x5f || // - _
-      byte === 0x2e ||
-      byte === 0x7e
-    ) {
-      // . ~
-      result += String.fromCharCode(byte);
-    } else {
-      // Percent-encode everything else
-      result += "%" + byte.toString(16).padStart(2, "0").toUpperCase();
-    }
-  }
-
-  return result;
-}
-
 export const exploreSpace = (
   path: string,
   pattern: string,
   token: Uint8Array | Array<number>
 ) => {
-  //let tokenStr = '';
-  //
-  //for (let i = 0; i < exploreDetails.token.length; i++) {
-  //	tokenStr += String.fromCharCode(exploreDetails.token[i]);
-  //}
-
-  // if token is basic array change to Uint8Array
   if (token instanceof Array) {
     token = Uint8Array.from(token);
   }
 
-  return request<ExploreDetail[]>(`/explore/spaces${path}`, {
+  return request<ExploreDetail[]>(`/spaces${path}?op=explore`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -238,7 +212,8 @@ export async function isPathClear(path: string): Promise<boolean> {
       token: "",
     };
 
-    const response = await fetch(`${API_URL}/explore/spaces/${cleanPath}`, {
+    // TODO: use requests function
+    const response = await fetch(`${API_URL}/spaces/${cleanPath}?op=explore`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -254,12 +229,6 @@ export async function isPathClear(path: string): Promise<boolean> {
     // Assume clear to avoid getting stuck
     return true;
   }
-}
-
-export interface ImportDataResponse {
-  status: "success" | "error";
-  data?: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
-  message: string;
 }
 
 export async function importData(
@@ -318,7 +287,7 @@ export const uploadTextToSpace = (
   path: string,
   data: string
 ): Promise<string> => {
-  return request<string>(`/spaces/upload${path}`, {
+  return request<string>(`/spaces${path}?op=upload`, {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
     body: data,
@@ -327,9 +296,17 @@ export const uploadTextToSpace = (
 
 export const exportSpace = async (
   path: string,
-  exportInput: ExportInput
+  exportInput: Mm2Input
 ): Promise<string> => {
-  return request<string>(`/spaces/export${path}`, {
+  if (exportInput.pattern && typeof exportInput.pattern !== "string") {
+    exportInput.pattern = exportInput.pattern[0];
+  }
+
+  if (exportInput.template && typeof exportInput.template !== "string") {
+    exportInput.template = exportInput.template[0];
+  }
+
+  return request<string>(`/spaces${path}?op=export`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(exportInput),
@@ -337,7 +314,34 @@ export const exportSpace = async (
 };
 
 export const clearSpace = (path: string) => {
-  return request<boolean>(`/spaces/clear${path}`, {
-    method: "GET",
+  return request<boolean>(`/spaces${path}?op=clear`, {
+    method: "POST",
   });
 };
+
+function quoteFromBytes(data: Uint8Array): string {
+  let result = "";
+
+  for (let i = 0; i < data?.length; i++) {
+    const byte = data[i];
+
+    // Safe characters: alphanumeric and -_.~
+    if (
+      (byte >= 0x30 && byte <= 0x39) || // 0-9
+      (byte >= 0x41 && byte <= 0x5a) || // A-Z
+      (byte >= 0x61 && byte <= 0x7a) || // a-z
+      byte === 0x2d ||
+      byte === 0x5f || // - _
+      byte === 0x2e ||
+      byte === 0x7e
+    ) {
+      // . ~
+      result += String.fromCharCode(byte);
+    } else {
+      // Percent-encode everything else
+      result += "%" + byte.toString(16).padStart(2, "0").toUpperCase();
+    }
+  }
+
+  return result;
+}
