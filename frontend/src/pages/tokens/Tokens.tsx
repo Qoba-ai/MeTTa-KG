@@ -35,7 +35,7 @@ import {
   handleSelectAll,
   handleSelectToken,
   isTokenSelected,
-} from "./tokens.state";
+} from "./lib";
 
 export const TokensPage: Component = () => {
   const isRootTokenSelected = () =>

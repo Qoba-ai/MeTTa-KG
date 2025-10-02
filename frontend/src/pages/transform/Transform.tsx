@@ -2,12 +2,7 @@ import { Component, createSignal, Show, onCleanup } from "solid-js";
 import MettaEditor from "../../components/common/MettaEditor";
 import { CommandCard } from "~/components/common/CommandCard";
 import { formatedNamespace } from "~/lib/state";
-import {
-  isLoading,
-  isPolling,
-  executeTransform,
-  stopPolling,
-} from "./transform.state";
+import { isLoading, isPolling, executeTransform, stopPolling } from "./lib";
 
 const TransformPage: Component = () => {
   const [sExpr, setSExpr] = createSignal(`(transform 

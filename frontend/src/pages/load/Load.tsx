@@ -20,7 +20,7 @@ import {
   handleRecenter,
   handleToggleCard,
   setupGraphRefs,
-} from "./load.state";
+} from "./lib";
 
 import "../../styles/variables.css";
 import "../../styles/components.css";

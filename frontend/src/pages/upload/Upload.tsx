@@ -27,7 +27,7 @@ import {
   handleImport,
   formatFileSize,
   isFormValid,
-} from "./upload.state";
+} from "./lib";
 import { UrlImportForm } from "./components/UrlImportForm";
 import { FileUploadForm } from "./components/FileUploadForm";
 import { TextInputForm } from "./components/TextInputForm";
