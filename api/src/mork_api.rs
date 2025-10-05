@@ -424,14 +424,13 @@ impl Request for UploadRequest {
         Method::POST
     }
 
-    fn path(&self) -> String {
-        format!(
-            "/upload/{}/{}",
-            urlencoding::encode(&self.pattern),
-            urlencoding::encode(&self.template)
-        )
+    fn path(&self) -> String {  
+        format!(  
+            "/upload/{}/{}",  
+            urlencoding::encode(&self.pattern), 
+            urlencoding::encode(&self.namespace.with_namespace(&self.template)) 
+        )  
     }
-
     fn body(&self) -> Option<Self::Body> {
         Some(self.data.clone())
     }
