@@ -38,7 +38,9 @@ export async function request<T>(
     Authorization: `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
   };
 
-  const response = await fetch(`${API_URL}${url}`, { ...options, headers });
+  const finalUrl = new URL(url, API_URL);
+  console.log("Requesting:", finalUrl.toString(), options);
+  const response = await fetch(finalUrl, { ...options, headers });
   const res = await response.json();
   return res;
 }
@@ -115,16 +117,18 @@ export const createFromN3 = (file: File) => {
 // Transform Page //
 ///////////////////
 
-export const transform = (transformation: Transformation) => {
-  return request<boolean>("/spaces", {
+export const transform = (path: string, transformation: Transformation) => {
+  return request<boolean>(`/spaces/transform${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(transformation),
   })
     .then((result) => {
+      console.log("Transform response:", result);
       return result;
     })
     .catch((error) => {
+      console.error("Transform error:", error);
       throw error;
     });
 };
