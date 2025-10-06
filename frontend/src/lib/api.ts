@@ -39,10 +39,34 @@ export async function request<T>(
   };
 
   const finalUrl = new URL(url, API_URL);
-  console.log("Requesting:", finalUrl.toString(), options);
+  // console.log("Requesting:", finalUrl.toString(), options); // For debugging
   const response = await fetch(finalUrl, { ...options, headers });
-  const res = await response.json();
-  return res;
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type");
+    let error;
+    if (contentType && contentType.includes("application/json")) {
+      const errorData = await response.json();
+      error = new Error(errorData.message || "An unknown error occurred");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (error as any).data =
+        errorData; /* eslint-disable-line @typescript-eslint/no-explicit-any */
+    } else {
+      const errorText = await response.text();
+      error = new Error(errorText || response.statusText);
+    }
+    throw error;
+  }
+
+  const responseText = await response.text();
+  if (!responseText) {  
+    return undefined as any as T;  // Return undefined for empty responses  
+  } 
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    throw new Error(responseText || "Malformed JSON response");
+  }
 }
 
 export const readSpace = (path: string) => {
