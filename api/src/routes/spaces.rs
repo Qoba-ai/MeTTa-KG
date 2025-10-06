@@ -16,7 +16,7 @@ use crate::mork_api::{
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Transformation {
-    pub space: PathBuf,
+    // pub space: PathBuf,
     pub patterns: Vec<String>,
     pub templates: Vec<String>,
 }
@@ -33,29 +33,24 @@ pub struct ExportInput {
     pub template: String,
 }
 
-#[post("/spaces/<_path..>", data = "<transformation>", rank = 2)]
+#[post("/spaces/transform/<path..>", data = "<transformation>")]
 pub async fn transform(
     token: Token,
-    _path: PathBuf, // TODO: use namespace from here rather than `Transformation`
+    path: PathBuf,
     transformation: Json<Transformation>,
 ) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix("/").unwrap();
 
-    if !transformation.space.starts_with(token_namespace)
-        || !token.permission_read
-        || !token.permission_write
-    {
+    if !path.starts_with(token_namespace) || !token.permission_read || !token.permission_write {
         return Err(Status::Unauthorized);
     }
 
     let mork_api_client = MorkApiClient::new();
-    let request = TransformRequest::new()
-        .namespace(transformation.space.to_path_buf())
-        .transform_input(
-            TransformDetails::new()
-                .patterns(transformation.patterns.clone())
-                .templates(transformation.templates.clone()),
-        );
+    let request = TransformRequest::new().namespace(path).transform_input(
+        TransformDetails::new()
+            .patterns(transformation.patterns.clone())
+            .templates(transformation.templates.clone()),
+    );
 
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),
@@ -88,14 +83,13 @@ pub async fn upload(
     }
 
     let pattern = "$x";
-    let namespace = crate::mork_api::Namespace::from(path.clone());
-    let template = namespace.with_namespace("$x");
+    let template = "$x";
 
     let mork_api_client = MorkApiClient::new();
     let request = UploadRequest::new()
         .namespace(path)
         .pattern(pattern.to_string())
-        .template(template)
+        .template(template.to_string())
         .data(body);
 
     match mork_api_client.dispatch(request).await {

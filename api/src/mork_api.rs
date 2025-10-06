@@ -46,22 +46,11 @@ impl Namespace {
     }
 
     pub fn encoded(&self) -> String {
-        let path_str = self.ns.to_string_lossy();
-        let trimmed = path_str.trim_matches('/');
-        if trimmed.is_empty() {
-            "|".to_string()
-        } else {
-            trimmed.replace('/', "|")
-        }
+        self.ns.to_string_lossy().replace("/", "|")
     }
 
     pub fn with_namespace(&self, value: &str) -> String {
-        let encoded_ns = self.encoded();
-        if encoded_ns.is_empty() {
-            value.to_string()
-        } else {
-            format!("({encoded_ns} {value})")
-        }
+        format!("({} {})", self.encoded(), value)
     }
 }
 
@@ -428,10 +417,9 @@ impl Request for UploadRequest {
         format!(
             "/upload/{}/{}",
             urlencoding::encode(&self.pattern),
-            urlencoding::encode(&self.template)
+            urlencoding::encode(&self.namespace.with_namespace(&self.template))
         )
     }
-
     fn body(&self) -> Option<Self::Body> {
         Some(self.data.clone())
     }

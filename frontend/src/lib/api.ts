@@ -38,9 +38,36 @@ export async function request<T>(
     Authorization: `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
   };
 
-  const response = await fetch(`${API_URL}${url}`, { ...options, headers });
-  const res = await response.json();
-  return res;
+  const finalUrl = new URL(url, API_URL);
+  // console.log("Requesting:", finalUrl.toString(), options); // For debugging
+  const response = await fetch(finalUrl, { ...options, headers });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type");
+    let error;
+    if (contentType && contentType.includes("application/json")) {
+      const errorData = await response.json();
+      error = new Error(errorData.message || "An unknown error occurred");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (error as any).data =
+        errorData; /* eslint-disable-line @typescript-eslint/no-explicit-any */
+    } else {
+      const errorText = await response.text();
+      error = new Error(errorText || response.statusText);
+    }
+    throw error;
+  }
+
+  const responseText = await response.text();
+  if (!responseText) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return undefined as any as T; // Return undefined for empty responses
+  }
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    throw new Error(responseText || "Malformed JSON response");
+  }
 }
 
 export const readSpace = (path: string) => {
@@ -115,16 +142,18 @@ export const createFromN3 = (file: File) => {
 // Transform Page //
 ///////////////////
 
-export const transform = (transformation: Transformation) => {
-  return request<boolean>("/spaces", {
+export const transform = (path: string, transformation: Transformation) => {
+  return request<boolean>(`/spaces/transform${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(transformation),
   })
     .then((result) => {
+      console.log("Transform response:", result);
       return result;
     })
     .catch((error) => {
+      console.error("Transform error:", error);
       throw error;
     });
 };

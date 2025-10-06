@@ -64,11 +64,10 @@ export const executeTransform = async (sExpr: string, spacePath: string) => {
 
     const { patterns, templates } = parseTransformExpression(sExpr);
     const transformation: Transformation = {
-      space: spacePath,
       patterns,
       templates,
     };
-    const success = await transform(transformation);
+    const success = await transform(spacePath, transformation);
 
     if (success) {
       showToast({
