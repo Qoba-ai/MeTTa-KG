@@ -8,5 +8,5 @@ export const [namespace, setNamespace] = createSignal<string[]>([""]);
 
 export const formatedNamespace = createMemo(() => {
   if (namespace().length <= 1) return "/";
-  return "/" + namespace().join("/");
+  return namespace().join("/");
 });
