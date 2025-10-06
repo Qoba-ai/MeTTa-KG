@@ -50,7 +50,7 @@ pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
 }
 
 /// Performs a transformation operation on the `<path..>` space
-#[post("/spaces/<path..>?op=transform", data = "<mm2>")]
+#[post("/spaces/transform/<path..>", data = "<mm2>")]
 pub async fn transform(
     token: Token,
     path: PathBuf,
@@ -79,7 +79,7 @@ pub async fn transform(
 }
 
 /// Upload to the `<path..>` space. Exectes mm2 on the imported data.
-#[post("/spaces/<path..>?op=upload", data = "<data>", rank = 1)]
+#[post("/spaces/upload/<path..>", data = "<data>")]
 pub async fn upload(
     token: Token,
     path: PathBuf,
@@ -124,7 +124,7 @@ pub async fn upload(
 }
 
 /// Imports data from `<uri>` into the `<path..>` space. Exectes mm2 on the imported data.
-#[post("/spaces/<path..>?op=import&<uri>")]
+#[post("/spaces/import/<path..>?<uri>")]
 pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<bool>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
         return Err(Status::Unauthorized);
@@ -146,7 +146,7 @@ pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<boo
 
 /// Performs an explore operation on the `<path..>` space. Get the result that
 /// matches the `<pattern>` by incrementally traversing the resulting space.
-#[post("/spaces/<path..>?op=explore", data = "<explore_input>")]
+#[post("/spaces/explore/<path..>", data = "<explore_input>")]
 pub async fn explore(
     token: Token,
     path: PathBuf,
@@ -171,7 +171,7 @@ pub async fn explore(
 
 /// Performs an export operation on the `<path..>` space. Get the result that
 /// matches the `<pattern>` by incrementally traversing the resulting space.
-#[post("/spaces/<path..>?op=export", data = "<export_input>")]
+#[post("/spaces/export/<path..>", data = "<export_input>")]
 pub async fn export(
     token: Token,
     path: PathBuf,
@@ -199,7 +199,7 @@ pub async fn export(
     }
 }
 
-#[post("/spaces/<path..>?op=clear")]
+#[post("/spaces/clear/<path..>")]
 pub async fn clear(token: Token, path: PathBuf) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix("/").unwrap();
     if !path.starts_with(token_namespace) || !token.permission_write {
