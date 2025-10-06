@@ -59,9 +59,10 @@ export async function request<T>(
   }
 
   const responseText = await response.text();
-  if (!responseText) {  
-    return undefined as any as T;  // Return undefined for empty responses  
-  } 
+  if (!responseText) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return undefined as any as T; // Return undefined for empty responses
+  }
   try {
     return JSON.parse(responseText) as T;
   } catch {
