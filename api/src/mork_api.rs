@@ -30,42 +30,60 @@ impl Default for TransformDetails {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Namespace {
-    pub ns: PathBuf,
-}
-
-impl Namespace {
-    pub fn new() -> Self {
-        Namespace::default()
-    }
-
-    pub fn ns(mut self, ns: PathBuf) -> Self {
-        self.ns = ns;
-        self
-    }
-
-    pub fn encoded(&self) -> String {
-        self.ns.to_string_lossy().replace("/", "|")
-    }
-
-    pub fn with_namespace(&self, value: &str) -> String {
-        format!("({} {})", self.encoded(), value)
-    }
-}
-
-impl From<PathBuf> for Namespace {
-    fn from(ns: PathBuf) -> Self {
-        Namespace::new().ns(ns)
-    }
-}
-
-impl Default for Namespace {
-    fn default() -> Self {
-        Namespace {
-            ns: PathBuf::from("/"),
-        }
-    }
+#[derive(Serialize, Deserialize, Clone)]  
+pub struct Namespace {  
+    path: Vec<String>,  
+}  
+  
+impl Namespace {  
+    pub fn new() -> Self {  
+        Namespace {  
+            path: vec![],   
+        }  
+    }  
+  
+    pub fn from_path_string(path_str: &str) -> Self {  
+        let components: Vec<String> = path_str  
+            .split('/')  
+            .filter(|s| !s.is_empty())  
+            .map(|s| s.to_string())  
+            .collect();  
+        Namespace { path: components }  
+    }  
+  
+    fn current_name(&self) -> String {  
+        self.path.last()  
+            .cloned()  
+            .unwrap_or_else(|| "root".to_string())  
+    }  
+  
+    fn data_tag(&self) -> String {  
+        format!("{}a727d4f9-836a-4e4c-9480", self.current_name())  
+    }  
+  
+    pub fn with_namespace(&self, value: &str) -> String {  
+        let mut result = value.to_string();  
+          
+        result = format!("({} {})", self.data_tag(), result);  
+          
+        for name in self.path.iter().rev() {  
+            result = format!("({} {})", name, result);  
+        }  
+          
+        result  
+    }  
+}  
+  
+impl From<PathBuf> for Namespace {  
+    fn from(path: PathBuf) -> Self {  
+        Namespace::from_path_string(&path.to_string_lossy())  
+    }  
+}  
+  
+impl Default for Namespace {  
+    fn default() -> Self {  
+        Namespace::new()  
+    }  
 }
 
 #[allow(dead_code)]
@@ -251,18 +269,18 @@ impl Request for ImportRequest {
         Method::GET
     }
 
-    fn path(&self) -> String {
-        format!(
-            "/import/{}/{}/?uri={}",
-            "$x",
-            self.namespace.with_namespace(
-                self.transform_input
-                    .templates
-                    .first()
-                    .unwrap_or(&"$x".to_string())
-            ),
-            self.uri
-        )
+    fn path(&self) -> String {  
+        format!(  
+            "/import/{}/{}/?uri={}",  
+            urlencoding::encode("$x"),  
+            urlencoding::encode(&self.namespace.with_namespace(  
+                self.transform_input  
+                    .templates  
+                    .first()  
+                    .unwrap_or(&"$x".to_string())  
+            )),  
+            self.uri  
+        )  
     }
 
     fn body(&self) -> Option<Self::Body> {
@@ -301,22 +319,23 @@ impl Request for ReadRequest {
         Method::GET
     }
 
-    fn path(&self) -> String {
-        format!(
-            "/export/{0}/{1}/",
-            // Match everything under self.namespace
-            self.namespace.with_namespace(
-                self.transform_input
-                    .patterns
-                    .first()
-                    .unwrap_or(&String::from("&x"))
-            ),
-            // Exporting everything seems valid here
-            self.transform_input
-                .templates
-                .first()
-                .unwrap_or(&String::from("&x")),
-        )
+    fn path(&self) -> String {  
+        let path = format!(  
+            "/export/{}/{}",  
+            urlencoding::encode(&self.namespace.with_namespace(  
+                self.transform_input  
+                    .patterns  
+                    .first()  
+                    .unwrap_or(&String::from("$x"))  
+            )),  
+            urlencoding::encode(  
+                self.transform_input  
+                    .templates  
+                    .first()  
+                    .unwrap_or(&String::from("$x"))   
+            )  
+        );  
+        path  
     }
 }
 
@@ -359,12 +378,12 @@ impl Request for ExploreRequest {
         Method::GET
     }
 
-    fn path(&self) -> String {
-        format!(
-            "/explore/{}/{}/",
-            self.namespace.with_namespace(&self.pattern),
-            self.token
-        )
+    fn path(&self) -> String {  
+        format!(  
+            "/explore/{}/{}/",  
+            urlencoding::encode(&self.namespace.with_namespace(&self.pattern)), 
+            self.token  
+        )  
     }
 }
 
