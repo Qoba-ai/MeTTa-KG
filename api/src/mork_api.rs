@@ -171,9 +171,9 @@ impl TransformRequest {
         Default::default()
     }
 
-    pub fn namespace(mut self, ns: PathBuf) -> Self {  
-        self.namespace = Namespace::from(ns);  
-        self  
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
     }
 
     pub fn transform_input(mut self, inp: TransformDetails) -> Self {
@@ -242,9 +242,9 @@ impl ImportRequest {
         Self::default()
     }
 
-    pub fn namespace(mut self, ns: PathBuf) -> Self {  
-        self.namespace = Namespace::from(ns);  
-        self  
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
     }
 
     pub fn uri(mut self, uri: String) -> Self {
@@ -295,9 +295,9 @@ impl ReadRequest {
         Default::default()
     }
 
-    pub fn namespace(mut self, ns: PathBuf) -> Self {  
-        self.namespace = Namespace::from(ns);  
-        self  
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
     }
 }
 
@@ -342,9 +342,9 @@ impl ExploreRequest {
         Self::default()
     }
 
-    pub fn namespace(mut self, ns: PathBuf) -> Self {  
-        self.namespace = Namespace::from(ns);  
-        self  
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
     }
 
     pub fn pattern(mut self, pattern: String) -> Self {
@@ -387,9 +387,9 @@ impl UploadRequest {
         Self::default()
     }
 
-    pub fn namespace(mut self, ns: PathBuf) -> Self {  
-        self.namespace = Namespace::from(ns);  
-        self  
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
     }
 
     pub fn pattern(mut self, pattern: String) -> Self {
@@ -441,9 +441,9 @@ impl ExportRequest {
         Self::default()
     }
 
-    pub fn namespace(mut self, ns: PathBuf) -> Self {  
-        self.namespace = Namespace::from(ns);  
-        self  
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
     }
 
     pub fn pattern(mut self, pattern: String) -> Self {
@@ -516,9 +516,9 @@ impl ClearRequest {
         Self::default()
     }
 
-    pub fn namespace(mut self, ns: PathBuf) -> Self {  
-        self.namespace = Namespace::from(ns);  
-        self  
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
     }
 
     pub fn expr(mut self, expr: String) -> Self {
