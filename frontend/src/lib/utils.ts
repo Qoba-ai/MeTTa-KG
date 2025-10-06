@@ -72,7 +72,10 @@ function parseTokens(tokens: string[]): SExpr | null {
         const child = parseNext();
         if (child) children.push(child);
       }
-      if (index < tokens.length && tokens[index] === ")") {
+      if (index >= tokens.length) {
+        throw new Error("Unbalanced parentheses: missing closing ')'");
+      }
+      if (tokens[index] === ")") {
         index++; // consume ')'
       }
       return { type: "list", children };
