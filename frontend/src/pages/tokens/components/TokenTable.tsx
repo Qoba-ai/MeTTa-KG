@@ -77,7 +77,6 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
             <th class="p-3 text-center font-medium">W</th>
             <th class="p-3 text-center font-medium">SR</th>
             <th class="p-3 text-center font-medium">SW</th>
-            <th class="p-3 text-center font-medium">SS</th>
           </tr>
         </thead>
         <tbody>
@@ -114,12 +113,14 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
                     </Button>
                   </div>
                 </td>
-                <td class="p-3">{token.namespace}</td>
-                <td class="p-3 text-muted-foreground">
-                  <span title={token.description}>
-                    {token.description.length > 12
-                      ? token.description.slice(0, 12) + "…"
-                      : token.description}
+                <td class="p-3 max-w-[150px]">
+                  <span class="block truncate" title={token.namespace}>
+                    {token.namespace}
+                  </span>
+                </td>
+                <td class="p-3 text-muted-foreground max-w-[150px]">
+                  <span class="block truncate" title={token.description}>
+                    {token.description}
                   </span>
                 </td>
                 <td class="p-3 text-center">
@@ -145,13 +146,6 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
                 </td>
                 <td class="p-3 text-center">
                   {token.permission_share_write ? (
-                    <Check class="text-green-500 mx-auto" />
-                  ) : (
-                    <X class="text-red-500 mx-auto" />
-                  )}
-                </td>
-                <td class="p-3 text-center">
-                  {token.permission_share_share ? (
                     <Check class="text-green-500 mx-auto" />
                   ) : (
                     <X class="text-red-500 mx-auto" />
