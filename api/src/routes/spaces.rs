@@ -198,16 +198,15 @@ pub async fn export(
     }
 }
 
-#[post("/spaces/clear/<path..>")]
-pub async fn clear(token: Token, path: PathBuf) -> Result<Json<bool>, Status> {
+#[post("/spaces/clear/<path..>?<expr>")]
+pub async fn clear(token: Token, path: PathBuf, expr: String) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix("/").unwrap();
     if !path.starts_with(token_namespace) || !token.permission_write {
         return Err(Status::Unauthorized);
     }
 
     let mork_api_client = MorkApiClient::new();
-    // TODO: pass a pattern instead of the whole namespace
-    let request = ClearRequest::new().namespace(path).expr("$x".to_string());
+    let request = ClearRequest::new().namespace(path).expr(expr);
 
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),

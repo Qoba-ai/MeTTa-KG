@@ -126,11 +126,37 @@ Documentation on translations can be found [here](./translations/README.md).
 - `cargo run`: Start the API server
 - `cargo test`: Run tests
 
-### Database Migrations
 
-Run migrations with Diesel:
+## Contributing
 
-```bash
-cd api
-diesel migration run
-```
+### Database Workflow
+
+#### Prerequisites
+- Install the Diesel CLI: `cargo install diesel_cli --no-default-features --features postgres`.
+
+#### Schema Changes
+- **Generate Migration**: `cd api && diesel migration generate <migration_name>` (e.g., `add_user_table`).
+- **Edit Migration Files**: Modify `up.sql` (forward changes) and `down.sql` (rollback) in the new `api/migrations/<timestamp>_<name>/` folder.
+- **Apply Migration**: Run the app (`cargo run` or `docker-compose up`); migrations execute automatically on startup.
+- **Verify**: Check app logs for migration success. Use Adminer (http://localhost:8080) to inspect the DB.
+- **Rollback**: `diesel migration revert` (reverts the last migration), then restart the app.
+
+#### Seeding Data
+- Edit the existing seed migration (`api/migrations/2024-08-13-154617_seed/up.sql`) or generate a new migration for additional data.
+- Add `INSERT` statements in `up.sql`.
+- Restart the app to apply seeds.
+
+#### Testing DB Changes
+- **Unit Tests**: `cargo test` (runs with embedded migrations).
+- **Integration Tests**: `cargo test --features integration-tests` (requires a running DB instance).
+- **Docker Tests**: `docker-compose up --build` for full-stack testing.
+
+#### Production Deployment
+- Migrations are embedded in the release binary (`cargo build --release`).
+- On deployment, the app runs migrations automatically—no manual steps needed.
+
+#### Best Practices
+- Always use migrations for schema changes to maintain version control.
+- Commit migration files to Git; never modify existing migrations directly.
+- Backup the DB before applying major changes.
+- Use Adminer for DB inspection and manual queries during development.

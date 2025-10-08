@@ -4,6 +4,9 @@ pub mod mork_api;
 pub mod routes;
 pub mod schema;
 
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 use rocket::http::Method;
 use rocket::{routes, Build, Rocket};
 use rocket_cors::AllowedOrigins;
@@ -13,6 +16,11 @@ pub fn rocket() -> Rocket<Build> {
     // or get backend and frontend hosted under same domain
 
     dotenv::dotenv().ok();
+
+    let mut connection = db::establish_connection();
+    connection
+        .run_pending_migrations(MIGRATIONS)
+        .expect("Failed to run migrations");
 
     let allowed_origins =
         AllowedOrigins::some_exact(&["http://localhost:3000", "https://metta-kg.vercel.app"]);

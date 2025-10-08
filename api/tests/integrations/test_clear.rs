@@ -31,7 +31,7 @@ async fn test_clear_success() {
         .expect("valid rocket instance");
 
     let response = client
-        .post("/spaces/clear/test/space")
+        .post("/spaces/clear/test/space?expr=")
         .header(Header::new("authorization", token.code.clone()))
         .dispatch()
         .await;
@@ -61,7 +61,7 @@ async fn test_non_existent_namespace() {
 
     // Path does not start with /test/
     let response = client
-        .post("/spaces/clear/other/space")
+        .post("/spaces/clear/other/space?expr=$x")
         .header(Header::new("authorization", token.code.clone()))
         .dispatch()
         .await;
@@ -95,7 +95,7 @@ async fn test_existing_empty_namespace() {
         .expect("valid rocket instance");
 
     let response = client
-        .post("/spaces/clear/test/space")
+        .post("/spaces/clear/test/space?expr=$x")
         .header(Header::new("authorization", token.code.clone()))
         .dispatch()
         .await;
@@ -131,7 +131,7 @@ async fn test_non_empty_namespace() {
         .expect("valid rocket instance");
 
     let response = client
-        .post("/spaces/clear/test/space")
+        .post("/spaces/clear/test/space?expr=$x")
         .header(Header::new("authorization", token.code.clone()))
         .dispatch()
         .await;
@@ -168,7 +168,7 @@ async fn test_different_namespaces() {
 
     // Clear in ns1
     let response1 = client
-        .post("/spaces/clear/ns1/space")
+        .post("/spaces/clear/ns1/space?expr=$x")
         .header(Header::new("authorization", token1.code.clone()))
         .dispatch()
         .await;
@@ -176,7 +176,7 @@ async fn test_different_namespaces() {
 
     // Clear in ns2
     let response2 = client
-        .post("/spaces/clear/ns2/space")
+        .post("/spaces/clear/ns2/space?expr=$x")
         .header(Header::new("authorization", token2.code.clone()))
         .dispatch()
         .await;
@@ -203,7 +203,7 @@ async fn test_namespace_mismatch() {
 
     // Path does not start with /test/
     let response = client
-        .post("/spaces/clear/other/space")
+        .post("/spaces/clear/other/space?expr=$x")
         .header(Header::new("authorization", token.code.clone()))
         .dispatch()
         .await;

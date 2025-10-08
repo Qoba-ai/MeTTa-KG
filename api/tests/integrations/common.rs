@@ -1,26 +1,11 @@
-use api::db::establish_connection;
 use api::model::{Token, TokenInsert};
 use api::schema::tokens;
+use api::{db::establish_connection, MIGRATIONS};
 use chrono::Utc;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
+use diesel_migrations::MigrationHarness;
 use std::env;
-
-pub fn create_tokens_table() {
-    let conn = &mut establish_connection();
-    let sql = include_str!("../../migrations/2024-08-07-004012_create_tables/up.sql");
-    diesel::sql_query(sql)
-        .execute(conn)
-        .expect("Failed to create tokens table");
-}
-
-pub fn seed_tokens_table() {
-    let conn = &mut establish_connection();
-    let sql = include_str!("../../migrations/2024-08-13-154617_seed/up.sql");
-    diesel::sql_query(sql)
-        .execute(conn)
-        .expect("Failed to seed tokens table");
-}
 
 pub fn create_test_database_if_not_exists() {
     let postgres_url = "postgresql://metta-kg-admin:metta-kg-password@localhost/postgres";
@@ -43,6 +28,10 @@ pub fn drop_tokens_table() {
     diesel::sql_query(sql)
         .execute(conn)
         .expect("Failed to drop tokens table");
+    let sql2 = r#"DROP TABLE IF EXISTS __diesel_schema_migrations"#;
+    diesel::sql_query(sql2)
+        .execute(conn)
+        .expect("Failed to drop migrations table");
 }
 
 pub fn teardown_database() {
@@ -78,18 +67,21 @@ pub fn create_test_token(namespace: &str, permission_read: bool, permission_writ
 }
 
 pub fn setup_database() {
-    drop_tokens_table();
-    create_tokens_table();
-    seed_tokens_table();
+    // Tables and seed are handled by embedded migrations in setup
 }
 
 pub fn setup(mork_base_url: &str) {
     create_test_database_if_not_exists();
     env::set_var("METTA_KG_MORK_URL", mork_base_url);
-    env::set_var(
-        "METTA_KG_DATABASE_URL",
-        "postgresql://metta-kg-admin:metta-kg-password@localhost/metta-kg-test",
-    );
+    env::set_var("POSTGRES_USER", "metta-kg-admin");
+    env::set_var("POSTGRES_PASSWORD", "metta-kg-password");
+    env::set_var("POSTGRES_DB", "metta-kg-test");
+    env::set_var("POSTGRES_HOST", "localhost");
+
+    let mut connection = establish_connection();
+    connection
+        .run_pending_migrations(MIGRATIONS)
+        .expect("Failed to run migrations in test setup");
 
     setup_database();
 }
