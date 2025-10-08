@@ -1,28 +1,19 @@
+import {
+  Transformation,
+  ImportDataResponse,
+  Token,
+  ExploreDetail,
+  ExportInput,
+} from "./types";
+
+import { quoteFromBytes } from "./utils";
+
 export const API_URL = import.meta.env.VITE_BACKEND_URL;
 
-export interface Token {
-  id: number;
-  code: string;
-  description: string;
-  namespace: string;
-  creation_timestamp: string;
-  permission_read: boolean;
-  permission_write: boolean;
-  permission_share_share: boolean;
-  permission_share_read: boolean;
-  permission_share_write: boolean;
-  parent: number | null;
-}
 export interface ApiResponse {
   status: "success" | "error";
   data?: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
   message: string;
-}
-
-export interface Transformation {
-  space: string;
-  patterns: string[];
-  templates: string[];
 }
 
 export enum CSVParseDirection {
@@ -37,103 +28,50 @@ export interface CSVParserParameters {
   delimiter: string;
 }
 
-export interface ExploreDetail {
-  expr: string;
-  token: Uint8Array;
-}
-export interface ExportInput {
-  pattern: string;
-  template: string;
-}
-
-async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(
+  url: string,
+  options: RequestInit = {}
+): Promise<T> {
   const headers = {
     ...options.headers,
-    //'Authorization': `${localStorage.getItem("token")}`,
+    // 'Authorization': `${localStorage.getItem("token")}`,
     Authorization: `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
   };
 
-  const response = await fetch(`${API_URL}${url}`, { ...options, headers });
-  const res = await response.json();
-  return res;
+  const finalUrl = new URL(url, API_URL);
+  // console.log("Requesting:", finalUrl.toString(), options); // For debugging
+  const response = await fetch(finalUrl, { ...options, headers });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type");
+    let error;
+    if (contentType && contentType.includes("application/json")) {
+      const errorData = await response.json();
+      error = new Error(errorData.message || "An unknown error occurred");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (error as any).data =
+        errorData; /* eslint-disable-line @typescript-eslint/no-explicit-any */
+    } else {
+      const errorText = await response.text();
+      error = new Error(errorText || response.statusText);
+    }
+    throw error;
+  }
+
+  const responseText = await response.text();
+  if (!responseText) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return undefined as any as T; // Return undefined for empty responses
+  }
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    throw new Error(responseText || "Malformed JSON response");
+  }
 }
-
-export const transform = (transformation: Transformation) => {
-  return request<boolean>("/spaces", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(transformation),
-  })
-    .then((result) => {
-      return result;
-    })
-    .catch((error) => {
-      throw error;
-    });
-};
-
-export const importSpace = (path: string, uri: string) => {
-  return request<boolean>(`/spaces${path}?uri=${uri}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
-};
 
 export const readSpace = (path: string) => {
   return request<string>(`/spaces${path}`);
-};
-
-function quoteFromBytes(data: Uint8Array): string {
-  let result = "";
-
-  for (let i = 0; i < data?.length; i++) {
-    const byte = data[i];
-
-    // Safe characters: alphanumeric and -_.~
-    if (
-      (byte >= 0x30 && byte <= 0x39) || // 0-9
-      (byte >= 0x41 && byte <= 0x5a) || // A-Z
-      (byte >= 0x61 && byte <= 0x7a) || // a-z
-      byte === 0x2d ||
-      byte === 0x5f || // - _
-      byte === 0x2e ||
-      byte === 0x7e
-    ) {
-      // . ~
-      result += String.fromCharCode(byte);
-    } else {
-      // Percent-encode everything else
-      result += "%" + byte.toString(16).padStart(2, "0").toUpperCase();
-    }
-  }
-
-  return result;
-}
-
-export const exploreSpace = (
-  path: string,
-  pattern: string,
-  token: Uint8Array | Array<number>
-) => {
-  //let tokenStr = '';
-  //
-  //for (let i = 0; i < exploreDetails.token.length; i++) {
-  //	tokenStr += String.fromCharCode(exploreDetails.token[i]);
-  //}
-
-  // if token is basic array change to Uint8Array
-  if (token instanceof Array) {
-    token = Uint8Array.from(token);
-  }
-
-  return request<ExploreDetail[]>(`/explore/spaces${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      pattern,
-      token: quoteFromBytes(token),
-    }),
-  });
 };
 
 export const getAllTokens = () => {
@@ -142,34 +80,6 @@ export const getAllTokens = () => {
 
 export const getToken = () => {
   return request<Token>("/token");
-};
-
-export const createToken = (new_token: Token) => {
-  return request<Token>("/tokens", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(new_token),
-  });
-};
-
-export const deleteTokens = (token_ids: number[]) => {
-  return request<number>("/tokens", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(token_ids),
-  });
-};
-
-export const updateToken = (token_id: number) => {
-  return request<Token>(`/tokens/${token_id}`, {
-    method: "POST",
-  });
-};
-
-export const deleteToken = (token_id: number) => {
-  return request(`/tokens/${token_id}`, {
-    method: "DELETE",
-  });
 };
 
 export const createFromCSV = (file: File, params: CSVParserParameters) => {
@@ -228,39 +138,50 @@ export const createFromN3 = (file: File) => {
   }).then((response) => response.json());
 };
 
+/////////////////////
+// Transform Page //
+///////////////////
+
+export const transform = (path: string, transformation: Transformation) => {
+  return request<boolean>(`/spaces/transform${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(transformation),
+  })
+    .then((result) => {
+      console.log("Transform response:", result);
+      return result;
+    })
+    .catch((error) => {
+      console.error("Transform error:", error);
+      throw error;
+    });
+};
+
 export async function isPathClear(path: string): Promise<boolean> {
   try {
-    // Clean the path properly
-    const cleanPath = path.replace(/^\/+|\/+$/g, ""); // Remove leading/trailing slashes
+    const cleanPath = path.replace(/^\/+|\/+$/g, "");
 
     const requestBody = {
       pattern: "$x",
       token: "",
     };
 
-    const response = await fetch(`${API_URL}/explore/spaces/${cleanPath}`, {
+    await request<ExploreDetail[]>(`/explore/spaces/${cleanPath}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     });
 
-    const result = response.status !== 503;
-
-    return result;
+    return true;
   } catch {
-    // Assume clear to avoid getting stuck
     return true;
   }
 }
 
-export interface ImportDataResponse {
-  status: "success" | "error";
-  data?: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
-  message: string;
-}
+//////////////////
+// Upload Page //
+////////////////
 
 export async function importData(
   type: string,
@@ -325,6 +246,122 @@ export const uploadTextToSpace = (
   });
 };
 
+export const importSpace = (path: string, uri: string) => {
+  return request<boolean>(`/spaces${path}?uri=${uri}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+//////////////////
+// Tokens Page //
+////////////////
+
+export const fetchTokens = async (token: string | null): Promise<Token[]> => {
+  localStorage.setItem("rootToken", token ?? "");
+  if (!token) return [];
+  return request<Token[]>("/tokens", {
+    method: "GET",
+    headers: { Authorization: token },
+  });
+};
+
+export const createToken = async (
+  root: string | null,
+  description: string,
+  namespace: string,
+  read: boolean,
+  write: boolean,
+  shareRead: boolean,
+  shareWrite: boolean,
+  shareShare: boolean
+): Promise<Token> => {
+  if (!root) throw new Error("No root token");
+
+  const newToken: Token = {
+    id: 0,
+    code: "",
+    description: description,
+    namespace: namespace,
+    creation_timestamp: new Date().toISOString().split("Z")[0],
+    permission_read: read,
+    permission_write: write,
+    permission_share_read: shareRead,
+    permission_share_write: shareWrite,
+    permission_share_share: shareShare,
+    parent: 0,
+  };
+
+  return request<Token>("/tokens", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: root,
+    },
+    body: JSON.stringify(newToken),
+  });
+};
+
+export const refreshCodes = async (
+  root: string | null,
+  tokenIds: number[]
+): Promise<Token[]> => {
+  if (!root) return [];
+  const promises = tokenIds.map((id) =>
+    request<Token>(`/tokens/${id}`, {
+      method: "POST",
+      headers: { Authorization: root },
+    })
+  );
+  return Promise.all(promises);
+};
+
+export const deleteToken = (root: string | null, token_id: number) => {
+  if (!root) throw new Error("No root token");
+  return request(`/tokens/${token_id}`, {
+    method: "DELETE",
+    headers: { Authorization: root },
+  });
+};
+
+export const deleteTokens = (root: string | null, token_ids: number[]) => {
+  if (!root) throw new Error("No root token");
+  return request<number>("/tokens", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: root,
+    },
+    body: JSON.stringify(token_ids),
+  });
+};
+////////////////
+// Load Page //
+//////////////
+
+export const exploreSpace = (
+  path: string,
+  pattern: string,
+  token: Uint8Array | Array<number>
+) => {
+  if (token instanceof Array) {
+    token = Uint8Array.from(token);
+  }
+
+  return request<ExploreDetail[]>(`/explore/spaces${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pattern,
+      token: quoteFromBytes(token),
+    }),
+  });
+};
+
+//////////////////
+// Export Page //
+////////////////
+
 export const exportSpace = async (
   path: string,
   exportInput: ExportInput
@@ -335,6 +372,10 @@ export const exportSpace = async (
     body: JSON.stringify(exportInput),
   });
 };
+
+//////////////////
+// Clear Page //
+////////////////
 
 export const clearSpace = (path: string) => {
   return request<boolean>(`/spaces/clear${path}`, {

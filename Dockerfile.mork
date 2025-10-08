@@ -11,8 +11,8 @@ RUN git checkout server
 # Clone the PathMap dependency to the absolute path expected by the manifest
 RUN git clone --branch master https://github.com/Adam-Vandervorst/PathMap.git /PathMap
 
-RUN cargo build --release -p mork_server --bin mork_server
+RUN cargo build --release -p mork-server --bin mork-server
 
 EXPOSE 8001
 
-CMD ["./target/release/mork_server"]
+CMD ["./target/release/mork-server"]
