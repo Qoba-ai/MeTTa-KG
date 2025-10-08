@@ -1,3 +1,13 @@
+import {
+  Transformation,
+  ImportDataResponse,
+  Token,
+  ExploreDetail,
+  ExportInput,
+} from "./types";
+
+import { quoteFromBytes } from "./utils";
+
 export const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 export interface Token {
@@ -118,34 +128,6 @@ export const getToken = () => {
   return request<Token>("/token");
 };
 
-export const createToken = (new_token: Token) => {
-  return request<Token>("/tokens", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(new_token),
-  });
-};
-
-export const deleteTokens = (token_ids: number[]) => {
-  return request<number>("/tokens", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(token_ids),
-  });
-};
-
-export const updateToken = (token_id: number) => {
-  return request<Token>(`/tokens/${token_id}`, {
-    method: "POST",
-  });
-};
-
-export const deleteToken = (token_id: number) => {
-  return request(`/tokens/${token_id}`, {
-    method: "DELETE",
-  });
-};
-
 export const createFromCSV = (file: File, params: CSVParserParameters) => {
   const formData = new FormData();
   formData.append("file", file);
@@ -202,10 +184,29 @@ export const createFromN3 = (file: File) => {
   }).then((response) => response.json());
 };
 
+/////////////////////
+// Transform Page //
+///////////////////
+
+export const transform = (path: string, transformation: Transformation) => {
+  return request<boolean>(`/spaces/transform${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(transformation),
+  })
+    .then((result) => {
+      console.log("Transform response:", result);
+      return result;
+    })
+    .catch((error) => {
+      console.error("Transform error:", error);
+      throw error;
+    });
+};
+
 export async function isPathClear(path: string): Promise<boolean> {
   try {
-    // Clean the path properly
-    const cleanPath = path.replace(/^\/+|\/+$/g, ""); // Remove leading/trailing slashes
+    const cleanPath = path.replace(/^\/+|\/+$/g, "");
 
     const requestBody = {
       pattern: "$x",
@@ -215,21 +216,19 @@ export async function isPathClear(path: string): Promise<boolean> {
     // TODO: use requests function
     const response = await fetch(`${API_URL}/spaces/${cleanPath}?op=explore`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     });
 
-    const result = response.status !== 503;
-
-    return result;
+    return true;
   } catch {
-    // Assume clear to avoid getting stuck
     return true;
   }
 }
+
+//////////////////
+// Upload Page //
+////////////////
 
 export async function importData(
   type: string,
@@ -294,6 +293,122 @@ export const uploadTextToSpace = (
   });
 };
 
+export const importSpace = (path: string, uri: string) => {
+  return request<boolean>(`/spaces${path}?uri=${uri}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+//////////////////
+// Tokens Page //
+////////////////
+
+export const fetchTokens = async (token: string | null): Promise<Token[]> => {
+  localStorage.setItem("rootToken", token ?? "");
+  if (!token) return [];
+  return request<Token[]>("/tokens", {
+    method: "GET",
+    headers: { Authorization: token },
+  });
+};
+
+export const createToken = async (
+  root: string | null,
+  description: string,
+  namespace: string,
+  read: boolean,
+  write: boolean,
+  shareRead: boolean,
+  shareWrite: boolean,
+  shareShare: boolean
+): Promise<Token> => {
+  if (!root) throw new Error("No root token");
+
+  const newToken: Token = {
+    id: 0,
+    code: "",
+    description: description,
+    namespace: namespace,
+    creation_timestamp: new Date().toISOString().split("Z")[0],
+    permission_read: read,
+    permission_write: write,
+    permission_share_read: shareRead,
+    permission_share_write: shareWrite,
+    permission_share_share: shareShare,
+    parent: 0,
+  };
+
+  return request<Token>("/tokens", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: root,
+    },
+    body: JSON.stringify(newToken),
+  });
+};
+
+export const refreshCodes = async (
+  root: string | null,
+  tokenIds: number[]
+): Promise<Token[]> => {
+  if (!root) return [];
+  const promises = tokenIds.map((id) =>
+    request<Token>(`/tokens/${id}`, {
+      method: "POST",
+      headers: { Authorization: root },
+    })
+  );
+  return Promise.all(promises);
+};
+
+export const deleteToken = (root: string | null, token_id: number) => {
+  if (!root) throw new Error("No root token");
+  return request(`/tokens/${token_id}`, {
+    method: "DELETE",
+    headers: { Authorization: root },
+  });
+};
+
+export const deleteTokens = (root: string | null, token_ids: number[]) => {
+  if (!root) throw new Error("No root token");
+  return request<number>("/tokens", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: root,
+    },
+    body: JSON.stringify(token_ids),
+  });
+};
+////////////////
+// Load Page //
+//////////////
+
+export const exploreSpace = (
+  path: string,
+  pattern: string,
+  token: Uint8Array | Array<number>
+) => {
+  if (token instanceof Array) {
+    token = Uint8Array.from(token);
+  }
+
+  return request<ExploreDetail[]>(`/explore/spaces${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pattern,
+      token: quoteFromBytes(token),
+    }),
+  });
+};
+
+//////////////////
+// Export Page //
+////////////////
+
 export const exportSpace = async (
   path: string,
   exportInput: Mm2Input
@@ -312,6 +427,10 @@ export const exportSpace = async (
     body: JSON.stringify(exportInput),
   });
 };
+
+//////////////////
+// Clear Page //
+////////////////
 
 export const clearSpace = (path: string) => {
   return request<boolean>(`/spaces${path}?op=clear`, {

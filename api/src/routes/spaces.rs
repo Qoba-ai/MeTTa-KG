@@ -104,14 +104,13 @@ pub async fn upload(
     }
 
     let pattern = "$x";
-    let namespace = crate::mork_api::Namespace::from(path.clone());
-    let template = namespace.with_namespace("$x");
+    let template = "$x";
 
     let mork_api_client = MorkApiClient::new();
     let request = UploadRequest::new()
         .namespace(path)
         .pattern(pattern.to_string())
-        .template(template)
+        .template(template.to_string())
         .data(body);
 
     match mork_api_client.dispatch(request).await {
