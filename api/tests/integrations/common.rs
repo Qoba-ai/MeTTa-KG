@@ -49,6 +49,11 @@ pub fn teardown_database() {
     drop_tokens_table();
 }
 
+pub fn is_database_running() -> bool {
+    let postgres_url = "postgresql://metta-kg-admin:metta-kg-password@localhost/postgres";
+    PgConnection::establish(postgres_url).is_ok()
+}
+
 pub fn create_test_token(namespace: &str, permission_read: bool, permission_write: bool) -> Token {
     let conn = &mut establish_connection();
     let code = format!("test_token_{}", Utc::now().timestamp_nanos_opt().unwrap());
