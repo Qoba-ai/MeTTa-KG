@@ -14,7 +14,12 @@ import {
   CommandList,
 } from "~/components/ui/Command";
 import { getAllTokens } from "~/lib/api";
-import { rootToken, namespace, setNamespace } from "~/lib/state";
+import {
+  rootToken,
+  namespace,
+  setNamespace,
+  tokenRootNamespace,
+} from "~/lib/state";
 
 import Folder from "lucide-solid/icons/folder";
 import Home from "lucide-solid/icons/home";
@@ -32,9 +37,10 @@ export default function NameSpace() {
   const [isLoading, setIsLoading] = createSignal(false);
 
   const navigateTo = (index: number) => {
-    setNamespace((ns) => ns.slice(0, index + 1));
+    const minIndex = tokenRootNamespace().length - 1;
+    const targetIndex = Math.max(index, minIndex);
+    setNamespace((ns) => ns.slice(0, targetIndex + 1));
   };
-
   const discoverPaths = async () => {
     if (!rootToken()) return;
 
@@ -46,11 +52,9 @@ export default function NameSpace() {
       const currentPath =
         namespace().length <= 1 ? "/" : "/" + namespace().slice(1).join("/");
 
-      // Helper function to remove trailing slashes for consistent matching
       const normalizePath = (p: string) =>
         p.length > 1 && p.endsWith("/") ? p.slice(0, -1) : p;
 
-      // Create the description map using normalized paths as keys
       const descriptionMap = new Map(
         allTokens.map((t) => [normalizePath(t.namespace), t.description])
       );

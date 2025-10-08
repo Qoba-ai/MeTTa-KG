@@ -5,6 +5,7 @@ import {
   ExploreDetail,
   ExportInput,
 } from "./types";
+import { rootToken } from "./state";
 
 import { quoteFromBytes } from "./utils";
 
@@ -30,16 +31,20 @@ export interface CSVParserParameters {
 
 export async function request<T>(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  authOverride?: string | null
 ): Promise<T> {
   const headers = {
     ...options.headers,
     // 'Authorization': `${localStorage.getItem("token")}`,
-    Authorization: `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
+    Authorization:
+      authOverride || rootToken() || `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
   };
 
   const finalUrl = new URL(url, API_URL);
   // console.log("Requesting:", finalUrl.toString(), options); // For debugging
+  // console.log("With headers:", headers); // For debugging
+  // console.log("localStorage token:", rootToken()); // For debugging
   const response = await fetch(finalUrl, { ...options, headers });
 
   if (!response.ok) {
@@ -49,8 +54,7 @@ export async function request<T>(
       const errorData = await response.json();
       error = new Error(errorData.message || "An unknown error occurred");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (error as any).data =
-        errorData; /* eslint-disable-line @typescript-eslint/no-explicit-any */
+      (error as any).data = errorData;
     } else {
       const errorText = await response.text();
       error = new Error(errorText || response.statusText);
@@ -63,10 +67,17 @@ export async function request<T>(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return undefined as any as T; // Return undefined for empty responses
   }
-  try {
-    return JSON.parse(responseText) as T;
-  } catch {
-    throw new Error(responseText || "Malformed JSON response");
+
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    try {
+      return JSON.parse(responseText) as T;
+    } catch {
+      throw new Error(responseText || "Malformed JSON response");
+    }
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return responseText as unknown as T;
   }
 }
 
@@ -191,25 +202,12 @@ export async function importData(
   try {
     switch (type) {
       case "text": {
-        // Use the upload endpoint like the pattern you showed
         const url = `${API_URL}/upload/${encodeURIComponent("$x")}/${encodeURIComponent("$x")}?format=${encodeURIComponent(format)}`;
-        const res = await fetch(url, {
+        const text = await request<string>(url, {
           method: "POST",
-          headers: {
-            "Content-Type": "text/plain",
-            Authorization: `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
-          },
+          headers: { "Content-Type": "text/plain" },
           body: data as string,
         });
-
-        const text = await res.text();
-
-        if (!res.ok) {
-          return {
-            status: "error",
-            message: text || res.statusText,
-          };
-        }
 
         return {
           status: "success",
@@ -258,7 +256,6 @@ export const importSpace = (path: string, uri: string) => {
 ////////////////
 
 export const fetchTokens = async (token: string | null): Promise<Token[]> => {
-  localStorage.setItem("rootToken", token ?? "");
   if (!token) return [];
   return request<Token[]>("/tokens", {
     method: "GET",
@@ -292,14 +289,18 @@ export const createToken = async (
     parent: 0,
   };
 
-  return request<Token>("/tokens", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: root,
+  return request<Token>(
+    "/tokens",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: root,
+      },
+      body: JSON.stringify(newToken),
     },
-    body: JSON.stringify(newToken),
-  });
+    root
+  );
 };
 
 export const refreshCodes = async (
