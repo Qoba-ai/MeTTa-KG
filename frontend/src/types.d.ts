@@ -12,46 +12,53 @@ interface Token {
   parent: number | null;
 }
 
-enum EditorMode {
+export enum EditorMode {
   DEFAULT,
   IMPORT,
   EDIT,
 }
 
-enum ImportFormat {
+export enum ImportFormat {
   CSV = "csv",
   N3 = "n3",
   JSONLD = "jsonld",
   NTRIPLES = "nt",
 }
 
-enum ImportCSVDirection {
+export enum ImportCSVDirection {
   ROW = "Row",
   COLUMN = "Column",
   CELL_LABELED = "CellLabeled",
   CELL_UNLABELED = "CellUnlabeled",
 }
 
-type ParserParameters =
+export enum CSVParseDirection {
+  Row = 1,
+  Column = 2,
+  CellUnlabeled = 3,
+  CellLabeled = 4,
+}
+
+export interface CSVParserParameters {
+  direction: CSVParseDirection;
+  delimiter: string;
+}
+
+export type ParserParameters =
   | CSVParserParameters
   | NTParserParameters
   | N3ParserParameters
   | JSONLDParserParameters;
 
-interface CSVParserParameters {
-  direction: ImportCSVDirection;
-  delimiter: string;
-}
-
-interface NTParserParameters {
+export interface NTParserParameters {
   dummy: string;
 }
 
-interface N3ParserParameters {
+export interface N3ParserParameters {
   dummy: string;
 }
 
-interface JSONLDParserParameters {
+export interface JSONLDParserParameters {
   dummy: string;
 }
 
@@ -132,15 +139,3 @@ export interface LayoutState {
   startTime?: number;
   duration?: number;
 }
-
-export {
-  type Token,
-  EditorMode,
-  ImportFormat,
-  ImportCSVDirection,
-  type ParserParameters,
-  type CSVParserParameters,
-  type NTParserParameters,
-  type N3ParserParameters,
-  type JSONLDParserParameters,
-};

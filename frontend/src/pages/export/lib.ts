@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { showToast } from "~/components/ui/Toast";
 import { exportSpace } from "~/lib/api";
-import { ExportInput } from "~/lib/types";
+import { Mm2Input } from "~/lib/types";
 
 export const [uri, setUri] = createSignal("");
 export const [format, setFormat] = createSignal("metta");
@@ -12,7 +12,7 @@ export const [result, setResult] = createSignal<string | null>(null);
 export const [exportError, setExportError] = createSignal<Error | null>(null);
 
 export const handleExport = async (spacePath: string) => {
-  const exportInput: ExportInput = {
+  const exportInput: Mm2Input = {
     pattern: pattern().trim() || "$x",
     template: template().trim() || "$x",
   };
