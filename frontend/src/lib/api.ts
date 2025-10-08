@@ -5,7 +5,7 @@ import {
   ExploreDetail,
   ExportInput,
 } from "./types";
-import { rootToken, setRootToken } from "./state";
+import { rootToken } from "./state";
 
 import { quoteFromBytes } from "./utils";
 
@@ -54,8 +54,7 @@ export async function request<T>(
       const errorData = await response.json();
       error = new Error(errorData.message || "An unknown error occurred");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (error as any).data =
-        errorData;
+      (error as any).data = errorData;
     } else {
       const errorText = await response.text();
       error = new Error(errorText || response.statusText);
