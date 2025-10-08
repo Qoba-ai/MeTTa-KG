@@ -6,11 +6,11 @@ export const API_URL =
   import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("rootToken");
   const headers = {
     ...options.headers,
-    Authorization: "200003ee-c651-4069-8b7f-2ad9fb46c3ab",
-    // ...(token && { Authorization: token }),
+    // Authorization: "200003ee-c651-4069-8b7f-2ad9fb46c3ab",
+    ...(token && { Authorization: token }),
   };
 
   console.log(`token: ${token}`);
@@ -90,7 +90,7 @@ export const createFromCSV = (file: File, params: CSVParserParameters) => {
     method: "POST",
     body: formData,
     headers: {
-      Authorization: `${localStorage.getItem("token")}`,
+      Authorization: `${localStorage.getItem("rootToken")}`,
     },
   }).then((response) => response.json());
 };
@@ -103,7 +103,7 @@ export const createFromNT = (file: File) => {
     method: "POST",
     body: formData,
     headers: {
-      Authorization: `${localStorage.getItem("token")}`,
+      Authorization: `${localStorage.getItem("rootToken")}`,
     },
   }).then((response) => response.json());
 };
@@ -116,7 +116,7 @@ export const createFromJsonLd = (file: File) => {
     method: "POST",
     body: formData,
     headers: {
-      Authorization: `${localStorage.getItem("token")}`,
+      Authorization: `${localStorage.getItem("rootToken")}`,
     },
   }).then((response) => response.json());
 };
@@ -129,7 +129,7 @@ export const createFromN3 = (file: File) => {
     method: "POST",
     body: formData,
     headers: {
-      Authorization: `${localStorage.getItem("token")}`,
+      Authorization: `${localStorage.getItem("rootToken")}`,
     },
   }).then((response) => response.json());
 };
@@ -170,8 +170,8 @@ export async function importData(
           method: "POST",
           headers: {
             "Content-Type": "text/plain",
-            ...(localStorage.getItem("token") && {
-              Authorization: localStorage.getItem("token"),
+            ...(localStorage.getItem("rootToken") && {
+              Authorization: localStorage.getItem("rootToken"),
             }),
           },
           body: data as string,
