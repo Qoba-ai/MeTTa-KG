@@ -11,7 +11,7 @@ interface SidbarProps {
   sidebarSections: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
 }
 
-export default function Sidbar({
+export default function Sidebar({
   activeTab,
   setActiveTab,
   sidebarSections,
