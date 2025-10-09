@@ -14,11 +14,18 @@ use crate::mork_api::{
     ReadRequest, Request, TransformDetails, TransformRequest, UploadRequest,
 };
 
+/// The input for a transformation operation.
+/// see mm2 operations for more    // TODO: Add links
 #[derive(Default, Serialize, Deserialize, Clone)]
-pub struct Transformation {
-    // pub space: PathBuf,
+pub struct Mm2InputMulti {
     pub patterns: Vec<String>,
     pub templates: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Mm2Input {
+    pub pattern: String,
+    pub template: String,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -27,17 +34,27 @@ pub struct ExploreInput {
     pub token: String,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ExportInput {
-    pub pattern: String,
-    pub template: String,
+/// Fetches the `<path..>` space content. Use cautously as it will load everything.
+/// It is recommended to use the `/spaces/<path..>?op=explore` instead for large queries
+#[get("/spaces/<path..>", rank = 1)]
+pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
+    if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
+        return Err(Status::Unauthorized);
+    }
+
+    let mork_api_client = MorkApiClient::new();
+    let request = ReadRequest::new().namespace(path);
+
+    let response = mork_api_client.dispatch(request).await.map(Json);
+    response
 }
 
-#[post("/spaces/transform/<path..>", data = "<transformation>")]
+/// Performs a transformation operation on the `<path..>` space
+#[post("/spaces/transform/<path..>", data = "<mm2>")]
 pub async fn transform(
     token: Token,
     path: PathBuf,
-    transformation: Json<Transformation>,
+    mm2: Json<Mm2InputMulti>,
 ) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix("/").unwrap();
 
@@ -46,19 +63,23 @@ pub async fn transform(
     }
 
     let mork_api_client = MorkApiClient::new();
-    let request = TransformRequest::new().namespace(path).transform_input(
-        TransformDetails::new()
-            .patterns(transformation.patterns.clone())
-            .templates(transformation.templates.clone()),
-    );
+    let request = TransformRequest::new()
+        .namespace(path.to_path_buf())
+        .transform_input(
+            TransformDetails::new()
+                .patterns(mm2.patterns.clone())
+                .templates(mm2.templates.clone()),
+        );
 
+    // TODO: use server sent events instead
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),
         Err(e) => Err(e),
     }
 }
 
-#[post("/spaces/upload/<path..>", data = "<data>", rank = 1)]
+/// Upload to the `<path..>` space. Exectes mm2 on the imported data.
+#[post("/spaces/upload/<path..>", data = "<data>")]
 pub async fn upload(
     token: Token,
     path: PathBuf,
@@ -101,7 +122,8 @@ pub async fn upload(
     }
 }
 
-#[post("/spaces/<path..>?<uri>")]
+/// Imports data from `<uri>` into the `<path..>` space. Exectes mm2 on the imported data.
+#[post("/spaces/import/<path..>?<uri>")]
 pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<bool>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
         return Err(Status::Unauthorized);
@@ -121,24 +143,13 @@ pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<boo
     }
 }
 
-#[get("/spaces/<path..>", rank = 2)]
-pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
-    if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
-        return Err(Status::Unauthorized);
-    }
-
-    let mork_api_client = MorkApiClient::new();
-    let request = ReadRequest::new().namespace(path);
-
-    let response = mork_api_client.dispatch(request).await.map(Json);
-    response
-}
-
-#[post("/explore/spaces/<path..>", data = "<data>")]
+/// Performs an explore operation on the `<path..>` space. Get the result that
+/// matches the `<pattern>` by incrementally traversing the resulting space.
+#[post("/spaces/explore/<path..>", data = "<explore_input>")]
 pub async fn explore(
     token: Token,
     path: PathBuf,
-    data: Json<ExploreInput>,
+    explore_input: Json<ExploreInput>,
 ) -> Result<Json<String>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
         return Err(Status::Unauthorized);
@@ -147,8 +158,8 @@ pub async fn explore(
     let mork_api_client = MorkApiClient::new();
     let request = ExploreRequest::new()
         .namespace(path)
-        .pattern(data.pattern.clone())
-        .token(data.token.clone());
+        .pattern(explore_input.pattern.clone())
+        .token(explore_input.token.clone());
 
     println!("explore path: {:?}", request.path());
 
@@ -157,11 +168,13 @@ pub async fn explore(
     response
 }
 
+/// Performs an export operation on the `<path..>` space. Get the result that
+/// matches the `<pattern>` by incrementally traversing the resulting space.
 #[post("/spaces/export/<path..>", data = "<export_input>")]
 pub async fn export(
     token: Token,
     path: PathBuf,
-    export_input: Json<ExportInput>,
+    export_input: Json<Mm2Input>,
 ) -> Result<Json<String>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
         return Err(Status::Unauthorized);
@@ -185,15 +198,15 @@ pub async fn export(
     }
 }
 
-#[get("/spaces/clear/<path..>")]
-pub async fn clear(token: Token, path: PathBuf) -> Result<Json<bool>, Status> {
+#[post("/spaces/clear/<path..>?<expr>")]
+pub async fn clear(token: Token, path: PathBuf, expr: String) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix("/").unwrap();
     if !path.starts_with(token_namespace) || !token.permission_write {
         return Err(Status::Unauthorized);
     }
 
     let mork_api_client = MorkApiClient::new();
-    let request = ClearRequest::new().namespace(path).expr("$x".to_string());
+    let request = ClearRequest::new().namespace(path).expr(expr);
 
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),

@@ -8,7 +8,7 @@ const Card: Component<ComponentProps<"div">> = (props) => {
   return (
     <div
       class={cn(
-        "rounded-lg border bg-card text-card-foreground shadow-sm",
+        "rounded border border-neutral-700 bg-neutral-900 text-white",
         local.class
       )}
       {...others}
@@ -28,7 +28,7 @@ const CardTitle: Component<ComponentProps<"h3">> = (props) => {
   return (
     <h3
       class={cn(
-        "text-lg font-semibold leading-none tracking-tight",
+        "text-sm font-medium text-neutral-300 tracking-wider uppercase",
         local.class
       )}
       {...others}
@@ -38,9 +38,7 @@ const CardTitle: Component<ComponentProps<"h3">> = (props) => {
 
 const CardDescription: Component<ComponentProps<"p">> = (props) => {
   const [local, others] = splitProps(props, ["class"]);
-  return (
-    <p class={cn("text-sm text-muted-foreground", local.class)} {...others} />
-  );
+  return <p class={cn("text-sm text-neutral-400", local.class)} {...others} />;
 };
 
 const CardContent: Component<ComponentProps<"div">> = (props) => {

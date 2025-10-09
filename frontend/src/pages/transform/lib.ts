@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { transform, isPathClear } from "~/lib/api";
-import { Transformation } from "~/lib/types";
+import { Mm2Input } from "~/lib/types";
 import { showToast } from "~/components/ui/Toast";
 import { parseTransformExpression } from "~/lib/utils";
 
@@ -63,9 +63,9 @@ export const executeTransform = async (sExpr: string, spacePath: string) => {
     }
 
     const { patterns, templates } = parseTransformExpression(sExpr);
-    const transformation: Transformation = {
-      patterns,
-      templates,
+    const transformation: Mm2Input = {
+      pattern: patterns,
+      template: templates,
     };
     const success = await transform(spacePath, transformation);
 

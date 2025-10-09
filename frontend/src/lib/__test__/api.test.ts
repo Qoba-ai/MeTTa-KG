@@ -12,7 +12,7 @@ import {
   refreshCodes,
   createToken,
 } from "../api";
-import type { Transformation, ExportInput } from "../types";
+import type { Mm2Input } from "../types";
 
 // Mock the global fetch function
 const mockFetch = vi.fn();
@@ -41,18 +41,23 @@ describe("API Tests: Transform Page", () => {
   beforeEach(() => {
     // Mock the environment variable
     vi.stubEnv("VITE_BACKEND_URL", "http://localhost:8000");
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(() => "200003ee-c651-4069-8b7f-2ad9fb46c3ab"),
+      setItem: vi.fn(),
+    });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   describe("transform", () => {
     const mockPath = "/path/";
-    const mockTransformation: Transformation = {
-      patterns: ["(A $x)"],
-      templates: ["(B $x)"],
+    const mockTransformation: Mm2Input = {
+      pattern: ["(A $x)"],
+      template: ["(B $x)"],
     };
 
     it("should send a POST request with the correct transformation data", async () => {
@@ -71,7 +76,12 @@ describe("API Tests: Transform Page", () => {
         "Content-Type",
         "application/json"
       );
-      expect(options?.body).toBe(JSON.stringify(mockTransformation));
+      expect(options?.body).toBe(
+        JSON.stringify({
+          patterns: mockTransformation.pattern,
+          templates: mockTransformation.template,
+        })
+      );
     });
 
     it("should return true on a successful transformation", async () => {
@@ -127,9 +137,9 @@ describe("API Tests: Transform Page", () => {
     });
 
     it("should handle multiple patterns and templates", async () => {
-      const multiTransformation: Transformation = {
-        patterns: ["(A $x)", "(B $y)"],
-        templates: ["(C $x)", "(D $y)"],
+      const multiTransformation: Mm2Input = {
+        pattern: ["(A $x)", "(B $y)"],
+        template: ["(C $x)", "(D $y)"],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
@@ -143,9 +153,9 @@ describe("API Tests: Transform Page", () => {
     });
 
     it("should handle complex nested patterns", async () => {
-      const complexTransformation: Transformation = {
-        patterns: ["(parent $x $y)", "(grandparent $x $z)"],
-        templates: ["(ancestor $x $y)", "(ancestor $x $z)"],
+      const complexTransformation: Mm2Input = {
+        pattern: ["(parent $x $y)", "(grandparent $x $z)"],
+        template: ["(ancestor $x $y)", "(ancestor $x $z)"],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
@@ -158,9 +168,9 @@ describe("API Tests: Transform Page", () => {
     });
 
     it("should handle empty patterns array", async () => {
-      const emptyTransformation: Transformation = {
-        patterns: [],
-        templates: [],
+      const emptyTransformation: Mm2Input = {
+        pattern: [],
+        template: [],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
@@ -170,9 +180,9 @@ describe("API Tests: Transform Page", () => {
     });
 
     it("should handle special characters in patterns", async () => {
-      const specialTransformation: Transformation = {
-        patterns: ["(test $x)"],
-        templates: ["(result $x)"],
+      const specialTransformation: Mm2Input = {
+        pattern: ["(test $x)"],
+        template: ["(result $x)"],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
@@ -184,9 +194,9 @@ describe("API Tests: Transform Page", () => {
 
     it("should handle different namespace paths", async () => {
       const mockPath = "/user/data/test/";
-      const namespacedTransformation: Transformation = {
-        patterns: ["$x"],
-        templates: ["$x"],
+      const namespacedTransformation: Mm2Input = {
+        pattern: ["$x"],
+        template: ["$x"],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
@@ -199,9 +209,9 @@ describe("API Tests: Transform Page", () => {
     });
 
     it("should handle root namespace", async () => {
-      const rootTransformation: Transformation = {
-        patterns: ["$x"],
-        templates: ["$x"],
+      const rootTransformation: Mm2Input = {
+        pattern: ["$x"],
+        template: ["$x"],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
@@ -238,11 +248,16 @@ describe("API Tests: Transform Page", () => {
 describe("API Tests: Upload Page", () => {
   beforeEach(() => {
     vi.stubEnv("VITE_BACKEND_URL", "http://localhost:8000");
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(() => "200003ee-c651-4069-8b7f-2ad9fb46c3ab"),
+      setItem: vi.fn(),
+    });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   describe("uploadTextToSpace", () => {
@@ -433,16 +448,21 @@ describe("API Tests: Upload Page", () => {
 describe("API Tests: Export Page", () => {
   beforeEach(() => {
     vi.stubEnv("VITE_BACKEND_URL", "http://localhost:8000");
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(() => "200003ee-c651-4069-8b7f-2ad9fb46c3ab"),
+      setItem: vi.fn(),
+    });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   describe("exportSpace", () => {
     const mockPath = "/user/data/";
-    const mockExportInput: ExportInput = {
+    const mockExportInput: Mm2Input = {
       pattern: "$x",
       template: "$x",
     };
@@ -489,7 +509,7 @@ describe("API Tests: Export Page", () => {
     });
 
     it("should handle complex pattern and template expressions", async () => {
-      const complexExportInput: ExportInput = {
+      const complexExportInput: Mm2Input = {
         pattern: "(fact $x $y)",
         template: "(result $x $y)",
       };
@@ -519,7 +539,7 @@ describe("API Tests: Export Page", () => {
     });
 
     it("should throw an error when pattern is missing", async () => {
-      const invalidInput: ExportInput = {
+      const invalidInput: Mm2Input = {
         pattern: "",
         template: "$x",
       };
@@ -585,17 +605,22 @@ describe("API Tests: Export Page", () => {
 describe("API Tests: Clear Page", () => {
   beforeEach(() => {
     vi.stubEnv("VITE_BACKEND_URL", "http://localhost:8000");
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(() => "200003ee-c651-4069-8b7f-2ad9fb46c3ab"),
+      setItem: vi.fn(),
+    });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   describe("clearSpace", () => {
     const mockPath = "/user/data/";
 
-    it("should send a GET request to the correct clear endpoint", async () => {
+    it("should send a POST request to the correct clear endpoint", async () => {
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
       await clearSpace(mockPath);
@@ -604,9 +629,9 @@ describe("API Tests: Clear Page", () => {
       const [url, options] = mockFetch.mock.calls[0];
 
       expect(url.toString()).toBe(
-        buildExpectedUrl("/spaces/clear/", mockPath) + "/"
+        buildExpectedUrl("/spaces/clear/", mockPath) + "/?expr=$x"
       );
-      expect(options?.method).toBe("GET");
+      expect(options?.method).toBe("POST");
     });
 
     it("should include authorization token when available", async () => {
@@ -635,7 +660,9 @@ describe("API Tests: Clear Page", () => {
       await clearSpace("/");
 
       const [url] = mockFetch.mock.calls[0];
-      expect(url.toString()).toBe(buildExpectedUrl("/spaces/clear/", "/"));
+      expect(url.toString()).toBe(
+        buildExpectedUrl("/spaces/clear/", "/") + "?expr=$x"
+      );
     });
 
     it("should handle nested namespace paths", async () => {
@@ -646,7 +673,7 @@ describe("API Tests: Clear Page", () => {
 
       const [url] = mockFetch.mock.calls[0];
       expect(url.toString()).toBe(
-        buildExpectedUrl("/spaces/clear/", nestedPath) + "/"
+        buildExpectedUrl("/spaces/clear/", nestedPath) + "/?expr=$x"
       );
     });
 
@@ -699,7 +726,7 @@ describe("API Tests: Clear Page", () => {
       await clearSpace("");
 
       const [url] = mockFetch.mock.calls[0];
-      expect(url.toString()).toBe("http://localhost:8000/spaces/clear");
+      expect(url.toString()).toBe("http://localhost:8000/spaces/clear?expr=$x");
     });
   });
 });
@@ -707,11 +734,16 @@ describe("API Tests: Clear Page", () => {
 describe("API Tests: Load Page - Explore Endpoint", () => {
   beforeEach(() => {
     vi.stubEnv("VITE_BACKEND_URL", "http://localhost:8000");
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(() => "200003ee-c651-4069-8b7f-2ad9fb46c3ab"),
+      setItem: vi.fn(),
+    });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   describe("exploreSpace", () => {
@@ -734,7 +766,7 @@ describe("API Tests: Load Page - Explore Endpoint", () => {
       const [url, options] = mockFetch.mock.calls[0];
 
       expect(url.toString()).toBe(
-        buildExpectedUrl("/explore/spaces/", mockPath) + "/"
+        buildExpectedUrl("/spaces/explore/", mockPath) + "/"
       );
       expect(options?.method).toBe("POST");
       expect(options?.headers).toHaveProperty(
@@ -790,7 +822,7 @@ describe("API Tests: Load Page - Explore Endpoint", () => {
       await exploreSpace("/", mockPattern, mockToken);
 
       const [url] = mockFetch.mock.calls[0];
-      expect(url.toString()).toBe("http://localhost:8000/explore/spaces/");
+      expect(url.toString()).toBe("http://localhost:8000/spaces/explore/");
     });
 
     it("should handle nested namespace paths", async () => {
@@ -801,7 +833,7 @@ describe("API Tests: Load Page - Explore Endpoint", () => {
 
       const [url] = mockFetch.mock.calls[0];
       expect(url.toString()).toBe(
-        "http://localhost:8000/explore/spaces/user/data/subfolder/"
+        "http://localhost:8000/spaces/explore/user/data/subfolder/"
       );
     });
 

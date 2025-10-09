@@ -1,4 +1,4 @@
-name: CI
+name: Pre PR CI
 
 on:
   pull_request:
@@ -13,17 +13,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
+          cache: pnpm
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           components: rustfmt, clippy
-
       - name: Install frontend deps
         run: cd frontend && pnpm ci
       - name: Lint frontend
-        run: cd frontend && pnpm run lint && npm run format:check
+        run: cd frontend && pnpm run lint && pnpm run prettier:check
       - name: Test frontend
         run: cd frontend && pnpm test -- --ci --watchAll=false
 

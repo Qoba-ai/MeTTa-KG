@@ -1,15 +1,10 @@
-import {
-  Transformation,
-  ImportDataResponse,
-  Token,
-  ExploreDetail,
-  ExportInput,
-} from "./types";
 import { rootToken } from "./state";
-
+import { ImportDataResponse, Token, ExploreDetail, Mm2Input } from "./types";
+import { CSVParserParameters } from "~/types";
 import { quoteFromBytes } from "./utils";
 
-export const API_URL = import.meta.env.VITE_BACKEND_URL;
+export const API_URL =
+  import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
 export interface ApiResponse {
   status: "success" | "error";
@@ -47,6 +42,7 @@ export async function request<T>(
   // console.log("localStorage token:", rootToken()); // For debugging
   const response = await fetch(finalUrl, { ...options, headers });
 
+  const response = await fetch(`${API_URL}${url}`, { ...options, headers });
   if (!response.ok) {
     const contentType = response.headers.get("content-type");
     let error;
@@ -59,13 +55,7 @@ export async function request<T>(
       const errorText = await response.text();
       error = new Error(errorText || response.statusText);
     }
-    throw error;
-  }
-
-  const responseText = await response.text();
-  if (!responseText) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return undefined as any as T; // Return undefined for empty responses
+    throw new Error(errorMessage);
   }
 
   const contentType = response.headers.get("content-type");
@@ -80,6 +70,27 @@ export async function request<T>(
     return responseText as unknown as T;
   }
 }
+
+export const transform = (path: string, transformation: Mm2Input) => {
+  const patterns = Array.isArray(transformation.pattern)
+    ? transformation.pattern
+    : [transformation.pattern];
+  const templates = Array.isArray(transformation.template)
+    ? transformation.template
+    : [transformation.template];
+
+  return request<boolean>(`/spaces/transform${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ patterns, templates }),
+  })
+    .then((result) => {
+      return result;
+    })
+    .catch((error) => {
+      throw error;
+    });
+};
 
 export const readSpace = (path: string) => {
   return request<string>(`/spaces${path}`);
@@ -105,7 +116,7 @@ export const createFromCSV = (file: File, params: CSVParserParameters) => {
     method: "POST",
     body: formData,
     headers: {
-      Authorization: `${localStorage.getItem("token")}`,
+      Authorization: `${localStorage.getItem("rootToken")}`,
     },
   }).then((response) => response.json());
 };
@@ -118,7 +129,7 @@ export const createFromNT = (file: File) => {
     method: "POST",
     body: formData,
     headers: {
-      Authorization: `${localStorage.getItem("token")}`,
+      Authorization: `${localStorage.getItem("rootToken")}`,
     },
   }).then((response) => response.json());
 };
@@ -131,7 +142,7 @@ export const createFromJsonLd = (file: File) => {
     method: "POST",
     body: formData,
     headers: {
-      Authorization: `${localStorage.getItem("token")}`,
+      Authorization: `${localStorage.getItem("rootToken")}`,
     },
   }).then((response) => response.json());
 };
@@ -144,29 +155,9 @@ export const createFromN3 = (file: File) => {
     method: "POST",
     body: formData,
     headers: {
-      Authorization: `${localStorage.getItem("token")}`,
+      Authorization: `${localStorage.getItem("rootToken")}`,
     },
   }).then((response) => response.json());
-};
-
-/////////////////////
-// Transform Page //
-///////////////////
-
-export const transform = (path: string, transformation: Transformation) => {
-  return request<boolean>(`/spaces/transform${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(transformation),
-  })
-    .then((result) => {
-      console.log("Transform response:", result);
-      return result;
-    })
-    .catch((error) => {
-      console.error("Transform error:", error);
-      throw error;
-    });
 };
 
 export async function isPathClear(path: string): Promise<boolean> {
@@ -178,7 +169,8 @@ export async function isPathClear(path: string): Promise<boolean> {
       token: "",
     };
 
-    await request<ExploreDetail[]>(`/explore/spaces/${cleanPath}`, {
+    // TODO: use requests function and return value from it
+    const _response = await fetch(`${API_URL}/spaces/explore${cleanPath}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
@@ -189,10 +181,6 @@ export async function isPathClear(path: string): Promise<boolean> {
     return true;
   }
 }
-
-//////////////////
-// Upload Page //
-////////////////
 
 export async function importData(
   type: string,
@@ -223,7 +211,10 @@ export async function importData(
         };
 
       default:
-        throw new Error(`Unsupported import type: ${type}`);
+        return {
+          status: "error",
+          message: `Unsupported import type: ${type}`,
+        };
     }
   } catch (error) {
     return {
@@ -245,15 +236,11 @@ export const uploadTextToSpace = (
 };
 
 export const importSpace = (path: string, uri: string) => {
-  return request<boolean>(`/spaces${path}?uri=${uri}`, {
+  return request<boolean>(`/spaces/import${path}?uri=${uri}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
 };
-
-//////////////////
-// Tokens Page //
-////////////////
 
 export const fetchTokens = async (token: string | null): Promise<Token[]> => {
   if (!token) return [];
@@ -336,9 +323,6 @@ export const deleteTokens = (root: string | null, token_ids: number[]) => {
     body: JSON.stringify(token_ids),
   });
 };
-////////////////
-// Load Page //
-//////////////
 
 export const exploreSpace = (
   path: string,
@@ -349,7 +333,7 @@ export const exploreSpace = (
     token = Uint8Array.from(token);
   }
 
-  return request<ExploreDetail[]>(`/explore/spaces${path}`, {
+  return request<ExploreDetail[]>(`/spaces/explore${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -359,14 +343,18 @@ export const exploreSpace = (
   });
 };
 
-//////////////////
-// Export Page //
-////////////////
-
 export const exportSpace = async (
   path: string,
-  exportInput: ExportInput
+  exportInput: Mm2Input
 ): Promise<string> => {
+  if (exportInput.pattern && typeof exportInput.pattern !== "string") {
+    exportInput.pattern = exportInput.pattern[0];
+  }
+
+  if (exportInput.template && typeof exportInput.template !== "string") {
+    exportInput.template = exportInput.template[0];
+  }
+
   return request<string>(`/spaces/export${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -374,12 +362,8 @@ export const exportSpace = async (
   });
 };
 
-//////////////////
-// Clear Page //
-////////////////
-
 export const clearSpace = (path: string) => {
-  return request<boolean>(`/spaces/clear${path}`, {
-    method: "GET",
+  return request<boolean>(`/spaces/clear${path}?expr=$x`, {
+    method: "POST",
   });
 };
