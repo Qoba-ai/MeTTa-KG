@@ -31,12 +31,12 @@ export default function Sidebar({
           </div>
 
           {/* <ScrollArea class="h-[calc(100vh-120px)]"> */}
-          <nav class="space-y-6">
+          <nav class="space-y-6 mt-12">
             {sidebarSections.map(
               (
                 section: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
               ) => (
-                <div>
+                <div class="mb-12">
                   <h3 class="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-3 px-2">
                     {section.title}
                   </h3>
@@ -49,7 +49,6 @@ export default function Sidebar({
                         return (
                           <A href={item.to}>
                             <Button
-                              // key={item.id}
                               variant={
                                 activeTab() === item.id ? "default" : "ghost"
                               }

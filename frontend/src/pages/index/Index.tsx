@@ -22,7 +22,7 @@ const sidebarSections = [
     items: [
       {
         id: "explore",
-        label: "Explore Space",
+        label: "Explore",
         icon: Database,
         to: "/",
         component: LoadPage,
@@ -66,7 +66,7 @@ const sidebarSections = [
       },
       {
         id: "restrict",
-        label: "Restrict To",
+        label: "Restrict",
         icon: () => <span class="text-xl font-bold">◁</span>,
         to: "/restrict",
       },
@@ -84,7 +84,7 @@ const sidebarSections = [
       },
       {
         id: "cartesian",
-        label: "Cartesian Product",
+        label: "Cartesian",
         icon: () => <span class="text-xl">X</span>,
         to: "/cartesian",
       },
