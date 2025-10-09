@@ -49,7 +49,7 @@ export default function Sidebar({
                 <h1 class="text-orange-500 font-bold text-lg tracking-wider">
                   METTA-KG
                 </h1>
-                <p class="text-neutral-500 text-xs">v1.0.0 CLASSIFIED</p>
+                <p class="text-neutral-500 text-xs">VERSION 0.1.0</p>
               </div>
             )}
           </div>
@@ -103,7 +103,7 @@ export default function Sidebar({
                               </div>
                               {!isCollapsed() && (
                                 <div class="flex-1 text-left">
-                                  <div class="flex items-center gap-2">
+                                  <div class="flex items-center gap-2 uppercase">
                                     {item.label}
                                   </div>
                                   {item.description && (
