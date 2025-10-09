@@ -10,15 +10,16 @@ export default function Header() {
   return (
     <>
       {/* Header */}
-      <header class="bg-card border-b border-border p-4">
-        <div class="flex items-center justify-between px-4">
-          <div class="flex items-center gap-4">
-            <NameSpace />
-            {/* Theme Toggle */}
+      <header class="h-16 bg-neutral-800 border-b border-neutral-700 flex items-center justify-between px-6">
+        <NameSpace />
+        <div class="flex items-center gap-4">
+          <div class="text-xs text-neutral-500">
+            LAST UPDATE: {new Date().toLocaleString()}
           </div>
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            class="text-neutral-400 hover:text-orange-500"
             onClick={() =>
               setColorMode(colorMode() === "dark" ? "light" : "dark")
             }

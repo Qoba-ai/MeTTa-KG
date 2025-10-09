@@ -24,11 +24,11 @@ export default function Sidbar({
       <div
         class={`relative transition-all duration-300 ease-in-out ${
           isCollapsed() ? "w-16" : "w-80"
-        } bg-sidebar border-r border-sidebar-border`}
+        } bg-neutral-900 border-r border-neutral-700`}
       >
         <Button
           variant="ghost"
-          class="absolute top-5 -right-4 z-10 h-8 w-8 rounded-full p-0 flex items-center justify-center bg-background hover:bg-muted border border-border"
+          class="absolute top-5 -right-4 z-10 h-8 w-8 rounded-full p-0 flex items-center justify-center bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-orange-500"
           onClick={() => setIsCollapsed(!isCollapsed())}
         >
           {isCollapsed() ? (
@@ -43,11 +43,14 @@ export default function Sidbar({
               isCollapsed() ? "justify-center" : ""
             }`}
           >
-            <Network class="h-8 w-8 text-primary" />
+            <Network class="h-8 w-8 text-orange-500" />
             {!isCollapsed() && (
-              <h1 class="text-xl font-bold text-sidebar-foreground">
-                METTA-KG
-              </h1>
+              <div>
+                <h1 class="text-orange-500 font-bold text-lg tracking-wider">
+                  METTA-KG
+                </h1>
+                <p class="text-neutral-500 text-xs">v1.0.0 CLASSIFIED</p>
+              </div>
             )}
           </div>
 
@@ -62,7 +65,7 @@ export default function Sidbar({
                   {isCollapsed() ? (
                     index > 0 && <div class="my-3 border-t border-border" />
                   ) : (
-                    <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
+                    <h3 class="text-xs font-medium text-neutral-400 uppercase tracking-wider mb-3 px-2">
                       {section.title}
                     </h3>
                   )}
@@ -83,6 +86,10 @@ export default function Sidbar({
                                 isCollapsed()
                                   ? "justify-center"
                                   : "justify-start"
+                              } ${
+                                activeTab() === item.id
+                                  ? "bg-orange-500 text-white"
+                                  : "text-neutral-400 hover:text-white hover:bg-neutral-800"
                               }`}
                               onClick={() => setActiveTab(item.id)}
                             >
@@ -100,7 +107,7 @@ export default function Sidbar({
                                     {item.label}
                                   </div>
                                   {item.description && (
-                                    <div class="text-xs text-muted-foreground mt-0.5">
+                                    <div class="text-xs text-neutral-500 mt-0.5">
                                       {item.description}
                                     </div>
                                   )}

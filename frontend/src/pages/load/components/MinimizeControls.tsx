@@ -13,9 +13,9 @@ function MinimizeControls(props: MinimizeControlsProps) {
   };
 
   return (
-    <div class="flex flex-col items-center gap-2 rounded-lg border border-border bg-card/80 p-2 shadow-lg backdrop-blur-md">
+    <div class="flex flex-col items-center gap-2 rounded border border-neutral-700 bg-neutral-900/80 p-2">
       <button
-        class="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-lg font-semibold text-card-foreground transition-all duration-200 hover:bg-accent hover:border-primary active:scale-95"
+        class="flex h-9 w-9 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-neutral-300 transition-all duration-200 hover:bg-neutral-800 hover:border-orange-500 hover:text-orange-500 active:scale-95"
         title={isMinimized() ? "Maximize All" : "Minimize All"}
         onClick={handleToggle}
       >

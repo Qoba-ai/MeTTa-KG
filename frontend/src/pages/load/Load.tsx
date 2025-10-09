@@ -32,8 +32,8 @@ const LoadPage = () => {
       <div
         class={`
           absolute top-2.5 left-2.5 z-[1001] p-3
-          rounded-lg border border-border bg-card/80 text-card-foreground 
-          shadow-lg backdrop-blur-md transition-all duration-300 ease-in-out
+          rounded border border-neutral-700 bg-neutral-900 text-white
+          transition-all duration-300 ease-in-out
           ${
             isMinimized()
               ? "h-auto w-[300px] max-h-[50px] resize-none"
@@ -41,10 +41,12 @@ const LoadPage = () => {
           }
         `}
       >
-        <div class="mb-3 -m-3 flex items-center justify-between rounded-t-lg border-b border-border bg-muted p-3">
-          <h3 class="text-sm font-semibold text-foreground">Pattern</h3>
+        <div class="mb-3 -m-3 flex items-center justify-between border-b border-neutral-700 bg-neutral-800 p-3">
+          <h3 class="text-sm font-medium text-neutral-300 tracking-wider uppercase">
+            PATTERN
+          </h3>
           <button
-            class="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-all duration-200 hover:border-primary hover:bg-accent hover:text-primary"
+            class="flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-neutral-400 transition-all duration-200 hover:border-orange-500 hover:bg-neutral-800 hover:text-orange-500"
             onClick={toggleMinimize}
           >
             {isMinimized() ? (
@@ -85,19 +87,19 @@ const LoadPage = () => {
       <div class="absolute inset-0 z-0 h-full w-full">
         <Suspense
           fallback={
-            <div class="flex h-full items-center justify-center text-lg text-muted-foreground">
-              Loading graph...
+            <div class="flex h-full items-center justify-center text-lg text-neutral-400">
+              LOADING GRAPH...
             </div>
           }
         >
           <Show
             when={subSpace()}
             fallback={
-              <div class="flex h-full items-center justify-center text-destructive">
+              <div class="flex h-full items-center justify-center text-red-500">
                 <div class="p-8 text-center">
-                  <div class="mb-2 text-lg">Error loading space data</div>
-                  <div class="text-sm opacity-70">
-                    Check server logs for details
+                  <div class="mb-2 text-lg">ERROR LOADING SPACE DATA</div>
+                  <div class="text-sm text-neutral-400">
+                    CHECK SERVER LOGS FOR DETAILS
                   </div>
                 </div>
               </div>
@@ -106,8 +108,8 @@ const LoadPage = () => {
             <Show
               when={subSpace()!.length > 0}
               fallback={
-                <div class="flex h-full items-center justify-center text-lg text-muted-foreground">
-                  No data loaded on this path/namespace
+                <div class="flex h-full items-center justify-center text-lg text-neutral-400">
+                  NO DATA LOADED ON THIS PATH/NAMESPACE
                 </div>
               }
             >
