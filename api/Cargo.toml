@@ -7,6 +7,7 @@ edition = "2021"
 serde = { version = "1.0.204", features = ["derive"] }
 rocket = { version = "0.5.1", features = ["json"] }
 diesel = { version = "2.2.2", features = ["postgres", "chrono"] }
+diesel_migrations = "2.3.0"
 dotenv = "0.15.0"
 jwt = "0.16.0"
 hmac = "0.12.1"
@@ -24,3 +25,7 @@ url = "2.5.4"
 [dev-dependencies]
 httpmock = "0.7.0"
 tokio = { version = "1.38.0", features = ["full"] }
+serial_test = "3.0"
+
+[features]
+integration-tests = []

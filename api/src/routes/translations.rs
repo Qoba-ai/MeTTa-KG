@@ -57,15 +57,15 @@ pub async fn create(
 ) -> Result<String, Status> {
     let id = Uuid::new_v4();
 
-    let path = format!("temp/translations-{}", id);
+    let path = format!("temp/translations-{id}");
 
-    let path_with_extension = format!("{}.{}", path, ext);
+    let path_with_extension = format!("{path}.{ext}");
 
     let result = file.persist_to(&path_with_extension).await;
 
     match result {
         Ok(_) => (),
-        Err(err) => println!("{}", err),
+        Err(err) => println!("{err}"),
     }
 
     let status = match parse_parameters {
@@ -126,7 +126,7 @@ pub async fn create(
         }
     };
 
-    let contents = fs::read_to_string(format!("{}-output.metta", path));
+    let contents = fs::read_to_string(format!("{path}-output.metta"));
 
     match contents {
         Ok(contents) => Ok(contents),
@@ -150,7 +150,7 @@ pub async fn create_from_csv(
         },
     )
     .await
-    .map(|r| Json(r))
+    .map(Json)
 }
 
 #[post("/translations/nt?<parse_parameters..>", data = "<file>")]
@@ -169,7 +169,7 @@ pub async fn create_from_nt(
         },
     )
     .await
-    .map(|r| Json(r))
+    .map(Json)
 }
 
 #[post("/translations/jsonld?<parse_parameters..>", data = "<file>")]
@@ -188,7 +188,7 @@ pub async fn create_from_jsonld(
         },
     )
     .await
-    .map(|r| Json(r))
+    .map(Json)
 }
 
 #[post("/translations/n3?<parse_parameters..>", data = "<file>")]
@@ -207,5 +207,5 @@ pub async fn create_from_n3(
         },
     )
     .await
-    .map(|r| Json(r))
+    .map(Json)
 }

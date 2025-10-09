@@ -1,28 +1,28 @@
 /* CSS Variables that work with Tailwind dark mode */
 :root {
   /* Light theme variables */
-  --bg-primary: theme('colors.gray.50');
-  --bg-secondary: theme('colors.white');
-  --border-light: theme('colors.gray.200');
-  --text-primary: theme('colors.gray.800');
-  --text-secondary: theme('colors.gray.600');
-  
+  --bg-primary: theme("colors.gray.50");
+  --bg-secondary: theme("colors.white");
+  --border-light: theme("colors.gray.200");
+  --text-primary: theme("colors.gray.800");
+  --text-secondary: theme("colors.gray.600");
+
   /* Card styling */
-  --card-bg: theme('colors.white');
-  --card-shadow: theme('boxShadow.lg');
-  --card-border: theme('colors.gray.200');
+  --card-bg: theme("colors.white");
+  --card-shadow: theme("boxShadow.lg");
+  --card-border: theme("colors.gray.200");
 }
 
 :root.dark {
   /* Dark theme variables */
-  --bg-primary: theme('colors.gray.900');
-  --bg-secondary: theme('colors.gray.800');
-  --border-light: theme('colors.gray.600');
-  --text-primary: theme('colors.gray.100');
-  --text-secondary: theme('colors.gray.400');
-  
+  --bg-primary: theme("colors.gray.900");
+  --bg-secondary: theme("colors.gray.800");
+  --border-light: theme("colors.gray.600");
+  --text-primary: theme("colors.gray.100");
+  --text-secondary: theme("colors.gray.400");
+
   /* Card styling */
-  --card-bg: theme('colors.gray.800');
-  --card-shadow: theme('boxShadow.xl');
-  --card-border: theme('colors.gray.600');
+  --card-bg: theme("colors.gray.800");
+  --card-shadow: theme("boxShadow.xl");
+  --card-border: theme("colors.gray.600");
 }

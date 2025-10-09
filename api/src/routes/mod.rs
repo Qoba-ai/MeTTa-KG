@@ -13,7 +13,6 @@ pub mod spaces;
 pub mod tokens;
 pub mod translations;
 
-
 #[derive(Serialize, Deserialize, Debug)]
 pub enum AuthError {
     InvalidToken,
@@ -24,12 +23,11 @@ pub enum AuthError {
 impl<'r> FromRequest<'r> for Token {
     type Error = AuthError;
 
-    #[must_use]
     async fn from_request(request: &'r Request<'_>) -> request::Outcome<Token, Self::Error> {
         use crate::schema::tokens::dsl::*;
 
         /*
-        
+
         return Outcome::Success(Token {
             id: 0,
             code: "aaa".to_string(),
