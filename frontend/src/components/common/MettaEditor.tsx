@@ -192,7 +192,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
               props.onPatternLoad(text());
             }}
           >
-            Load Pattern
+            Visualize
           </button>
           <button
             class="px-2 py-1 text-xs border border-border rounded-sm bg-background text-foreground cursor-pointer transition-all duration-200 ease-linear hover:bg-accent hover:border-primary"
