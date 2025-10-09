@@ -94,7 +94,6 @@ const LoadPage = () => {
           />
         </Show>
       </div>
-      
     </div>
   );
 };
