@@ -28,6 +28,7 @@
     "globals": "^15.15.0",
     "husky": "^9.1.7",
     "jiti": "^2.6.0",
+    "jsdom": "^27.0.0",
     "postcss": "^8.5.6",
     "prettier": "^3.3.3",
     "sass": "^1.77.8",
@@ -62,6 +63,7 @@
     "cytoscape": "^3.33.1",
     "cytoscape-cose-bilkent": "^4.1.0",
     "cytoscape-spread": "^3.0.0",
+    "d3": "^7.9.0",
     "highlight.js": "^11.10.0",
     "lucide-solid": "^0.536.0",
     "s-expression": "^3.1.1",
@@ -71,6 +73,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "thememirror": "^2.0.1",
-    "tippy.js": "^6.3.7"
+    "tippy.js": "^6.3.7",
+    "vitest": "^3.2.4"
   }
 }
