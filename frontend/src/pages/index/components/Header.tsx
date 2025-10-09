@@ -10,25 +10,29 @@ export default function Header() {
   return (
     <>
       {/* Header */}
-      <header class="bg-card border-b border-border p-4">
-        <div class="flex items-center justify-between px-4">
-          <div class="flex items-center gap-4">
-            <NameSpace />
-            {/* Theme Toggle */}
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setColorMode(colorMode() === "dark" ? "light" : "dark")
-            }
+      <header class="h-16 bg-neutral-800 border-b border-neutral-700 flex items-center justify-between px-6">
+        <NameSpace />
+        <div class="flex items-center gap-4">
+          <a
+            href="https://github.com/trueagi-io/MORK"
+            class="uppercase text-neutral-400 hover:text-orange-500 hover:underline"
           >
-            {colorMode() === "dark" ? (
-              <Sun class="h-4 w-4" />
-            ) : (
-              <Moon class="h-4 w-4" />
-            )}
-          </Button>
+            MORK
+          </a>
+          <span class="text-orange-500">·</span>
+          <a
+            href="https://github.com/trueagi-io/MORK/wiki"
+            class="uppercase text-neutral-400 hover:text-orange-500 hover:underline"
+          >
+            DOCS
+          </a>
+          <span class="text-orange-500">·</span>
+          <a
+            href="https://chat.singularitynet.io/chat/channels/mork"
+            class="uppercase text-neutral-400 hover:text-orange-500 hover:underline"
+          >
+            COMMUNITY
+          </a>
         </div>
       </header>
     </>
