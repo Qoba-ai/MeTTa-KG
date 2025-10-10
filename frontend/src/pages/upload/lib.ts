@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import { showToast } from "~/components/ui/Toast";
 import { importData, uploadTextToSpace, importSpace } from "~/lib/api";
+import { refreshSpace } from "../load/lib";
 
 type UploadResult =
   | null
@@ -57,6 +58,7 @@ export const handleImport = async (spacePath: string) => {
             title: "Import Successful",
             description: `Data was imported from "${uri()}".`,
           });
+          setTimeout(() => refreshSpace(), 1000);
         } else {
           setResult({ error: "Error importing to space" });
           showToast({
@@ -86,6 +88,7 @@ export const handleImport = async (spacePath: string) => {
             title: "File Uploaded",
             description: `File "${selectedFile()!.name}" uploaded.`,
           });
+          refreshSpace();
         } else {
           setResult({ error: response.message });
           showToast({
@@ -125,6 +128,7 @@ export const handleImport = async (spacePath: string) => {
           title: "Text Uploaded",
           description: `Text was uploaded to the "${spacePath}" space.`,
         });
+        refreshSpace();
         break;
       }
 

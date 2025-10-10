@@ -20,7 +20,7 @@ export const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
 export const [isMinimized, setIsMinimized] = createSignal(true);
 export const [pattern, setPattern] = createSignal("$x");
 
-export const [subSpace] = createResource(
+export const [subSpace, { refetch: refetchSubSpace }] = createResource(
   () => ({
     path: formatedNamespace(),
     expr: pattern(),
@@ -54,6 +54,10 @@ export const [subSpace] = createResource(
     }
   }
 );
+
+export const refreshSpace = () => {
+  refetchSubSpace();
+};
 
 export const handleTextChange = (text: string) => setMettaText(text);
 export const handlePatternLoad = (newPattern: string) => setPattern(newPattern);
