@@ -1,3 +1,4 @@
+import { rootToken } from "./state";
 import { ImportDataResponse, Token, ExploreDetail, Mm2Input } from "./types";
 import { CSVParserParameters } from "~/types";
 import { quoteFromBytes } from "./utils";
@@ -5,43 +6,61 @@ import { quoteFromBytes } from "./utils";
 export const API_URL =
   import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
-async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem("rootToken");
+export interface ApiResponse {
+  status: "success" | "error";
+  data?: any /* eslint-disable-line @typescript-eslint/no-explicit-any */;
+  message: string;
+}
+
+export enum CSVParseDirection {
+  Row = 1,
+  Column = 2,
+  CellUnlabeled = 3,
+  CellLabeled = 4,
+}
+
+// export interface CSVParserParameters {
+//   direction: CSVParseDirection;
+//   delimiter: string;
+// }
+
+export async function request<T>(
+  url: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const auth = rootToken();
+
+  if (!auth) {
+    throw new Error("noRootToken");
+  }
+
   const headers = {
     ...options.headers,
-    // Authorization: "200003ee-c651-4069-8b7f-2ad9fb46c3ab",
-    ...(token && { Authorization: token }),
+    Authorization: auth,
   };
 
-  console.log(`token: ${token}`);
+  const finalUrl = new URL(url, API_URL);
+  const response = await fetch(finalUrl, { ...options, headers });
 
-  const response = await fetch(`${API_URL}${url}`, { ...options, headers });
   if (!response.ok) {
-    let errorMessage = response.statusText;
-    const cloned = response.clone();
-    try {
-      const errorData = await cloned.json();
-      errorMessage = errorData.message || errorMessage;
-    } catch {
-      try {
-        errorMessage = (await response.text()) || errorMessage;
-      } catch {
-        // ignore
-      }
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      const errorData = await response.json();
+      const error = new Error(errorData.message || "An unknown error occurred");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (error as any).data = errorData;
+      throw error;
+    } else {
+      const errorText = await response.text();
+      throw new Error(errorText || response.statusText);
     }
-    throw new Error(errorMessage);
   }
-  try {
-    const res = await response.json();
-    return res;
-  } catch (e) {
-    if (
-      e instanceof SyntaxError &&
-      e.message.includes("Unexpected end of JSON input")
-    ) {
-      return null as T;
-    }
-    throw e;
+
+  const contentType = response.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    return (await response.json()) as T;
+  } else {
+    return (await response.text()) as T;
   }
 }
 
@@ -164,27 +183,12 @@ export async function importData(
   try {
     switch (type) {
       case "text": {
-        // Use the upload endpoint like the pattern you showed
         const url = `${API_URL}/upload/${encodeURIComponent("$x")}/${encodeURIComponent("$x")}?format=${encodeURIComponent(format)}`;
-        const res = await fetch(url, {
+        const text = await request<string>(url, {
           method: "POST",
-          headers: {
-            "Content-Type": "text/plain",
-            ...(localStorage.getItem("rootToken") && {
-              Authorization: localStorage.getItem("rootToken"),
-            }),
-          },
+          headers: { "Content-Type": "text/plain" },
           body: data as string,
         });
-
-        const text = await res.text();
-
-        if (!res.ok) {
-          return {
-            status: "error",
-            message: text || res.statusText,
-          };
-        }
 
         return {
           status: "success",
@@ -232,7 +236,6 @@ export const importSpace = (path: string, uri: string) => {
 };
 
 export const fetchTokens = async (token: string | null): Promise<Token[]> => {
-  localStorage.setItem("rootToken", token ?? "");
   if (!token) return [];
   return request<Token[]>("/tokens", {
     method: "GET",
@@ -318,7 +321,7 @@ export const exploreSpace = (
   if (token instanceof Array) {
     token = Uint8Array.from(token);
   }
-
+  console.log("exploring: ", path, pattern, token);
   return request<ExploreDetail[]>(`/spaces/explore${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -3,6 +3,7 @@ import { transform, isPathClear } from "~/lib/api";
 import { Mm2Input } from "~/lib/types";
 import { showToast } from "~/components/ui/Toast";
 import { parseTransformExpression } from "~/lib/utils";
+import { refreshSpace } from "../load/lib";
 
 export const [isLoading, setIsLoading] = createSignal(false);
 export const [isPolling, setIsPolling] = createSignal(false);
@@ -26,6 +27,7 @@ export const startPolling = (spacePath: string) => {
           title: "Transform Completed",
           description: "The space has been successfully transformed.",
         });
+        refreshSpace();
       }
     } catch {
       showToast({

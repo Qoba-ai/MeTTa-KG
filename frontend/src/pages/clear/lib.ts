@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import { showToast } from "~/components/ui/Toast";
 import { clearSpace } from "~/lib/api";
+import { refreshSpace } from "../load/lib";
 
 export const [expression, setExpression] = createSignal("$x \n \n \n");
 export const [isLoading, setIsLoading] = createSignal(false);
@@ -25,6 +26,7 @@ export const handleClear = async (spacePath: string) => {
         title: "Cleared Successfully",
         description: `Space "${spacePath}" has been cleared.`,
       });
+      refreshSpace();
     } else {
       showToast({
         title: "Clear Operation Failed",

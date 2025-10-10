@@ -4,6 +4,7 @@ import { RootTokenForm } from "./components/RootTokenForm";
 import { CreateTokenForm } from "./components/CreateTokenForm";
 import { TokenTable } from "./components/TokenTable";
 import { Button } from "~/components/ui/Button";
+import { rootToken, setRootToken, formatedNamespace } from "~/lib/state";
 
 import {
   TextField,
@@ -20,8 +21,7 @@ import {
   DialogTrigger,
 } from "~/components/ui/Dialog";
 import {
-  rootTokenCode,
-  setRootTokenCode,
+  tokens,
   mutateTokens,
   filteredAndSortedTokens,
   selectedTokens,
@@ -39,26 +39,36 @@ import {
 
 export const TokensPage: Component = () => {
   const isRootTokenSelected = () =>
-    selectedTokens().some((t) => t.code === rootTokenCode());
+    selectedTokens().some((t) => t.code === rootToken());
+
+  const isCurrentNamespaceTokenSelected = () => {
+    const currentNs = formatedNamespace();
+    const trimTrailingSlash = (str: string) =>
+      str !== "/" && str.endsWith("/") ? str.slice(0, -1) : str;
+    return selectedTokens().some((t) => {
+      const tokenNs = t.namespace.startsWith("/")
+        ? t.namespace
+        : "/" + t.namespace;
+      return currentNs === trimTrailingSlash(tokenNs);
+    });
+  };
   return (
     <div class="ml-10 mt-8 space-y-8">
       <CommandCard
         title="Token Management"
         description="Manage access by creating, viewing, and revoking tokens."
       >
-        <RootTokenForm
-          initialToken={rootTokenCode()}
-          onLoad={setRootTokenCode}
-        />
+        <RootTokenForm initialToken={rootToken()} onLoad={setRootToken} />
       </CommandCard>
 
-      <Show when={rootTokenCode()}>
+      <Show when={rootToken()}>
         <CommandCard
           title="Create New Token"
           description="Define a namespace, description, and permissions for a new token."
         >
           <CreateTokenForm
-            rootToken={rootTokenCode()!}
+            rootToken={rootToken()!}
+            tokens={tokens() || []}
             onTokenCreated={(token) =>
               mutateTokens((prev) => [...(prev || []), token])
             }
@@ -92,7 +102,11 @@ export const TokensPage: Component = () => {
                 <Dialog>
                   <DialogTrigger
                     as={Button}
-                    disabled={selectedTokens().length === 0}
+                    disabled={
+                      selectedTokens().length === 0 ||
+                      isRootTokenSelected() ||
+                      isCurrentNamespaceTokenSelected()
+                    }
                   >
                     Refresh ({selectedTokens().length})
                   </DialogTrigger>
@@ -130,7 +144,9 @@ export const TokensPage: Component = () => {
                   <DialogTrigger
                     as={Button}
                     disabled={
-                      selectedTokens().length === 0 || isRootTokenSelected()
+                      selectedTokens().length === 0 ||
+                      isRootTokenSelected() ||
+                      isCurrentNamespaceTokenSelected()
                     }
                     variant="destructive"
                   >

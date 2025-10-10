@@ -22,6 +22,14 @@ export const handleExport = async (spacePath: string) => {
   setExportError(null);
 
   try {
+    if (format() !== "metta") {
+      showToast({
+        title: "Format Not Supported Yet",
+        description: `${format()} format not supported yet. Please use metta format.`,
+        variant: "destructive",
+      });
+      return;
+    }
     const exportResponse = await exportSpace(spacePath, exportInput);
     setResult(exportResponse || "()");
     showToast({

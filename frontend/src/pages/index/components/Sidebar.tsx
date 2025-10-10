@@ -21,9 +21,9 @@ export default function Sidebar({
       <div class="relative w-80 bg-neutral-900 border-r border-neutral-700">
         <div class="p-3">
           <div class="flex items-center gap-2 mb-8">
-            <Network class="h-8 w-8 text-orange-500" />
+            <Network class="h-8 w-8 text-primary" />
             <div>
-              <h1 class="text-orange-500 font-bold text-lg tracking-wider">
+              <h1 class="text-primary font-bold text-lg tracking-wider">
                 METTA-KG
               </h1>
               <p class="text-neutral-500 text-xs">VERSION 0.1.0</p>
@@ -54,7 +54,7 @@ export default function Sidebar({
                               }
                               class={`w-full gap-3 h-auto py-2 px-3 justify-start ${
                                 activeTab() === item.id
-                                  ? "bg-orange-500 text-white"
+                                  ? "bg-primary text-white"
                                   : "text-neutral-400 hover:text-white hover:bg-neutral-800"
                               }`}
                               onClick={() => setActiveTab(item.id)}

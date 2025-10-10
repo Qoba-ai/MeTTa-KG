@@ -18,6 +18,8 @@ Cargo.lock
 .env
 .env*
 
+**/admin-token.txt
+
 temp/
 
 venv/

@@ -148,22 +148,6 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
     }
   });
 
-  // Update the Clear button onClick handler:
-  const clearEditor = () => {
-    if (editorView) {
-      const transaction = editorView.state.update({
-        changes: {
-          from: 0,
-          to: editorView.state.doc.length,
-          insert: "",
-        },
-      });
-      editorView.dispatch(transaction);
-      setText("");
-      props.onTextChange("");
-    }
-  };
-
   return (
     <div class="flex flex-col h-full w-full box-border">
       <h3 class="m-0 mb-3 text-sm font-semibold flex-shrink-0 leading-tight text-foreground">
@@ -192,13 +176,7 @@ const MettaEditor: Component<MettaEditorProps> = (props) => {
               props.onPatternLoad(text());
             }}
           >
-            Load Pattern
-          </button>
-          <button
-            class="px-2 py-1 text-xs border border-border rounded-sm bg-background text-foreground cursor-pointer transition-all duration-200 ease-linear hover:bg-accent hover:border-primary"
-            onClick={clearEditor}
-          >
-            Clear
+            Visualize
           </button>
         </div>
       </Show>

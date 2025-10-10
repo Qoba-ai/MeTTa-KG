@@ -1,7 +1,13 @@
 import { createResource, createSignal, createMemo } from "solid-js";
-import { fetchTokens, refreshCodes, deleteTokens } from "~/lib/api";
+import {
+  fetchTokens,
+  refreshCodes,
+  deleteTokens,
+  deleteToken,
+} from "~/lib/api";
 import { Token } from "~/lib/types";
 import { showToast } from "~/components/ui/Toast";
+import { rootToken } from "~/lib/state";
 
 export enum SortableColumns {
   TIMESTAMP,
@@ -13,16 +19,30 @@ export enum SortableColumns {
   SHARE_SHARE,
 }
 
-export const [rootTokenCode, setRootTokenCode] = createSignal<string | null>(
-  localStorage.getItem("rootToken")
-);
+import { setNamespace, setTokenRootNamespace } from "~/lib/state";
 
 export const [tokens, { mutate: mutateTokens, refetch: refetchTokens }] =
   createResource(
-    () => (rootTokenCode() ? rootTokenCode() : null),
+    () => (rootToken() ? rootToken() : null),
     async (token) => {
       try {
         const fetchedTokens = await fetchTokens(token);
+
+        // Find current token and update namespace
+        const currentToken = fetchedTokens.find((t) => t.code === token);
+        if (currentToken) {
+          const namespaceParts = currentToken.namespace
+            .split("/")
+            .filter((part) => part.length > 0);
+          const rootNs = ["", ...namespaceParts];
+
+          // Store for page reload
+          localStorage.setItem("tokenNamespace", JSON.stringify(rootNs));
+
+          setTokenRootNamespace(rootNs);
+          setNamespace(rootNs);
+        }
+
         showToast({
           title: "Success",
           description: `Loaded ${fetchedTokens.length} tokens.`,
@@ -80,10 +100,13 @@ export const handleSort = (column: SortableColumns) => {
 };
 
 export const handleRefresh = async () => {
-  const root = rootTokenCode();
+  const root = rootToken();
   if (!root || selectedTokens().length === 0) return;
   try {
-    const refreshed = await refreshCodes(root, selectedTokens());
+    const refreshed = await refreshCodes(
+      root,
+      selectedTokens().map((t) => t.id)
+    );
 
     const idsRefreshed = refreshed.map((t) => t.id);
     mutateTokens((current) => [
@@ -106,19 +129,26 @@ export const handleRefresh = async () => {
 };
 
 export const handleDelete = async () => {
-  const root = rootTokenCode();
+  const root = rootToken();
   if (!root || selectedTokens().length === 0) return;
-  try {
-    const idsToDelete = selectedTokens().map((t) => t.id);
 
-    await deleteTokens(root, selectedTokens());
+  try {
+    const selected = selectedTokens();
+    const idsToDelete = selected.map((t) => t.id);
+
+    if (selected.length === 1) {
+      await deleteToken(root, selected[0].id);
+    } else {
+      await deleteTokens(root, idsToDelete);
+    }
 
     mutateTokens(
       (current) => current?.filter((t) => !idsToDelete.includes(t.id)) || []
     );
+
     showToast({
       title: "Success",
-      description: `Deleted ${idsToDelete.length} tokens.`,
+      description: `Deleted ${idsToDelete.length} token(s).`,
     });
     setSelectedTokens([]);
   } catch {

@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import { showToast } from "~/components/ui/Toast";
 import { importData, uploadTextToSpace, importSpace } from "~/lib/api";
+import { refreshSpace } from "../load/lib";
 
 type UploadResult =
   | null
@@ -11,9 +12,7 @@ type UploadResult =
 export const [uri, setUri] = createSignal("");
 export const [urlFormat, setUrlFormat] = createSignal("metta");
 export const [selectedFile, setSelectedFile] = createSignal<File | null>(null);
-export const [textContent, setTextContent] = createSignal(
-  `(= (fact 0) 1)\n(= (fact $n) (* $n (fact (- $n 1))))\n(fact 5)`
-);
+export const [textContent, setTextContent] = createSignal(`()`);
 export const [textFormat, setTextFormat] = createSignal("metta");
 export const [activeTab, setActiveTab] = createSignal("url");
 export const [isLoading, setIsLoading] = createSignal(false);
@@ -43,13 +42,23 @@ export const handleImport = async (spacePath: string) => {
           });
           return;
         }
+        if (urlFormat() !== "metta") {
+          showToast({
+            title: "Format Not Supported Yet",
+            description: `${urlFormat()} format not supported yet. Please use metta format.`,
+            variant: "destructive",
+          });
+          return;
+        }
         const response = await importSpace(spacePath, uri());
+
         if (response) {
           setResult("Successfully imported to space");
           showToast({
             title: "Import Successful",
             description: `Data was imported from "${uri()}".`,
           });
+          setTimeout(() => refreshSpace(), 1000);
         } else {
           setResult({ error: "Error importing to space" });
           showToast({
@@ -79,6 +88,7 @@ export const handleImport = async (spacePath: string) => {
             title: "File Uploaded",
             description: `File "${selectedFile()!.name}" uploaded.`,
           });
+          refreshSpace();
         } else {
           setResult({ error: response.message });
           showToast({
@@ -99,6 +109,16 @@ export const handleImport = async (spacePath: string) => {
           });
           return;
         }
+
+        if (textFormat() !== "metta") {
+          showToast({
+            title: "Format Not Supported Yet",
+            description: `${textFormat()} format not supported yet. Please use metta format.`,
+            variant: "destructive",
+          });
+          return;
+        }
+
         const cleanText = textContent()
           .replace(/[\r\n]+/g, "\n")
           .trim();
@@ -108,6 +128,7 @@ export const handleImport = async (spacePath: string) => {
           title: "Text Uploaded",
           description: `Text was uploaded to the "${spacePath}" space.`,
         });
+        refreshSpace();
         break;
       }
 
