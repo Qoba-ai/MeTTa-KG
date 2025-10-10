@@ -1,12 +1,6 @@
-import Sun from "lucide-solid/icons/sun";
-import Moon from "lucide-solid/icons/moon";
 import NameSpace from "./NameSpace";
-import { Button } from "../../../components/ui/Button";
-import { useColorMode } from "@kobalte/core";
 
 export default function Header() {
-  const { colorMode, setColorMode } = useColorMode();
-
   return (
     <>
       {/* Header */}

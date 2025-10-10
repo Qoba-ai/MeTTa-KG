@@ -19,55 +19,48 @@ export enum CSVParseDirection {
   CellLabeled = 4,
 }
 
-export interface CSVParserParameters {
-  direction: CSVParseDirection;
-  delimiter: string;
-}
+// export interface CSVParserParameters {
+//   direction: CSVParseDirection;
+//   delimiter: string;
+// }
 
 export async function request<T>(
   url: string,
-  options: RequestInit = {},
-  authOverride?: string | null
+  options: RequestInit = {}
 ): Promise<T> {
+  const auth = rootToken();
+
+  if (!auth) {
+    throw new Error("noRootToken");
+  }
+
   const headers = {
     ...options.headers,
-    // 'Authorization': `${localStorage.getItem("token")}`,
-    Authorization:
-      authOverride || rootToken() || `200003ee-c651-4069-8b7f-2ad9fb46c3ab`,
+    Authorization: auth,
   };
 
   const finalUrl = new URL(url, API_URL);
-  // console.log("Requesting:", finalUrl.toString(), options); // For debugging
-  // console.log("With headers:", headers); // For debugging
-  // console.log("localStorage token:", rootToken()); // For debugging
   const response = await fetch(finalUrl, { ...options, headers });
 
-  const response = await fetch(`${API_URL}${url}`, { ...options, headers });
   if (!response.ok) {
     const contentType = response.headers.get("content-type");
-    let error;
     if (contentType && contentType.includes("application/json")) {
       const errorData = await response.json();
-      error = new Error(errorData.message || "An unknown error occurred");
+      const error = new Error(errorData.message || "An unknown error occurred");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (error as any).data = errorData;
+      throw error;
     } else {
       const errorText = await response.text();
-      error = new Error(errorText || response.statusText);
+      throw new Error(errorText || response.statusText);
     }
-    throw new Error(errorMessage);
   }
 
   const contentType = response.headers.get("content-type");
   if (contentType && contentType.includes("application/json")) {
-    try {
-      return JSON.parse(responseText) as T;
-    } catch {
-      throw new Error(responseText || "Malformed JSON response");
-    }
+    return (await response.json()) as T;
   } else {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return responseText as unknown as T;
+    return (await response.text()) as T;
   }
 }
 
@@ -276,18 +269,14 @@ export const createToken = async (
     parent: 0,
   };
 
-  return request<Token>(
-    "/tokens",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: root,
-      },
-      body: JSON.stringify(newToken),
+  return request<Token>("/tokens", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: root,
     },
-    root
-  );
+    body: JSON.stringify(newToken),
+  });
 };
 
 export const refreshCodes = async (
@@ -332,7 +321,7 @@ export const exploreSpace = (
   if (token instanceof Array) {
     token = Uint8Array.from(token);
   }
-
+  console.log("exploring: ", path, pattern, token);
   return request<ExploreDetail[]>(`/spaces/explore${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

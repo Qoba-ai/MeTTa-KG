@@ -36,6 +36,15 @@ export const [subSpace] = createResource(
       });
       return data;
     } catch (e) {
+      if (e instanceof Error && e.message === "noRootToken") {
+        showToast({
+          title: "Error",
+          description: "No token found, please add one in the Tokens page",
+          variant: "destructive",
+        });
+        throw e;
+      }
+
       showToast({
         title: "Error",
         description: "Failed to load space data.",

@@ -130,7 +130,7 @@ function extractLabels(
       const nodes = flattenNodes(parse(detail.expr));
       const semantic = filterSemanticNodes(nodes);
       return semantic;
-    } catch (e) {
+    } catch {
       return [detail.expr]; // Fallback to raw expression
     }
   });
