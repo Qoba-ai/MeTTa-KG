@@ -153,7 +153,7 @@ export default function NameSpace() {
                       <BreadcrumbLink
                         as="button"
                         onClick={() => navigateTo(index())}
-                        class="text-neutral-300 hover:text-orange-500 transition-colors max-w-[150px] truncate flex items-center"
+                        class="text-neutral-300 hover:text-primary transition-colors max-w-[150px] truncate flex items-center"
                         title={index() === 0 ? "Spaces" : ns}
                       >
                         {index() === 0 ? (
@@ -170,7 +170,7 @@ export default function NameSpace() {
               <BreadcrumbItem>
                 <button
                   onClick={discoverPaths}
-                  class="ml-1 p-1 rounded text-neutral-400 hover:bg-neutral-800 hover:text-orange-500 transition-colors"
+                  class="ml-1 p-1 rounded text-neutral-400 hover:bg-neutral-800 hover:text-primary transition-colors"
                   title="Show available subspaces"
                   aria-label="Show available subspaces"
                 >

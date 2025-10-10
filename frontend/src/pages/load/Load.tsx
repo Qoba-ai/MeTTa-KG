@@ -45,7 +45,7 @@ const LoadPage = () => {
             PATTERN
           </h3>
           <button
-            class="flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-neutral-400 transition-all duration-200 hover:border-orange-500 hover:bg-neutral-800 hover:text-orange-500"
+            class="flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-neutral-400 transition-all duration-200 hover:border-primary hover:bg-neutral-800 hover:text-primary"
             onClick={toggleMinimize}
           >
             {isMinimized() ? (
