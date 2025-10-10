@@ -3,9 +3,9 @@ import MettaEditor from "~/components/common/MettaEditor";
 import ZoomControls from "./components/ZoomControls";
 import MinimizeControls from "./components/MinimizeControls";
 import D3TreeGraph from "./components/D3SpaceGraph";
-import { HiOutlineMinus, HiOutlinePlus } from "solid-icons/hi";
+import Plus from "lucide-solid/icons/plus";
+import Minus from "lucide-solid/icons/minus";
 import { initNodesFromApiResponse } from "~/lib/space";
-import { ToastViewport } from "~/components/ui/Toast";
 import {
   mettaText,
   handleTextChange,
@@ -30,7 +30,7 @@ const LoadPage = () => {
       {/* Pattern Editor Card */}
       <div
         class={`
-          absolute top-2.5 left-2.5 z-[1001] p-3
+          absolute bottom-2.5 right-2.5 z-[1001] p-3
           rounded border border-neutral-700 bg-neutral-900 text-white
           transition-all duration-300 ease-in-out
           ${
@@ -49,9 +49,9 @@ const LoadPage = () => {
             onClick={toggleMinimize}
           >
             {isMinimized() ? (
-              <HiOutlinePlus class="h-4 w-4" />
+              <Plus class="h-4 w-4" />
             ) : (
-              <HiOutlineMinus class="h-4 w-4" />
+              <Minus class="h-4 w-4" />
             )}
           </button>
         </div>

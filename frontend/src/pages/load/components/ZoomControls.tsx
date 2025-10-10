@@ -12,7 +12,7 @@ const ZoomControls = (props: ZoomControlsProps) => {
   return (
     <div class="flex flex-col items-center gap-2 rounded border border-neutral-700 bg-neutral-900/80 p-2">
       <button class={buttonClass} title="Expand All" onClick={props.onZoomIn}>
-        <HiOutlinePlus class="h-5 w-5" />
+        <IoExpand class="h-5 w-5" />
       </button>
       <button
         class={buttonClass}
