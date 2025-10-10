@@ -59,9 +59,9 @@ export const TextInputForm: Component<TextInputFormProps> = (props) => {
           <strong>Example MeTTa expressions:</strong>
         </p>
         <ul class="list-disc list-inside mt-1 space-y-1">
-          <li>(= (fact 0) 1)</li>
-          <li>(= (fact $n) (* $n (fact (- $n 1))))</li>
-          <li>(fact 5)</li>
+          <li>(Id 1)</li>
+          <li>(Name "Tony stark")</li>
+          <li>(Alterego "Iron Man")</li>
         </ul>
       </div>
     </div>

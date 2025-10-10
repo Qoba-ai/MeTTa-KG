@@ -11,9 +11,7 @@ type UploadResult =
 export const [uri, setUri] = createSignal("");
 export const [urlFormat, setUrlFormat] = createSignal("metta");
 export const [selectedFile, setSelectedFile] = createSignal<File | null>(null);
-export const [textContent, setTextContent] = createSignal(
-  `(= (fact 0) 1)\n(= (fact $n) (* $n (fact (- $n 1))))\n(fact 5)`
-);
+export const [textContent, setTextContent] = createSignal(`()`);
 export const [textFormat, setTextFormat] = createSignal("metta");
 export const [activeTab, setActiveTab] = createSignal("url");
 export const [isLoading, setIsLoading] = createSignal(false);
