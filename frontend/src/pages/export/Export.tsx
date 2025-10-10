@@ -1,11 +1,7 @@
 import { Show, Component } from "solid-js";
 import { Button } from "~/components/ui/Button";
 import { CommandCard } from "~/components/common/CommandCard";
-import {
-  TextField,
-  TextFieldInput,
-  TextFieldLabel,
-} from "~/components/ui/TextField";
+import { TextField, TextFieldLabel } from "~/components/ui/TextField";
 import {
   Select,
   SelectContent,
@@ -19,8 +15,6 @@ import Download from "lucide-solid/icons/download";
 import MettaEditor from "~/components/common/MettaEditor";
 import { formatedNamespace } from "~/lib/state";
 import {
-  uri,
-  setUri,
   format,
   setFormat,
   isLoading,
@@ -64,16 +58,17 @@ const ExportPage: Component = () => {
             </TextField>
           </div>
 
-          <TextField class="space-y-2">
-            <TextFieldLabel for="export-uri">Export URI</TextFieldLabel>
-            <TextFieldInput
-              id="export-uri"
-              value={uri()}
-              onInput={(e) => setUri(e.currentTarget.value)}
-              placeholder="file:///..."
-              disabled={isLoading()}
-            />
-          </TextField>
+          {/* TODO: add support for file exports */}
+          {/* <TextField class="space-y-2"> */}
+          {/*   <TextFieldLabel for="export-uri">Export URI</TextFieldLabel> */}
+          {/*   <TextFieldInput */}
+          {/*     id="export-uri" */}
+          {/*     value={uri()} */}
+          {/*     onInput={(e) => setUri(e.currentTarget.value)} */}
+          {/*     placeholder="file:///..." */}
+          {/*     disabled={isLoading()} */}
+          {/*   /> */}
+          {/* </TextField> */}
 
           <TextField class="space-y-2">
             <TextFieldLabel for="export-format">Format</TextFieldLabel>

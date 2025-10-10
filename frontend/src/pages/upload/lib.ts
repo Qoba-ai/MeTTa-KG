@@ -41,7 +41,16 @@ export const handleImport = async (spacePath: string) => {
           });
           return;
         }
+        if (urlFormat() !== "metta") {
+          showToast({
+            title: "Format Not Supported Yet",
+            description: `${urlFormat()} format not supported yet. Please use metta format.`,
+            variant: "destructive",
+          });
+          return;
+        }
         const response = await importSpace(spacePath, uri());
+
         if (response) {
           setResult("Successfully imported to space");
           showToast({
@@ -97,6 +106,16 @@ export const handleImport = async (spacePath: string) => {
           });
           return;
         }
+
+        if (textFormat() !== "metta") {
+          showToast({
+            title: "Format Not Supported Yet",
+            description: `${textFormat()} format not supported yet. Please use metta format.`,
+            variant: "destructive",
+          });
+          return;
+        }
+
         const cleanText = textContent()
           .replace(/[\r\n]+/g, "\n")
           .trim();
