@@ -18,7 +18,7 @@ Cargo.lock
 .env
 .env*
 
-api/admin-token.txt
+**/admin-token.txt
 
 temp/
 
