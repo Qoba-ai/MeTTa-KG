@@ -42,7 +42,7 @@ export const [subSpace] = createResource(
           description: "No token found, please add one in the Tokens page",
           variant: "destructive",
         });
-        throw e;
+        return;
       }
 
       showToast({
@@ -50,7 +50,7 @@ export const [subSpace] = createResource(
         description: "Failed to load space data.",
         variant: "destructive",
       });
-      throw e;
+      return;
     }
   }
 );

@@ -142,77 +142,81 @@ export default function NameSpace() {
 
   return (
     <>
-      <Show when={rootToken()}>
-        <Breadcrumb>
-          <BreadcrumbList class="flex items-center">
-            <For each={namespace()}>
-              {(ns, index) => (
-                <>
-                  <BreadcrumbItem>
-                    <BreadcrumbLink
-                      as="button"
-                      onClick={() => navigateTo(index())}
-                      class="text-neutral-300 hover:text-orange-500 transition-colors max-w-[150px] truncate flex items-center"
-                      title={index() === 0 ? "Spaces" : ns}
-                    >
-                      {index() === 0 ? (
-                        <Home class="inline-block w-4 h-4" />
-                      ) : (
-                        ns
-                      )}
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                </>
-              )}
-            </For>
-            <BreadcrumbItem>
-              <button
-                onClick={discoverPaths}
-                class="ml-1 p-1 rounded text-neutral-400 hover:bg-neutral-800 hover:text-orange-500 transition-colors"
-                title="Show available subspaces"
-                aria-label="Show available subspaces"
-              >
-                ...
-              </button>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-      </Show>
-
-      <CommandDialog open={isExploring()} onOpenChange={setIsExploring}>
-        <CommandInput placeholder="Type to filter or select a space..." />
-        <CommandList>
-          <Show
-            when={!isLoading()}
-            fallback={<CommandEmpty>Loading spaces...</CommandEmpty>}
-          >
-            <CommandEmpty>No further spaces found.</CommandEmpty>
-            <For each={availablePaths()}>
-              {(item) => (
-                <CommandItem
-                  class="flex justify-between items-center w-full"
-                  onSelect={() => selectPath(item.fullPath)}
+      <div>
+        <Show when={rootToken()}>
+          <Breadcrumb>
+            <BreadcrumbList class="flex items-center">
+              <For each={namespace()}>
+                {(ns, index) => (
+                  <>
+                    <BreadcrumbItem>
+                      <BreadcrumbLink
+                        as="button"
+                        onClick={() => navigateTo(index())}
+                        class="text-neutral-300 hover:text-orange-500 transition-colors max-w-[150px] truncate flex items-center"
+                        title={index() === 0 ? "Spaces" : ns}
+                      >
+                        {index() === 0 ? (
+                          <Home class="inline-block w-4 h-4" />
+                        ) : (
+                          ns
+                        )}
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                  </>
+                )}
+              </For>
+              <BreadcrumbItem>
+                <button
+                  onClick={discoverPaths}
+                  class="ml-1 p-1 rounded text-neutral-400 hover:bg-neutral-800 hover:text-orange-500 transition-colors"
+                  title="Show available subspaces"
+                  aria-label="Show available subspaces"
                 >
-                  <div class="flex items-center font-mono text-sm whitespace-pre">
-                    <span class="text-muted-foreground">{item.linePrefix}</span>
-                    <Folder class="mr-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                    <span class="font-sans">{item.name}</span>
-                  </div>
-                  <span
-                    class="text-xs text-muted-foreground truncate ml-4"
-                    title={item.description}
+                  ...
+                </button>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </Show>
+
+        <CommandDialog open={isExploring()} onOpenChange={setIsExploring}>
+          <CommandInput placeholder="Type to filter or select a space..." />
+          <CommandList>
+            <Show
+              when={!isLoading()}
+              fallback={<CommandEmpty>Loading spaces...</CommandEmpty>}
+            >
+              <CommandEmpty>No further spaces found.</CommandEmpty>
+              <For each={availablePaths()}>
+                {(item) => (
+                  <CommandItem
+                    class="flex justify-between items-center w-full"
+                    onSelect={() => selectPath(item.fullPath)}
                   >
-                    {item.description.length > 20
-                      ? item.description.slice(0, 25) + "…"
-                      : item.description}
-                  </span>
-                </CommandItem>
-              )}
-            </For>
-          </Show>
-        </CommandList>
-      </CommandDialog>
+                    <div class="flex items-center font-mono text-sm whitespace-pre">
+                      <span class="text-muted-foreground">
+                        {item.linePrefix}
+                      </span>
+                      <Folder class="mr-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                      <span class="font-sans">{item.name}</span>
+                    </div>
+                    <span
+                      class="text-xs text-muted-foreground truncate ml-4"
+                      title={item.description}
+                    >
+                      {item.description.length > 20
+                        ? item.description.slice(0, 25) + "…"
+                        : item.description}
+                    </span>
+                  </CommandItem>
+                )}
+              </For>
+            </Show>
+          </CommandList>
+        </CommandDialog>
+      </div>
     </>
   );
 }

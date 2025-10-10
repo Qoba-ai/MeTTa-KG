@@ -9,6 +9,7 @@ import {
 import { exploreSpace } from "~/lib/api";
 import parse from "s-expression";
 import { formatedNamespace } from "~/lib/state";
+import { showToast } from "~/components/ui/Toast";
 
 interface D3HierarchyNodeData {
   name: string;
@@ -543,7 +544,20 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
         d._children = null;
         update(d);
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === "noRootToken") {
+        showToast({
+          title: "Token Not Set",
+          description: "Please set the token in the Tokens page.",
+          variant: "destructive",
+        });
+      } else {
+        showToast({
+          title: "Error",
+          description: "An error occurred expanding the node.",
+          variant: "destructive",
+        });
+      }
       d._isLeaf = true;
       d.children = null;
       d._children = null;
