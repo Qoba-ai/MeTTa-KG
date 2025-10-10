@@ -93,7 +93,7 @@ export const UploadPage: Component = () => {
             <Button
               onClick={handleImportClick}
               disabled={isLoading() || !isFormValid()}
-              class="w-40 mt-4"
+              class="mt-4 px-6"
             >
               <Show
                 when={isLoading()}

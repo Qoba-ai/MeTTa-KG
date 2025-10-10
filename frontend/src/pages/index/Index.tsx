@@ -10,7 +10,6 @@ import Sidebar from "~/pages/index/components/Sidebar";
 import Header from "~/pages/index/components/Header";
 import Upload from "lucide-solid/icons/upload";
 import Database from "lucide-solid/icons/database";
-import X from "lucide-solid/icons/x";
 import RotateCcw from "lucide-solid/icons/rotate-ccw";
 import Download from "lucide-solid/icons/download";
 import Key from "lucide-solid/icons/key";
@@ -23,9 +22,8 @@ const sidebarSections = [
     items: [
       {
         id: "explore",
-        label: "Explore Space",
+        label: "Explore",
         icon: Database,
-        description: "",
         to: "/",
         component: LoadPage,
       },
@@ -45,57 +43,49 @@ const sidebarSections = [
         id: "transform",
         label: "Transform",
         icon: RotateCcw,
-        description: "Transform current space",
         to: "/transform",
         component: TransformPage,
       },
       {
         id: "union",
         label: "Union",
-        icon: () => <span class="text-sm font-bold">∪</span>,
-        description: "R1 ∪ R2",
+        icon: () => <span class="text-xl">∪</span>,
         to: "/union",
       },
       {
         id: "intersection",
         label: "Intersection",
-        icon: () => <span class="text-sm font-bold">∩</span>,
-        description: "R1 ∩ R2",
+        icon: () => <span class="text-xl">∩</span>,
         to: "/intersection",
       },
       {
         id: "difference",
         label: "Difference",
-        icon: () => <span class="text-sm font-bold">∖</span>,
-        description: "R1 \\ R2",
+        icon: () => <span class="text-xl font-bold">∖</span>,
         to: "/difference",
       },
       {
         id: "restrict",
-        label: "Restrict To",
-        icon: () => <span class="text-sm font-bold">◁</span>,
-        description: "R2 ◁ R1",
+        label: "Restrict",
+        icon: () => <span class="text-xl font-bold">◁</span>,
         to: "/restrict",
       },
       {
         id: "decapitate",
         label: "Decapitate",
-        icon: () => <span class="text-sm">⛰️</span>,
-        description: "Remove first n bytes",
+        icon: () => <span class="text-xl">T</span>,
         to: "/decapitate",
       },
       {
         id: "head",
         label: "Head",
-        icon: () => <span class="text-sm">🎯</span>,
-        description: "Keep first n bytes",
+        icon: () => <span class="text-xl">H</span>,
         to: "/head",
       },
       {
         id: "cartesian",
-        label: "Cartesian Product",
-        icon: X,
-        description: "R1 × R2",
+        label: "Cartesian",
+        icon: () => <span class="text-xl">X</span>,
         to: "/cartesian",
       },
     ],

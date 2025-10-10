@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -52,45 +54,44 @@
 
   .dark,
   [data-kb-theme="dark"] {
-    --background: 240 5% 12%; /* Deep charcoal */
-    --foreground: 45 20% 95%;
+    --background: 0 0% 0%; /* Black */
+    --foreground: 0 0% 100%; /* White */
 
-    --muted: 240 5% 18%;
-    --muted-foreground: 240 5% 70%;
+    --muted: 0 0% 15%; /* Neutral-800 */
+    --muted-foreground: 0 0% 45%; /* Neutral-500 */
 
-    --popover: 240 5% 15%;
-    --popover-foreground: 45 20% 95%;
+    --popover: 0 0% 10%; /* Neutral-900 */
+    --popover-foreground: 0 0% 100%;
 
-    --border: 240 5% 22%;
-    --input: 240 5% 22%;
+    --border: 0 0% 25%; /* Neutral-700 */
+    --input: 0 0% 25%;
 
-    --card: 240 5% 15%;
-    --card-foreground: 45 20% 95%;
+    --card: 0 0% 10%; /* Neutral-900 */
+    --card-foreground: 0 0% 100%;
 
-    /* ✅ Vibrant green again for dark mode */
     --primary: 142 71% 45%;
-    --primary-foreground: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
 
-    --secondary: 240 5% 20%;
-    --secondary-foreground: 45 20% 95%;
+    --secondary: 0 0% 20%; /* Neutral-800 approx */
+    --secondary-foreground: 0 0% 100%;
 
-    --accent: 142 30% 25%; /* Dark green accent */
-    --accent-foreground: 142 70% 85%;
+    --accent: 142 71% 45%;
+    --accent-foreground: 0 0% 0%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 84% 60%; /* Red-500 */
+    --destructive-foreground: 0 0% 100%;
 
-    --info: 204 70% 20%;
-    --info-foreground: 204 90% 80%;
+    --info: 204 94% 94%;
+    --info-foreground: 199 89% 48%;
 
-    --success: 142 40% 20%; /* Dark green success */
-    --success-foreground: 142 70% 80%;
+    --success: 142 60% 90%;
+    --success-foreground: 142 70% 25%;
 
-    --warning: 32 50% 20%; /* Dark amber warning */
-    --warning-foreground: 38 90% 80%;
+    --warning: 38 96% 89%;
+    --warning-foreground: 32 95% 44%;
 
-    --error: 0 50% 20%;
-    --error-foreground: 0 90% 80%;
+    --error: 0 93% 94%;
+    --error-foreground: 0 84% 60%;
 
     --ring: 142 71% 45%;
 
@@ -103,7 +104,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-mono;
     font-feature-settings:
       "rlig" 1,
       "calt" 1;

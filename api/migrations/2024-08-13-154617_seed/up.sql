@@ -11,7 +11,7 @@ INSERT INTO tokens (
   permission_share_write
 ) VALUES (
   0, 
-  '200003ee-c651-4069-8b7f-2ad9fb46c3ab', 
+   gen_random_uuid(), 
   'DeepFunding KG', 
   '/',
   NOW(),

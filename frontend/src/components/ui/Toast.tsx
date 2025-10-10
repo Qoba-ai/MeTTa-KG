@@ -33,7 +33,7 @@ export function removeToast(id: number) {
 export function ToastViewport() {
   return (
     <Portal>
-      <div class="fixed z-[100] bottom-0 right-0 flex flex-col gap-3 p-4 w-full md:max-w-md">
+      <div class="fixed z-[9999] bottom-0 right-0 flex flex-col gap-3 p-4 w-full md:max-w-md">
         <For each={toasts()}>
           {(toast) => {
             const isDestructive = toast.variant === "destructive";
