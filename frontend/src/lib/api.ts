@@ -26,7 +26,8 @@ export enum CSVParseDirection {
 
 export async function request<T>(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  authOverride?: string | null
 ): Promise<T> {
   const auth = rootToken();
 
@@ -36,7 +37,7 @@ export async function request<T>(
 
   const headers = {
     ...options.headers,
-    Authorization: auth,
+    Authorization: authOverride || auth,
   };
 
   const finalUrl = new URL(url, API_URL);
@@ -269,14 +270,18 @@ export const createToken = async (
     parent: 0,
   };
 
-  return request<Token>("/tokens", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: root,
+  return request<Token>(
+    "/tokens",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: root,
+      },
+      body: JSON.stringify(newToken),
     },
-    body: JSON.stringify(newToken),
-  });
+    root
+  );
 };
 
 export const refreshCodes = async (
@@ -321,7 +326,6 @@ export const exploreSpace = (
   if (token instanceof Array) {
     token = Uint8Array.from(token);
   }
-  console.log("exploring: ", path, pattern, token);
   return request<ExploreDetail[]>(`/spaces/explore${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
