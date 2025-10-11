@@ -97,11 +97,19 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
   const connector = (link: d3.HierarchyPointLink<D3Node>) => {
     const source = link.source;
     const target = link.target;
-    const midY = source.y + indentSize / 2;
-    return `M${source.y + 20},${source.x}
-            L${midY},${source.x}
-            L${midY},${target.x}
-            L${target.y},${target.x}`;
+
+    // Add safety checks for undefined/NaN values
+    const sourceX = isNaN(source.x) || source.x === undefined ? 0 : source.x;
+    const sourceY = isNaN(source.y) || source.y === undefined ? 0 : source.y;
+    const targetX = isNaN(target.x) || target.x === undefined ? 0 : target.x;
+    const targetY = isNaN(target.y) || target.y === undefined ? 0 : target.y;
+
+    const midY = sourceY + indentSize / 2;
+
+    return `M${sourceY + 20},${sourceX}
+            L${midY},${sourceX}
+            L${midY},${targetX}
+            L${targetY},${targetX}`;
   };
 
   const isExpandable = (d: D3Node) => {
@@ -158,9 +166,14 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .duration(duration)
       .attr("height", contentHeight);
 
+    // Add safety checks when setting positions
     visibleNodes.forEach((n: D3Node, idx: number) => {
       n.x = idx * nodeHeight;
       n.y = n.depth * indentSize;
+
+      // Initialize x0 and y0 if they don't exist
+      if (n.x0 === undefined) n.x0 = n.x;
+      if (n.y0 === undefined) n.y0 = n.y;
     });
 
     const links = root.links();
@@ -352,12 +365,16 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .style("stroke", "hsl(var(--muted-foreground))")
       .style("stroke-width", "2px")
       .style("opacity", 0)
-      .attr("d", () =>
-        connector({
-          source: { x: source.x0, y: source.y0 },
-          target: { x: source.x0, y: source.y0 },
-        } as d3.HierarchyPointLink<D3Node>)
-      )
+      .attr("d", () => {
+        // Safety check for source position
+        const safeSourceX = source.x0 !== undefined ? source.x0 : 0;
+        const safeSourceY = source.y0 !== undefined ? source.y0 : 0;
+
+        return connector({
+          source: { x: safeSourceX, y: safeSourceY },
+          target: { x: safeSourceX, y: safeSourceY },
+        } as d3.HierarchyPointLink<D3Node>);
+      })
       .merge(link)
       .transition()
       .duration(duration)
@@ -369,12 +386,16 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .transition()
       .duration(duration)
       .style("opacity", 0)
-      .attr("d", () =>
-        connector({
-          source: { x: source.x, y: source.y },
-          target: { x: source.x, y: source.y },
-        } as d3.HierarchyPointLink<D3Node>)
-      )
+      .attr("d", () => {
+        // Safety check for source position
+        const safeSourceX = source.x !== undefined ? source.x : 0;
+        const safeSourceY = source.y !== undefined ? source.y : 0;
+
+        return connector({
+          source: { x: safeSourceX, y: safeSourceY },
+          target: { x: safeSourceX, y: safeSourceY },
+        } as d3.HierarchyPointLink<D3Node>);
+      })
       .remove();
 
     allNodes.forEach((d: D3Node) => {
@@ -600,13 +621,19 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
 
     root.data = newRoot.data;
     root.children = newRoot.children;
-    root.x0 = 0;
-    root.y0 = 0;
+
+    // Initialize positions safely
+    root.x0 = root.x0 !== undefined ? root.x0 : 0;
+    root.y0 = root.y0 !== undefined ? root.y0 : 0;
 
     root.descendants().forEach((d: D3Node, index: number) => {
       d.id = index;
       i = index;
       d.y = d.depth * indentSize;
+
+      // Initialize x0 and y0 safely
+      if (d.x0 === undefined) d.x0 = d.depth === 0 ? 0 : d.y;
+      if (d.y0 === undefined) d.y0 = d.depth === 0 ? 0 : d.x || 0;
 
       if (d.depth && d.children) {
         d._children = d.children;

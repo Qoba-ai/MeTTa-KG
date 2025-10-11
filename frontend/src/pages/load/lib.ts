@@ -1,4 +1,4 @@
-import { createSignal, createResource } from "solid-js";
+import { createSignal, createResource, createRoot } from "solid-js";
 import { formatedNamespace } from "~/lib/state";
 import { ParseError } from "~/types";
 import { exploreSpace } from "~/lib/api";
@@ -20,39 +20,42 @@ export const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
 export const [isMinimized, setIsMinimized] = createSignal(true);
 export const [pattern, setPattern] = createSignal("$x");
 
-export const [subSpace, { refetch: refetchSubSpace }] = createResource(
-  () => ({
-    path: formatedNamespace(),
-    expr: pattern(),
-    token: Uint8Array.from([]),
-  }),
-  async ({ path, expr, token }) => {
-    try {
-      const responseString = await exploreSpace(path, expr, token);
-      const data: ExploreResponse[] = JSON.parse(responseString);
-      showToast({
-        title: "Success",
-        description: `Loaded ${data.length} nodes.`,
-      });
-      return data;
-    } catch (e) {
-      if (e instanceof Error && e.message === "noRootToken") {
+// Wrap the createResource in createRoot to avoid the warning
+export const [subSpace, { refetch: refetchSubSpace }] = createRoot(() =>
+  createResource(
+    () => ({
+      path: formatedNamespace(),
+      expr: pattern(),
+      token: Uint8Array.from([]),
+    }),
+    async ({ path, expr, token }) => {
+      try {
+        const responseString = await exploreSpace(path, expr, token);
+        const data: ExploreResponse[] = JSON.parse(responseString);
+        showToast({
+          title: "Success",
+          description: `Loaded ${data.length} nodes.`,
+        });
+        return data;
+      } catch (e) {
+        if (e instanceof Error && e.message === "noRootToken") {
+          showToast({
+            title: "Error",
+            description: "No token found, please add one in the Tokens page",
+            variant: "destructive",
+          });
+          return;
+        }
+
         showToast({
           title: "Error",
-          description: "No token found, please add one in the Tokens page",
+          description: "Failed to load space data.",
           variant: "destructive",
         });
         return;
       }
-
-      showToast({
-        title: "Error",
-        description: "Failed to load space data.",
-        variant: "destructive",
-      });
-      return;
     }
-  }
+  )
 );
 
 export const refreshSpace = () => {
