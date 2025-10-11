@@ -1,4 +1,4 @@
-import { createResource, createSignal, createMemo } from "solid-js";
+import { createResource, createSignal, createMemo, createRoot } from "solid-js";
 import {
   fetchTokens,
   refreshCodes,
@@ -22,42 +22,42 @@ export enum SortableColumns {
 import { setNamespace, setTokenRootNamespace } from "~/lib/state";
 
 export const [tokens, { mutate: mutateTokens, refetch: refetchTokens }] =
-  createResource(
-    () => (rootToken() ? rootToken() : null),
-    async (token) => {
-      try {
-        const fetchedTokens = await fetchTokens(token);
+  createRoot(() =>
+    createResource(
+      () => (rootToken() ? rootToken() : null),
+      async (token) => {
+        try {
+          const fetchedTokens = await fetchTokens(token);
 
-        // Find current token and update namespace
-        const currentToken = fetchedTokens.find((t) => t.code === token);
-        if (currentToken) {
-          const namespaceParts = currentToken.namespace
-            .split("/")
-            .filter((part) => part.length > 0);
-          const rootNs = ["", ...namespaceParts];
+          const currentToken = fetchedTokens.find((t) => t.code === token);
+          if (currentToken) {
+            const namespaceParts = currentToken.namespace
+              .split("/")
+              .filter((part) => part.length > 0);
+            const rootNs = ["", ...namespaceParts];
 
-          // Store for page reload
-          localStorage.setItem("tokenNamespace", JSON.stringify(rootNs));
+            localStorage.setItem("tokenNamespace", JSON.stringify(rootNs));
 
-          setTokenRootNamespace(rootNs);
-          setNamespace(rootNs);
+            setTokenRootNamespace(rootNs);
+            setNamespace(rootNs);
+          }
+
+          showToast({
+            title: "Success",
+            description: `Loaded ${fetchedTokens.length} tokens.`,
+          });
+          return fetchedTokens;
+        } catch (e) {
+          showToast({
+            title: "Error",
+            description: `Failed to fetch tokens. \n${e}`,
+            variant: "destructive",
+          });
+          return [];
         }
-
-        showToast({
-          title: "Success",
-          description: `Loaded ${fetchedTokens.length} tokens.`,
-        });
-        return fetchedTokens;
-      } catch (e) {
-        showToast({
-          title: "Error",
-          description: `Failed to fetch tokens. \n${e}`,
-          variant: "destructive",
-        });
-        return [];
-      }
-    },
-    { initialValue: [] }
+      },
+      { initialValue: [] }
+    )
   );
 
 export const [selectedTokens, setSelectedTokens] = createSignal<Token[]>([]);
@@ -70,25 +70,28 @@ export const [sortDirection, setSortDirection] = createSignal<"asc" | "desc">(
 export const [namespaceFilter, setNamespaceFilter] = createSignal("");
 export const [descriptionFilter, setDescriptionFilter] = createSignal("");
 
-export const filteredAndSortedTokens = createMemo(() => {
-  const nsRegex = new RegExp(namespaceFilter(), "i");
-  const descRegex = new RegExp(descriptionFilter(), "i");
-  return tokens()
-    .filter((t) => nsRegex.test(t.namespace) && descRegex.test(t.description))
-    .sort((a, b) => {
-      let result = 0;
-      switch (sortColumn()) {
-        case SortableColumns.TIMESTAMP:
-          result =
-            Date.parse(a.creation_timestamp) - Date.parse(b.creation_timestamp);
-          break;
-        case SortableColumns.NAMESPACE:
-          result = a.namespace.localeCompare(b.namespace);
-          break;
-      }
-      return sortDirection() === "desc" ? -result : result;
-    });
-});
+export const filteredAndSortedTokens = createRoot(() =>
+  createMemo(() => {
+    const nsRegex = new RegExp(namespaceFilter(), "i");
+    const descRegex = new RegExp(descriptionFilter(), "i");
+    return tokens()
+      .filter((t) => nsRegex.test(t.namespace) && descRegex.test(t.description))
+      .sort((a, b) => {
+        let result = 0;
+        switch (sortColumn()) {
+          case SortableColumns.TIMESTAMP:
+            result =
+              Date.parse(a.creation_timestamp) -
+              Date.parse(b.creation_timestamp);
+            break;
+          case SortableColumns.NAMESPACE:
+            result = a.namespace.localeCompare(b.namespace);
+            break;
+        }
+        return sortDirection() === "desc" ? -result : result;
+      });
+  })
+);
 
 export const handleSort = (column: SortableColumns) => {
   if (sortColumn() === column) {
