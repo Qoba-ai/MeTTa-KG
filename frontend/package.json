@@ -48,7 +48,6 @@
     "codemirror": "^6.0.1",
     "d3": "^7.9.0",
     "lucide-solid": "^0.536.0",
-    "s-expression": "^3.1.1",
     "solid-js": "^1.8.11",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",

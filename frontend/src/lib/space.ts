@@ -1,5 +1,4 @@
 import { ExploreDetail } from "~/lib/types";
-import parse from "s-expression";
 
 interface SpaceNode {
   id: string;
@@ -42,14 +41,6 @@ function initNodesFromApiResponse(
     if (typeof item === "string") {
       const cleaned = item.replace(/^["']|["']$/g, "");
 
-      if (cleaned.length > 50) {
-        const parts = cleaned.split("-");
-        if (parts.length > 1 && parts[0].length > 0) {
-          return parts[0] + "...";
-        }
-        return cleaned.substring(0, 20) + "...";
-      }
-
       return cleaned;
     }
 
@@ -75,98 +66,16 @@ function tokenToString(token: Uint8Array): string {
   }
 }
 
-function flattenNodes(
-  parsed: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
-): string[] {
-  const nodes: string[] = [];
-
-  function traverse(
-    item: any /* eslint-disable-line @typescript-eslint/no-explicit-any */
-  ) {
-    if (Array.isArray(item)) {
-      item.forEach(traverse);
-    } else if (item instanceof String) {
-      nodes.push(`'${item}'`);
-    } else if (typeof item === "string") {
-      nodes.push(item);
-    }
-  }
-
-  traverse(parsed);
-  return nodes;
-}
-
-function filterSemanticNodes(nodes: string[]): string[] {
-  const semanticNodes: string[] = [];
-
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-
-    if (isEncodingArtifact(node)) {
-      continue;
-    }
-
-    semanticNodes.push(node);
-  }
-
-  return semanticNodes;
-}
-
-function isEncodingArtifact(node: string): boolean {
-  if (node.length > 20 && /^[a-z0-9]+[a-f0-9-]+$/i.test(node)) {
-    return true;
-  }
-  return false;
-}
-
 function extractLabels(
   details: ExploreDetail[],
   _parent?: string
 ): { prefix: string[]; labels: (string | null)[] } {
   if (details.length === 0) return { prefix: [], labels: [] };
 
-  const flatExprs = details.map((detail) => {
-    try {
-      const nodes = flattenNodes(parse(detail.expr));
-      const semantic = filterSemanticNodes(nodes);
-      return semantic;
-    } catch {
-      return [detail.expr]; // Fallback to raw expression
-    }
-  });
+  // No parsing, use expr directly as labels
+  const labels = details.map((detail) => detail.expr);
 
-  const maxLength = Math.max(...flatExprs.map((arr) => arr.length));
-  const prefix: string[] = [];
-
-  for (let i = 0; i < maxLength; i++) {
-    const column = flatExprs.map((arr) => arr[i] || null);
-
-    if (column.every((val) => val === column[0] && val !== null)) {
-      prefix.push(column[0]!);
-    } else {
-      const cleanedLabels = column.map((label) => {
-        if (!label) return null;
-        if (typeof label === "string") {
-          return label.replace(/^["']|["']$/g, "");
-        }
-        return label;
-      });
-      return { prefix, labels: cleanedLabels };
-    }
-  }
-
-  if (flatExprs.length > 0 && flatExprs[0].length > 0) {
-    const lastElements = flatExprs.map((expr) => {
-      const lastElement = expr[expr.length - 1];
-      if (typeof lastElement === "string") {
-        return lastElement.replace(/^["']|["']$/g, "");
-      }
-      return lastElement;
-    });
-    return { prefix: flatExprs[0].slice(0, -1), labels: lastElements };
-  }
-
-  return { prefix, labels: [] };
+  return { prefix: [], labels };
 }
 
 interface D3TreeNode {
@@ -235,4 +144,4 @@ function convertToD3TreeData(
 
 export type { ExploreResponse, SpaceNode };
 
-export { initNodesFromApiResponse, flattenNodes, convertToD3TreeData };
+export { initNodesFromApiResponse, convertToD3TreeData };

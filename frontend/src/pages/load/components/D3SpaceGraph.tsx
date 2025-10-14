@@ -1,13 +1,8 @@
 import { onMount, onCleanup, createEffect } from "solid-js";
 import * as d3 from "d3";
 import type { SpaceNode } from "~/lib/space";
-import {
-  convertToD3TreeData,
-  initNodesFromApiResponse,
-  flattenNodes,
-} from "~/lib/space";
+import { convertToD3TreeData, initNodesFromApiResponse } from "~/lib/space";
 import { exploreSpace } from "~/lib/api";
-import parse from "s-expression";
 import { formatedNamespace } from "~/lib/state";
 import { showToast } from "~/components/ui/Toast";
 
@@ -124,12 +119,8 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
     if (d.data.token && d.data.token.length > 0) return true;
 
     if (d.data.expr && d.data.expr.trim() !== "") {
-      try {
-        const flatNodes = flattenNodes(parse(d.data.expr));
-        return flatNodes.length > 1;
-      } catch {
-        return false;
-      }
+      // No parsing, expr is displayed as is, not expandable
+      return false;
     }
 
     return false;
@@ -302,12 +293,7 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .style("fill", "hsl(var(--foreground))")
       .style("pointer-events", "none")
       .style("user-select", "none")
-      .text((d: D3Node) => {
-        const maxLength = 35;
-        return d.data.name.length > maxLength
-          ? d.data.name.substring(0, maxLength) + "..."
-          : d.data.name;
-      });
+      .text((d: D3Node) => d.data.name);
 
     nodeEnter.append("title").text((d: D3Node) => d.data.name);
 
@@ -474,70 +460,9 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
         spaceNode.remoteData.expr &&
         spaceNode.remoteData.expr.trim() !== ""
       ) {
-        try {
-          const flatNodes = flattenNodes(parse(spaceNode.remoteData.expr));
-
-          let finalValue = null;
-
-          for (const node of flatNodes) {
-            if (
-              (node.startsWith('"') && node.endsWith('"')) ||
-              (node.startsWith("'") && node.endsWith("'"))
-            ) {
-              finalValue = node.slice(1, -1); // Remove quotes
-              break;
-            }
-          }
-
-          if (!finalValue && flatNodes.length > 0) {
-            const lastNode = flatNodes[flatNodes.length - 1];
-            if (lastNode && lastNode !== d.data.name) {
-              finalValue = lastNode;
-            }
-          }
-
-          if (
-            finalValue &&
-            (d.data.name === finalValue ||
-              d.data.name === `'${finalValue}'` ||
-              d.data.name === `"${finalValue}"`)
-          ) {
-            d.children = null;
-            d._children = null;
-            d._isLeaf = true;
-            update(d);
-            return;
-          }
-
-          if (finalValue && finalValue !== d.data.name) {
-            const childData = {
-              name: finalValue,
-              id: `${d.data.id}/value`,
-              token: Uint8Array.from([-1]),
-              expr: "",
-              isExpandable: false,
-              isFromBackend: false,
-            };
-
-            const childNode = d3.hierarchy(childData) as D3Node;
-            childNode.depth = d.depth + 1;
-            childNode.parent = d;
-            childNode.id = ++i;
-            childNode.x0 = d.x;
-            childNode.y0 = d.y;
-
-            d.children = [childNode];
-            update(d);
-          } else {
-            d.children = null;
-            d._children = null;
-            d._isLeaf = true;
-            update(d);
-          }
-        } catch {
-          d.children = null;
-          d._children = null;
-        }
+        // No parsing, expr is displayed as is, no expansion
+        d._isLeaf = true;
+        update(d);
       } else {
         d._isLeaf = true;
         d.children = null;
