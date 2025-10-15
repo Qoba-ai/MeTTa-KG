@@ -1,4 +1,5 @@
 import { ExploreDetail } from "~/lib/types";
+import { parseSExpression, serializeSExpr } from "./utils";
 
 interface SpaceNode {
   id: string;
@@ -41,7 +42,28 @@ function initNodesFromApiResponse(
     if (typeof item === "string") {
       const cleaned = item.replace(/^["']|["']$/g, "");
 
-      return cleaned;
+      try {
+        const expr = parseSExpression(cleaned);
+        if (expr.type === "list" && expr.children) {
+          if (expr.children.length === 0) {
+            return "()";
+          } else if (expr.children.length === 1) {
+            return "()";
+          } else if (
+            expr.children[0].type === "atom" &&
+            expr.children[0].value?.startsWith("root")
+          ) {
+            const newChildren = expr.children.slice(1);
+            return newChildren.map((child) => serializeSExpr(child)).join(" ");
+          } else {
+            return cleaned;
+          }
+        } else {
+          return "<malformed>";
+        }
+      } catch {
+        return "<malformed>";
+      }
     }
 
     return String(item);
