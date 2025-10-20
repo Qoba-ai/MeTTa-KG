@@ -1,0 +1,7 @@
+# Ignore build artifacts
+dist/
+build/
+
+# Ignore lockfiles
+package-lock.json
+yarn.lock
