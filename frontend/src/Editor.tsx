@@ -9,7 +9,7 @@ import { createMemo, createSignal, onMount, Show } from 'solid-js'
 import styles from './Editor.module.scss'
 import { A } from '@solidjs/router'
 import toast, { Toaster } from 'solid-toast'
-import { BACKEND_URL, TOKEN } from './urls'
+import { API_URL } from './lib/api'
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/panda-syntax-dark.css'
 import {
@@ -42,12 +42,12 @@ import {
     completionKeymap,
 } from '@codemirror/autocomplete'
 import {
-    EditorMode,
-    ImportCSVDirection,
-    ImportFormat,
-    ParserParameters,
+    // EditorMode,
+    // ImportCSVDirection,
+    // ImportFormat,
+    // ParserParameters,
     Token,
-} from './types'
+} from './lib/types'
 import {
     editorTheme,
     highlightStyle,
@@ -101,7 +101,7 @@ const App: Component = () => {
     const [editorOutput, setEditorOutput] = createSignal('')
     const [editorView, setEditorView] = createSignal<EditorView>()
     const [editorMode, setEditorMode] = createSignal<EditorMode>(
-        EditorMode.DEFAULT
+        "EditorMode.DEFAULT"
     )
 
     const [activeImportFile, setActiveImportFile] = createSignal<File>()
@@ -123,7 +123,7 @@ const App: Component = () => {
 
     // CSV-specific import parameters
     const [importCSVDirection, setImportCSVDirection] =
-        createSignal<ImportCSVDirection>(ImportCSVDirection.CELL_LABELED)
+        createSignal<ImportCSVDirection>("ImportCSVDirection.CELL_LABELED")
     const [importCSVDelimiter, setImportCSVDelimiter] =
         createSignal<string>('\u002C')
 
@@ -237,7 +237,7 @@ const App: Component = () => {
 
             importFileModal.close()
         }
-
+        let TOKEN = false;
         if (TOKEN) {
             loadSpace(TOKEN)
             setEditorMode(EditorMode.EDIT)
@@ -352,7 +352,7 @@ const App: Component = () => {
 
         try {
             const resp = await fetch(
-                `${BACKEND_URL}/translations/${fileFormat}?${parameters.toString()}`,
+                `${API_URL}/translations/${fileFormat}?${parameters.toString()}`,
                 {
                     method: 'POST',
                     headers: {},
@@ -369,7 +369,7 @@ const App: Component = () => {
             }
 
             // switch to import mode to allow modification of import parameters
-            setEditorMode(EditorMode.IMPORT)
+            setEditorMode("EditorMode.IMPORT")
 
             // insert translated MeTTa code at cursor location
             view.dispatch(
@@ -463,7 +463,7 @@ const App: Component = () => {
      */
     const loadSpace = async (token: string): Promise<void> => {
         try {
-            const resp = await fetch(`${BACKEND_URL}/token`, {
+            const resp = await fetch(`${API_URL}/token`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -524,7 +524,7 @@ const App: Component = () => {
         const content = editorContent()
 
         await fetch(
-            `${BACKEND_URL}/spaces${token()?.namespace}${selectedNamespace()}`,
+            `${API_URL}/spaces${token()?.namespace}${selectedNamespace()}`,
             {
                 method: 'PUT',
                 headers: {
@@ -540,7 +540,7 @@ const App: Component = () => {
 
     const read = async (token?: Token) => {
         const resp = await fetch(
-            `${BACKEND_URL}/spaces${token?.namespace}${selectedNamespace()}`,
+            `${API_URL}/spaces${token?.namespace}${selectedNamespace()}`,
             {
                 method: 'GET',
                 headers: {
@@ -573,7 +573,7 @@ const App: Component = () => {
     }
 
     const transform = async () => {
-        const resp = await fetch(`${BACKEND_URL}/spaces`, {
+        const resp = await fetch(`${API_URL}/spaces`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -604,7 +604,7 @@ const App: Component = () => {
             <main class={styles.Main}>
                 <div></div>
                 <div ref={mettaEditor!} class={styles.EditorWrapper}>
-                    <Show when={editorMode() === EditorMode.DEFAULT}>
+                    <Show when={editorMode() === "EditorMode.DEFAULT"}>
                         <div class={styles.NewSessionDiv}>
                             <button
                                 onClick={() => loadSpaceModal.showModal()}
@@ -618,7 +618,7 @@ const App: Component = () => {
                             </button>
                         </div>
                     </Show>
-                    <Show when={editorMode() !== EditorMode.DEFAULT}>
+                    <Show when={editorMode() !== "EditorMode.DEFAULT"}>
                         <div class={styles.MettaInputActionsWrapper}>
                             <div class={styles.MettaEditorActions}>
                                 <button
@@ -718,7 +718,7 @@ const App: Component = () => {
                     </Show>
                 </div>
                 <Show
-                    when={editorMode() === EditorMode.IMPORT}
+                    when={editorMode() === "EditorMode.IMPORT"}
                     fallback={<div></div>}
                 >
                     <div class={styles.ImportParametersFormWrapper}>
