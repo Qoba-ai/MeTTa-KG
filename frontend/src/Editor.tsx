@@ -48,15 +48,6 @@ import {
     // ParserParameters,
     Token,
 } from './lib/types'
-import {
-    editorTheme,
-    highlightStyle,
-    languageSupport,
-    mettaLinter,
-    toJSON,
-} from './mettaLanguageSupport'
-import { parser } from './parser/parser'
-import { Expression, Symbol, Variable } from './parser/parser.terms'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.')[1]
@@ -137,8 +128,8 @@ const App: Component = () => {
     const editorState = EditorState.create({
         doc: editorContent(),
         extensions: [
-            editorTheme,
-            languageSupport,
+            // editorTheme,
+            // languageSupport,
             highlightActiveLineGutter(),
             history(),
             foldGutter(),
@@ -148,10 +139,10 @@ const App: Component = () => {
             bracketMatching(),
             closeBrackets(),
             highlightActiveLine(),
-            syntaxHighlighting(highlightStyle),
+            syntaxHighlighting("highlightStyle"),
             EditorView.lineWrapping,
             autocompletion(),
-            mettaLinter,
+            // mettaLinter,
             keymap.of([
                 ...closeBracketsKeymap,
                 ...defaultKeymap,
