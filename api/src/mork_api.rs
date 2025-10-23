@@ -1,6 +1,7 @@
 use reqwest::{Client, Method};
 use rocket::http::Status;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 use std::env;
 use std::path::PathBuf;
 
@@ -13,56 +14,79 @@ pub enum ExportFormat {
     Raw,
 }
 
-pub trait TransformSetter: Sized {
-    fn transform_input_mut(&mut self) -> &mut TransformInput;
-
-    #[allow(dead_code)]
-    fn add_pattern(mut self, pattern: String) -> Self {
-        self.transform_input_mut().patterns.push(pattern);
-        self
-    }
-
-    #[allow(dead_code)]
-    fn add_template(mut self, template: String) -> Self {
-        self.transform_input_mut().templates.push(template);
-        self
-    }
-
-    fn patterns(mut self, patterns: Vec<String>) -> Self {
-        self.transform_input_mut().patterns = patterns;
-        self
-    }
-
-    fn templates(mut self, templates: Vec<String>) -> Self {
-        self.transform_input_mut().templates = templates;
-        self
-    }
-
-    fn space(mut self, space: PathBuf) -> Self {
-        self.transform_input_mut().space = space;
-        self
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone)]
-pub struct TransformInput {
-    pub space: PathBuf,
-    pub patterns: Vec<String>,
+pub struct TransformDetails {
+    /// the sub space as per playground convetions. ie. (/ ...)
+    pub patterns: Vec<String>, // A sub space
     pub templates: Vec<String>,
 }
 
-impl Default for TransformInput {
+impl Default for TransformDetails {
     fn default() -> Self {
-        TransformInput {
-            space: PathBuf::from("/"),
+        TransformDetails {
             patterns: vec![String::from("$x")],
             templates: vec![String::from("$x")],
         }
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Namespace {
+    path: Vec<String>,
+}
+
+impl Namespace {
+    pub fn new() -> Self {
+        Namespace { path: vec![] }
+    }
+
+    pub fn from_path_string(path_str: &str) -> Self {
+        let components: Vec<String> = path_str
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+        Namespace { path: components }
+    }
+
+    fn current_name(&self) -> String {
+        self.path
+            .last()
+            .cloned()
+            .unwrap_or_else(|| "root".to_string())
+    }
+
+    fn data_tag(&self) -> String {
+        format!("{}a727d4f9-836a-4e4c-9480", self.current_name())
+    }
+
+    pub fn with_namespace(&self, value: &str) -> String {
+        let mut result = value.to_string();
+
+        result = format!("({} {})", self.data_tag(), result);
+
+        for name in self.path.iter().rev() {
+            result = format!("({name} {result})");
+        }
+
+        result
+    }
+}
+
+impl From<PathBuf> for Namespace {
+    fn from(path: PathBuf) -> Self {
+        Namespace::from_path_string(&path.to_string_lossy())
+    }
+}
+
+impl Default for Namespace {
+    fn default() -> Self {
+        Namespace::new()
+    }
+}
+
 #[allow(dead_code)]
-impl TransformInput {
+impl TransformDetails {
     pub fn new() -> Self {
         Default::default()
     }
@@ -75,38 +99,6 @@ impl TransformInput {
     pub fn templates(mut self, templates: Vec<String>) -> Self {
         self.templates = templates;
         self
-    }
-
-    pub fn space(mut self, space: PathBuf) -> Self {
-        self.space = space;
-        self
-    }
-
-    pub fn generate_code(&self) -> String {
-        format!(
-            "(transform {0} {1})",
-            self.patterns_to_str(),
-            self.templates_to_str()
-        )
-    }
-
-    fn patterns_to_str(&self) -> String {
-        self.multi_input_to_str(&self.patterns)
-    }
-
-    fn templates_to_str(&self) -> String {
-        self.multi_input_to_str(&self.templates)
-    }
-
-    // converts a Vec<String> to a String with format "(, (0) (1) (2))"
-    fn multi_input_to_str(&self, inp: &Vec<String>) -> String {
-        format!(
-            "(, {})",
-            inp.iter()
-                .map(|i| format!("({} ({}))", self.space.to_str().unwrap_or("/"), i))
-                .collect::<Vec<String>>()
-                .join(" ")
-        )
     }
 }
 
