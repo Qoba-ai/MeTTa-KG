@@ -32,7 +32,11 @@ enum ImportCSVDirection {
     CELL_UNLABELED = 'CellUnlabeled',
 }
 
-type ParserParameters = CSVParserParameters | NTParserParameters | N3ParserParameters | JSONLDParserParameters
+type ParserParameters =
+    | CSVParserParameters
+    | NTParserParameters
+    | N3ParserParameters
+    | JSONLDParserParameters
 
 interface CSVParserParameters {
     direction: ImportCSVDirection
@@ -60,5 +64,5 @@ export {
     type CSVParserParameters,
     type NTParserParameters,
     type N3ParserParameters,
-    type JSONLDParserParameters
+    type JSONLDParserParameters,
 }
