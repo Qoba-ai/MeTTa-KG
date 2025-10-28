@@ -6,7 +6,6 @@ import {
 } from 'solid-icons/ai'
 import { VsRunAll } from 'solid-icons/vs'
 import { createMemo, createSignal, onMount, Show } from 'solid-js'
-import styles from './Editor.module.scss'
 import { A } from '@solidjs/router'
 import toast, { Toaster } from 'solid-toast'
 import { BACKEND_URL, TOKEN } from './urls'
@@ -593,25 +592,23 @@ const App: Component = () => {
             <header>
                 <h1>MeTTa KG</h1>
                 <nav>
-                    <A href="/tokens" class={styles.OutlineButton}>
+                    <A href="/tokens" >
                         Tokens
                     </A>
                     <a href="https://github.com/Qoba-ai/MeTTa-KG">
-                        <AiOutlineGithub class={styles.Icon} size={32} />
+                        <AiOutlineGithub  size={32} />
                     </a>
                 </nav>
             </header>
-            <main class={styles.Main}>
+            <main>
                 <div></div>
-                <div ref={mettaEditor!} class={styles.EditorWrapper}>
+                <div ref={mettaEditor!} >
                     <Show when={editorMode() === EditorMode.DEFAULT}>
-                        <div class={styles.NewSessionDiv}>
+                        <div>
                             <button
                                 onClick={() => loadSpaceModal.showModal()}
-                                class={styles.ImportButton}
                             >
                                 <AiFillFolderOpen
-                                    class={styles.Icon}
                                     size={28}
                                 />
                                 <span>Load</span>
@@ -619,8 +616,8 @@ const App: Component = () => {
                         </div>
                     </Show>
                     <Show when={editorMode() !== EditorMode.DEFAULT}>
-                        <div class={styles.MettaInputActionsWrapper}>
-                            <div class={styles.MettaEditorActions}>
+                        <div >
+                            <div >
                                 <button
                                     onClick={() => loadSpaceModal.showModal()}
                                 >
@@ -649,19 +646,19 @@ const App: Component = () => {
                                 <div style={{ 'flex-grow': 1 }}></div>
                                 <button onclick={() => run()}>
                                     <VsRunAll
-                                        class={styles.RunIcon}
+                                        
                                         size={22}
                                     />
                                 </button>
                             </div>
-                            <div class={styles.EditorRootTokenFormWrapper}>
+                            <div >
                                 <p>{token()?.namespace}</p>
                                 <form
                                     ref={(e) => {
                                         loadSubspaceForm = e
                                         initializeLoadSubspaceForm()
                                     }}
-                                    class={styles.EditorRootTokenForm}
+                                    
                                     onsubmit={(e) => e.preventDefault()}
                                 >
                                     <input
@@ -698,16 +695,15 @@ const App: Component = () => {
                             </div>
                         </div>
                         <div
-                            class={styles.MettaInput}
                             ref={(ref) => {
                                 mettaInput = ref
 
                                 initializeEditor()
                             }}
                         ></div>
-                        <pre class={styles.Console}>
+                        <pre>
                             <code
-                                class={'language-metta'}
+                            
                                 innerHTML={
                                     hljs.highlight(editorOutput(), {
                                         language: 'metta',
@@ -721,14 +717,14 @@ const App: Component = () => {
                     when={editorMode() === EditorMode.IMPORT}
                     fallback={<div></div>}
                 >
-                    <div class={styles.ImportParametersFormWrapper}>
+                    <div >
                         <form
-                            id={styles.ImportParametersForm}
+                            id={"styles.ImportParametersForm"}
                             ref={commitImportForm!}
                             onsubmit={(e) => e.preventDefault()}
                         >
                             <h2>Import File</h2>
-                            <p class={styles.Instructions}>
+                            <p>
                                 Modify the import parameters as needed before
                                 finalizing your import.
                             </p>
@@ -806,23 +802,22 @@ const App: Component = () => {
                         <li>N-Triples (.nt)</li>
                     </ul>
                     <input
-                        id={styles.ImportFileFormInput}
+                        id={"styles.ImportFileFormInput"}
                         ref={importFileFormInput!}
                         type="file"
                         required
                         onchange={(e) => handleImportFileSelect(e)}
                     />
-                    <div class={styles.ModalButtonBar}>
+                    <div>
                         <button
                             type="button"
-                            class={styles.TextButton}
                             onclick={() => importFileModal.close()}
                         >
                             Cancel
                         </button>
                         <div style={{ 'flex-grow': 1 }}></div>
                         <button
-                            class={styles.Button}
+                            
                             disabled={activeImportFile() === null}
                         >
                             Import
@@ -830,7 +825,7 @@ const App: Component = () => {
                     </div>
                 </form>
             </dialog>
-            <dialog ref={loadSpaceModal!} class={styles.LoadSpaceModal}>
+            <dialog ref={loadSpaceModal!}>
                 <form ref={loadSpaceForm!}>
                     <h2>Open Space</h2>
                     <label>
@@ -854,17 +849,16 @@ const App: Component = () => {
                             }
                         />
                     </label>
-                    <div class={styles.ModalButtonBar}>
+                    <div >
                         <button
                             type="button"
-                            class={styles.TextButton}
                             onclick={() => loadSpaceModal.close()}
                         >
                             Cancel
                         </button>
                         <div style={{ 'flex-grow': 1 }}></div>
                         <button
-                            class={styles.Button}
+                            
                             disabled={tokenToOpen() === ''}
                         >
                             Open
@@ -872,14 +866,13 @@ const App: Component = () => {
                     </div>
                 </form>
             </dialog>
-            <dialog ref={transformModal!} class={styles.TransformModal}>
+            <dialog ref={transformModal!}>
                 <form ref={transformForm!}>
                     <h2>Transform</h2>
-                    <div class={styles.TransformIOSpaces}>
+                    <div >
                         <div>
                             <h4>Input Spaces</h4>
                             <input
-                                class={styles.SelectSpaces}
                                 value={transformInputSpaces()}
                                 onchange={(ev) =>
                                     setTransformInputSpaces(ev.target.value)
@@ -887,7 +880,6 @@ const App: Component = () => {
                                 placeholder="Input"
                             />
                             <select
-                                class={styles.SelectSpaces}
                                 value={transformInputSpaces()}
                                 onchange={(ev) =>
                                     setTransformInputSpaces(ev.target.value)
@@ -903,7 +895,6 @@ const App: Component = () => {
                         <div>
                             <h4>Output Spaces</h4>
                             <input
-                                class={styles.SelectSpaces}
                                 value={transformOutputSpaces()}
                                 onchange={(ev) =>
                                     setTransformOutputSpaces(ev.target.value)
@@ -911,7 +902,7 @@ const App: Component = () => {
                                 placeholder="Output"
                             />
                             <select
-                                class={styles.SelectSpaces}
+                                
                                 value={transformOutputSpaces()}
                                 onchange={(ev) =>
                                     setTransformOutputSpaces(ev.target.value)
@@ -926,7 +917,7 @@ const App: Component = () => {
                         </div>
                         <div>
                             <input
-                                class={styles.SelectSpaces}
+                                
                                 value={transformPattern()}
                                 placeholder="Pattern"
                                 onchange={(ev) =>
@@ -934,7 +925,7 @@ const App: Component = () => {
                                 }
                             />
                             <input
-                                class={styles.SelectSpaces}
+                                
                                 value={transformTemplate()}
                                 placeholder="Template"
                                 onchange={(ev) =>
@@ -943,23 +934,22 @@ const App: Component = () => {
                             />
                         </div>
                     </div>
-                    <div class={styles.ModalButtonBar}>
+                    <div>
                         <button
                             type="button"
-                            class={styles.TextButton}
                             onclick={() => transformModal.close()}
                         >
                             Cancel
                         </button>
                         <div style={{ 'flex-grow': 1 }}></div>
-                        <button class={styles.Button} disabled={false}>
+                        <button  disabled={false}>
                             Transform
                         </button>
                     </div>
                 </form>
             </dialog>
             <Toaster
-                toastOptions={{ className: styles.Toaster }}
+                toastOptions={{ className: "styles.Toaster" }}
                 containerStyle={{ 'margin-top': '60px' }}
             />
             <datalist id="available-namespaces">
