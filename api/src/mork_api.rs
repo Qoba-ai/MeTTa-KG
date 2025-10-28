@@ -1,6 +1,7 @@
 use reqwest::{Client, Method};
 use rocket::http::Status;
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 use std::env;
 use std::path::PathBuf;
 
@@ -13,56 +14,79 @@ pub enum ExportFormat {
     Raw,
 }
 
-pub trait TransformSetter: Sized {
-    fn transform_input_mut(&mut self) -> &mut TransformInput;
-
-    #[allow(dead_code)]
-    fn add_pattern(mut self, pattern: String) -> Self {
-        self.transform_input_mut().patterns.push(pattern);
-        self
-    }
-
-    #[allow(dead_code)]
-    fn add_template(mut self, template: String) -> Self {
-        self.transform_input_mut().templates.push(template);
-        self
-    }
-
-    fn patterns(mut self, patterns: Vec<String>) -> Self {
-        self.transform_input_mut().patterns = patterns;
-        self
-    }
-
-    fn templates(mut self, templates: Vec<String>) -> Self {
-        self.transform_input_mut().templates = templates;
-        self
-    }
-
-    fn space(mut self, space: PathBuf) -> Self {
-        self.transform_input_mut().space = space;
-        self
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone)]
-pub struct TransformInput {
-    pub space: PathBuf,
-    pub patterns: Vec<String>,
+pub struct TransformDetails {
+    /// the sub space as per playground convetions. ie. (/ ...)
+    pub patterns: Vec<String>, // A sub space
     pub templates: Vec<String>,
 }
 
-impl Default for TransformInput {
+impl Default for TransformDetails {
     fn default() -> Self {
-        TransformInput {
-            space: PathBuf::from("/"),
+        TransformDetails {
             patterns: vec![String::from("$x")],
             templates: vec![String::from("$x")],
         }
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Namespace {
+    path: Vec<String>,
+}
+
+impl Namespace {
+    pub fn new() -> Self {
+        Namespace { path: vec![] }
+    }
+
+    pub fn from_path_string(path_str: &str) -> Self {
+        let components: Vec<String> = path_str
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
+        Namespace { path: components }
+    }
+
+    fn current_name(&self) -> String {
+        self.path
+            .last()
+            .cloned()
+            .unwrap_or_else(|| "root".to_string())
+    }
+
+    fn data_tag(&self) -> String {
+        format!("{}a727d4f9-836a-4e4c-9480", self.current_name())
+    }
+
+    pub fn with_namespace(&self, value: &str) -> String {
+        let mut result = value.to_string();
+
+        result = format!("({} {})", self.data_tag(), result);
+
+        for name in self.path.iter().rev() {
+            result = format!("({name} {result})");
+        }
+
+        result
+    }
+}
+
+impl From<PathBuf> for Namespace {
+    fn from(path: PathBuf) -> Self {
+        Namespace::from_path_string(&path.to_string_lossy())
+    }
+}
+
+impl Default for Namespace {
+    fn default() -> Self {
+        Namespace::new()
+    }
+}
+
 #[allow(dead_code)]
-impl TransformInput {
+impl TransformDetails {
     pub fn new() -> Self {
         Default::default()
     }
@@ -76,38 +100,6 @@ impl TransformInput {
         self.templates = templates;
         self
     }
-
-    pub fn space(mut self, space: PathBuf) -> Self {
-        self.space = space;
-        self
-    }
-
-    pub fn generate_code(&self) -> String {
-        format!(
-            "(transform {0} {1})",
-            self.patterns_to_str(),
-            self.templates_to_str()
-        )
-    }
-
-    fn patterns_to_str(&self) -> String {
-        self.multi_input_to_str(&self.patterns)
-    }
-
-    fn templates_to_str(&self) -> String {
-        self.multi_input_to_str(&self.templates)
-    }
-
-    // converts a Vec<String> to a String with format "(, (0) (1) (2))"
-    fn multi_input_to_str(&self, inp: &Vec<String>) -> String {
-        format!(
-            "(, {})",
-            inp.iter()
-                .map(|i| format!("({} ({}))", self.space.to_str().unwrap_or("/"), i))
-                .collect::<Vec<String>>()
-                .join(" ")
-        )
-    }
 }
 
 pub struct MorkApiClient {
@@ -115,12 +107,24 @@ pub struct MorkApiClient {
     client: Client,
 }
 
+impl Default for MorkApiClient {
+    fn default() -> Self {
+        Self {
+            base_url: "http://localhost:8001".to_string(), // According to Dockerfile.mork
+            client: Client::new(),
+        }
+    }
+}
+
 impl MorkApiClient {
     pub fn new() -> Self {
-        let mork_url = env::var("METTA_KG_MORK_URL").expect("METTA_KG_MORK_URL must be set");
-        Self {
-            base_url: mork_url,
-            client: Client::new(),
+        if let Ok(mork_url) = env::var("METTA_KG_MORK_URL") {
+            Self {
+                base_url: mork_url,
+                client: Client::new(),
+            }
+        } else {
+            Self::default()
         }
     }
 
@@ -128,7 +132,18 @@ impl MorkApiClient {
         let url = format!("{}{}", self.base_url, request.path());
         let mut http_request = self.client.request(request.method(), &url);
 
-        if let Some(body) = request.body() {
+        if request.path().starts_with("/upload/") || request.path() == "/transform" {
+            if let Some(body) = request.body() {
+                if let Some(body_str) = (&body as &dyn Any).downcast_ref::<String>() {
+                    http_request = http_request
+                        .header("Content-Type", "text/plain")
+                        .body(body_str.clone());
+                } else {
+                    eprintln!("Upload endpoint called with non-string body type");
+                    return Err(Status::InternalServerError);
+                }
+            }
+        } else if let Some(body) = request.body() {
             http_request = http_request.json(&body);
         }
 
@@ -137,12 +152,12 @@ impl MorkApiClient {
             Ok(resp) => match resp.text().await {
                 Ok(text) => Ok(text),
                 Err(e) => {
-                    eprintln!("Error reading Mork API response text: {}", e);
+                    eprintln!("Error reading Mork API response text: {e}");
                     Err(Status::InternalServerError)
                 }
             },
             Err(e) => {
-                eprintln!("Error sending request to Mork API: {}", e);
+                eprintln!("Error sending request to Mork API: {e}");
                 Err(Status::InternalServerError)
             }
         }
@@ -150,7 +165,7 @@ impl MorkApiClient {
 }
 
 pub trait Request {
-    type Body: Serialize;
+    type Body: Serialize + Any;
     fn method(&self) -> Method;
     fn path(&self) -> String;
     fn body(&self) -> Option<Self::Body> {
@@ -161,75 +176,96 @@ pub trait Request {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct TransformRequest {
-    transform_input: TransformInput,
-}
-
-impl Default for TransformRequest {
-    fn default() -> Self {
-        TransformRequest {
-            transform_input: TransformInput::default(),
-        }
-    }
+    namespace: Namespace,
+    transform_input: TransformDetails,
 }
 
 impl TransformRequest {
     pub fn new() -> Self {
         Default::default()
     }
-}
 
-impl TransformSetter for TransformRequest {
-    fn transform_input_mut(&mut self) -> &mut TransformInput {
-        &mut self.transform_input
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
+    }
+
+    pub fn transform_input(mut self, inp: TransformDetails) -> Self {
+        self.transform_input = inp;
+        self
+    }
+
+    fn multi_patterns(&self) -> String {
+        format!(
+            "(, {})",
+            self.transform_input
+                .patterns
+                .iter()
+                .map(|pattern| { self.namespace.with_namespace(pattern) })
+                .collect::<Vec<String>>()
+                .join(" ")
+        )
+    }
+
+    fn multi_templates(&self) -> String {
+        format!(
+            "(, {})",
+            self.transform_input
+                .templates
+                .iter()
+                .map(|pattern| { self.namespace.with_namespace(pattern) })
+                .collect::<Vec<String>>()
+                .join(" ")
+        )
+    }
+
+    pub fn transform_code(&self) -> String {
+        format!(
+            "(transform {} {})",
+            self.multi_patterns(),
+            self.multi_templates()
+        )
     }
 }
 
 impl Request for TransformRequest {
-    type Body = ();
+    type Body = String;
 
     fn method(&self) -> Method {
         Method::POST
     }
 
     fn path(&self) -> String {
-        format!("/transform/{}/", &self.transform_input.generate_code())
+        "/transform".to_string()
     }
 
     fn body(&self) -> Option<Self::Body> {
-        Some(())
+        Some(self.transform_code())
     }
 }
 
+#[derive(Default)]
 pub struct ImportRequest {
-    transform_input: TransformInput,
+    namespace: Namespace,
+    transform_input: TransformDetails,
     uri: String,
-}
-
-impl Default for ImportRequest {
-    fn default() -> Self {
-        ImportRequest {
-            transform_input: TransformInput::default(),
-            uri: String::from(""),
-        }
-    }
 }
 
 impl ImportRequest {
     pub fn new() -> Self {
-        Default::default()
+        Self::default()
+    }
+
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
     }
 
     pub fn uri(mut self, uri: String) -> Self {
         self.uri = uri;
         self
-    }
-}
-
-impl TransformSetter for ImportRequest {
-    fn transform_input_mut(&mut self) -> &mut TransformInput {
-        &mut self.transform_input
     }
 }
 
@@ -243,27 +279,29 @@ impl Request for ImportRequest {
     fn path(&self) -> String {
         format!(
             "/import/{}/{}/?uri={}",
-            self.transform_input
-                .patterns
-                .first()
-                .unwrap_or(&String::from("&x")),
-            self.transform_input
-                .templates
-                .first()
-                .unwrap_or(&String::from("&x")),
+            urlencoding::encode("$x"),
+            urlencoding::encode(
+                &self.namespace.with_namespace(
+                    self.transform_input
+                        .templates
+                        .first()
+                        .unwrap_or(&"$x".to_string())
+                )
+            ),
             self.uri
         )
     }
 
     fn body(&self) -> Option<Self::Body> {
-        Some(())
+        None
     }
 }
 
 #[derive(Default)]
 #[allow(dead_code)]
 pub struct ReadRequest {
-    transform_input: TransformInput,
+    namespace: Namespace,
+    transform_input: TransformDetails,
     export_url: Option<String>,
     format: Option<ExportFormat>,
 }
@@ -272,11 +310,10 @@ impl ReadRequest {
     pub fn new() -> Self {
         Default::default()
     }
-}
 
-impl TransformSetter for ReadRequest {
-    fn transform_input_mut(&mut self) -> &mut TransformInput {
-        &mut self.transform_input
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
     }
 }
 
@@ -288,31 +325,238 @@ impl Request for ReadRequest {
     }
 
     fn path(&self) -> String {
-        return if self.transform_input.space.components().count() == 0 {
-            format!(
-                "/export/{0}/{1}/",
-                self.transform_input
-                    .patterns
-                    .first()
-                    .unwrap_or(&String::from("&x")),
-                self.transform_input
-                    .templates
-                    .first()
-                    .unwrap_or(&String::from("&x")),
-            )
-        } else {
-            format!(
-                "/export/({0} {1})/({0} {2})/",
-                self.transform_input.space.to_str().unwrap_or("/"),
-                self.transform_input
-                    .patterns
-                    .first()
-                    .unwrap_or(&String::from("&x")),
+        let path = format!(
+            "/export/{}/{}",
+            urlencoding::encode(
+                &self.namespace.with_namespace(
+                    self.transform_input
+                        .patterns
+                        .first()
+                        .unwrap_or(&String::from("$x"))
+                )
+            ),
+            urlencoding::encode(
                 self.transform_input
                     .templates
                     .first()
-                    .unwrap_or(&String::from("&x")),
+                    .unwrap_or(&String::from("$x"))
             )
-        };
+        );
+        path
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct ExploreRequest {
+    namespace: Namespace,
+    pattern: String,
+    token: String,
+}
+
+impl ExploreRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
+    }
+
+    pub fn pattern(mut self, pattern: String) -> Self {
+        self.pattern = pattern;
+        self
+    }
+
+    pub fn token(mut self, token: String) -> Self {
+        self.token = token;
+        self
+    }
+}
+
+impl Request for ExploreRequest {
+    type Body = ();
+
+    fn method(&self) -> Method {
+        Method::GET
+    }
+
+    fn path(&self) -> String {
+        format!(
+            "/explore/{}/{}/",
+            urlencoding::encode(&self.namespace.with_namespace(&self.pattern)),
+            self.token
+        )
+    }
+}
+
+#[derive(Default)]
+pub struct UploadRequest {
+    namespace: Namespace,
+    pattern: String,
+    template: String,
+    data: String,
+}
+
+impl UploadRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
+    }
+
+    pub fn pattern(mut self, pattern: String) -> Self {
+        self.pattern = pattern;
+        self
+    }
+
+    pub fn template(mut self, template: String) -> Self {
+        self.template = template;
+        self
+    }
+
+    pub fn data(mut self, data: String) -> Self {
+        self.data = data;
+        self
+    }
+}
+
+impl Request for UploadRequest {
+    type Body = String;
+
+    fn method(&self) -> Method {
+        Method::POST
+    }
+
+    fn path(&self) -> String {
+        format!(
+            "/upload/{}/{}",
+            urlencoding::encode(&self.pattern),
+            urlencoding::encode(&self.namespace.with_namespace(&self.template))
+        )
+    }
+    fn body(&self) -> Option<Self::Body> {
+        Some(self.data.clone())
+    }
+}
+
+#[derive(Default)]
+pub struct ExportRequest {
+    namespace: Namespace,
+    pattern: String,
+    template: String,
+    format: Option<ExportFormat>,
+    max_write: Option<usize>,
+}
+
+impl ExportRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
+    }
+
+    pub fn pattern(mut self, pattern: String) -> Self {
+        self.pattern = pattern;
+        self
+    }
+
+    pub fn template(mut self, template: String) -> Self {
+        self.template = template;
+        self
+    }
+
+    pub fn format(mut self, format: ExportFormat) -> Self {
+        self.format = Some(format);
+        self
+    }
+}
+
+impl Request for ExportRequest {
+    type Body = ();
+
+    fn method(&self) -> Method {
+        Method::GET
+    }
+
+    fn path(&self) -> String {
+        let mut path = format!(
+            "/export/{}/{}",
+            urlencoding::encode(&self.namespace.with_namespace(&self.pattern)),
+            urlencoding::encode(&self.template)
+        );
+
+        let mut query_params = Vec::new();
+
+        if let Some(format) = &self.format {
+            let format_str = match format {
+                ExportFormat::Metta => "metta",
+                ExportFormat::Json => "json",
+                ExportFormat::Csv => "csv",
+                ExportFormat::Raw => "raw",
+            };
+            query_params.push(format!("format={format_str}"));
+        }
+
+        if let Some(max_write) = self.max_write {
+            query_params.push(format!("max_write={max_write}"));
+        }
+
+        if !query_params.is_empty() {
+            path.push_str("/?");
+            path.push_str(&query_params.join("&"));
+        }
+
+        path
+    }
+
+    fn body(&self) -> Option<Self::Body> {
+        None
+    }
+}
+
+#[derive(Default)]
+pub struct ClearRequest {
+    namespace: Namespace,
+    expr: String,
+}
+
+impl ClearRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
+    }
+
+    pub fn expr(mut self, expr: String) -> Self {
+        self.expr = expr;
+        self
+    }
+}
+
+impl Request for ClearRequest {
+    type Body = ();
+
+    fn method(&self) -> Method {
+        Method::GET
+    }
+
+    fn path(&self) -> String {
+        let expr_to_use = self.namespace.with_namespace(&self.expr);
+
+        format!("/clear/{}", urlencoding::encode(&expr_to_use))
+    }
+
+    fn body(&self) -> Option<Self::Body> {
+        None
     }
 }
