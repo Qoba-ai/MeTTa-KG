@@ -5,11 +5,13 @@ use rocket::http::{Header, Status};
 use rocket::local::asynchronous::Client;
 use serial_test::serial;
 
-use crate::integrations::common;
+#[path = "common.rs"]
+mod common;
+// use crate::common;
 
 #[tokio::test]
 #[serial]
-async fn test_upload_success() {
+async fn test_clear_success() {
     if !common::is_database_running() {
         eprintln!("Warning: Database not running, skipping test");
         return;
@@ -19,11 +21,11 @@ async fn test_upload_success() {
 
     let token = common::create_test_token("/test/", true, true);
 
-    // Mock upload request
+    // Mock clear request
     server.mock(|when, then| {
-        when.method(POST)
-            .path_matches(Regex::new(r"/upload/.*").unwrap());
-        then.status(200).body("Upload successful");
+        when.method(GET)
+            .path_matches(Regex::new(r"/clear/.*").unwrap());
+        then.status(200).body("Clear successful");
     });
 
     let client = Client::tracked(rocket())
@@ -31,15 +33,14 @@ async fn test_upload_success() {
         .expect("valid rocket instance");
 
     let response = client
-        .post("/spaces/upload/test/space")
+        .post("/spaces/clear/test/space?expr=")
         .header(Header::new("authorization", token.code.clone()))
-        .body("(test atom)")
         .dispatch()
         .await;
 
     assert_eq!(response.status(), Status::Ok);
     let body = response.into_string().await.expect("response body");
-    assert_eq!(body, "\"Upload successful\"");
+    assert_eq!(body, "true");
 
     common::teardown_database();
 }
@@ -62,9 +63,8 @@ async fn test_non_existent_namespace() {
 
     // Path does not start with /test/
     let response = client
-        .post("/spaces/upload/other/space")
+        .post("/spaces/clear/other/space?expr=$x")
         .header(Header::new("authorization", token.code.clone()))
-        .body("(test atom)")
         .dispatch()
         .await;
 
@@ -85,11 +85,11 @@ async fn test_existing_empty_namespace() {
 
     let token = common::create_test_token("/test/", true, true);
 
-    // Mock upload request
+    // Mock clear request
     server.mock(|when, then| {
-        when.method(POST)
-            .path_matches(Regex::new(r"/upload/.*").unwrap());
-        then.status(200).body("Upload successful");
+        when.method(GET)
+            .path_matches(Regex::new(r"/clear/.*").unwrap());
+        then.status(200).body("Clear successful");
     });
 
     let client = Client::tracked(rocket())
@@ -97,15 +97,14 @@ async fn test_existing_empty_namespace() {
         .expect("valid rocket instance");
 
     let response = client
-        .post("/spaces/upload/test/space")
+        .post("/spaces/clear/test/space?expr=$x")
         .header(Header::new("authorization", token.code.clone()))
-        .body("(test atom)")
         .dispatch()
         .await;
 
     assert_eq!(response.status(), Status::Ok);
     let body = response.into_string().await.expect("response body");
-    assert_eq!(body, "\"Upload successful\"");
+    assert_eq!(body, "true");
 
     common::teardown_database();
 }
@@ -122,11 +121,11 @@ async fn test_non_empty_namespace() {
 
     let token = common::create_test_token("/test/", true, true);
 
-    // Mock upload request
+    // Mock clear request
     server.mock(|when, then| {
-        when.method(POST)
-            .path_matches(Regex::new(r"/upload/.*").unwrap());
-        then.status(200).body("Upload successful");
+        when.method(GET)
+            .path_matches(Regex::new(r"/clear/.*").unwrap());
+        then.status(200).body("Clear successful");
     });
 
     let client = Client::tracked(rocket())
@@ -134,15 +133,14 @@ async fn test_non_empty_namespace() {
         .expect("valid rocket instance");
 
     let response = client
-        .post("/spaces/upload/test/space")
+        .post("/spaces/clear/test/space?expr=$x")
         .header(Header::new("authorization", token.code.clone()))
-        .body("(test atom)")
         .dispatch()
         .await;
 
     assert_eq!(response.status(), Status::Ok);
     let body = response.into_string().await.expect("response body");
-    assert_eq!(body, "\"Upload successful\"");
+    assert_eq!(body, "true");
 
     common::teardown_database();
 }
@@ -161,29 +159,27 @@ async fn test_different_namespaces() {
     let token2 = common::create_test_token("/ns2/", true, true);
 
     server.mock(|when, then| {
-        when.method(POST)
-            .path_matches(Regex::new(r"/upload/.*").unwrap());
-        then.status(200).body("Upload successful");
+        when.method(GET)
+            .path_matches(Regex::new(r"/clear/.*").unwrap());
+        then.status(200).body("Clear successful");
     });
 
     let client = Client::tracked(rocket())
         .await
         .expect("valid rocket instance");
 
-    // Upload to ns1
+    // Clear in ns1
     let response1 = client
-        .post("/spaces/upload/ns1/space")
+        .post("/spaces/clear/ns1/space?expr=$x")
         .header(Header::new("authorization", token1.code.clone()))
-        .body("(test atom)")
         .dispatch()
         .await;
     assert_eq!(response1.status(), Status::Ok);
 
-    // Upload to ns2
+    // Clear in ns2
     let response2 = client
-        .post("/spaces/upload/ns2/space")
+        .post("/spaces/clear/ns2/space?expr=$x")
         .header(Header::new("authorization", token2.code.clone()))
-        .body("(test atom)")
         .dispatch()
         .await;
     assert_eq!(response2.status(), Status::Ok);
@@ -209,9 +205,8 @@ async fn test_namespace_mismatch() {
 
     // Path does not start with /test/
     let response = client
-        .post("/spaces/upload/other/space")
+        .post("/spaces/clear/other/space?expr=$x")
         .header(Header::new("authorization", token.code.clone()))
-        .body("(test atom)")
         .dispatch()
         .await;
 

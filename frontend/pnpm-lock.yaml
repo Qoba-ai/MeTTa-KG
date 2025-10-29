@@ -1,8 +1,8 @@
 lockfileVersion: "9.0"
 
 settings:
-    autoInstallPeers: true
-    excludeLinksFromLockfile: false
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
 
 importers:
   .:
@@ -3407,16 +3407,16 @@ packages:
         optional: true
 
     /@esbuild/android-arm@0.19.11:
-        resolution:
-            {
-                integrity: sha512-5OVapq0ClabvKvQ58Bws8+wkLCV+Rxg7tUVbo9xu034Nm536QTII4YzhaFriQ7rMrorfnFKUsArD2lqKbFY4vw==,
-            }
-        engines: { node: '>=12' }
-        cpu: [arm]
-        os: [android]
-        requiresBuild: true
-        dev: true
-        optional: true
+      resolution:
+        {
+          integrity: sha512-5OVapq0ClabvKvQ58Bws8+wkLCV+Rxg7tUVbo9xu034Nm536QTII4YzhaFriQ7rMrorfnFKUsArD2lqKbFY4vw==,
+        }
+      engines: { node: ">=12" }
+      cpu: [arm]
+      os: [android]
+      requiresBuild: true
+      dev: true
+      optional: true
 
   solid-js@1.9.7:
     resolution:

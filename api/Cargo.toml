@@ -29,3 +29,4 @@ serial_test = "3.0"
 
 [features]
 integration-tests = []
+all-features = ["integration-tests"]

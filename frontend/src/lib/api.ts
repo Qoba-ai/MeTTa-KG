@@ -223,7 +223,7 @@ export const uploadTextToSpace = (
 ): Promise<string> => {
   return request<string>(`/spaces/upload${path}`, {
     method: "POST",
-    headers: { "Content-Type": "text/plain" },
+    headers: { "Content-Type": "application/json" },
     body: data,
   });
 };
