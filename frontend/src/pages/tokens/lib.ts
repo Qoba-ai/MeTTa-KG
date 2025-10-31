@@ -7,7 +7,7 @@ import {
 } from "~/lib/api";
 import { Token } from "~/lib/types";
 import { showToast } from "~/components/ui/Toast";
-import { rootToken } from "~/lib/state";
+import { rootToken, setRootToken } from "~/lib/state";
 
 export enum SortableColumns {
   TIMESTAMP,
@@ -49,11 +49,23 @@ export const [tokens, { mutate: mutateTokens, refetch: refetchTokens }] =
         });
         return fetchedTokens;
       } catch (e) {
-        showToast({
-          title: "Error",
-          description: `Failed to fetch tokens. \n${e}`,
-          variant: "destructive",
-        });
+        if (e instanceof Error && e.message.includes("Unauthorized")) {
+          setRootToken(null);
+          localStorage.removeItem("rootToken");
+
+          showToast({
+            title: "Authentication Failed",
+            description:
+              "Invalid or expired token. Please enter a valid root token.",
+            variant: "destructive",
+          });
+        } else {
+          showToast({
+            title: "Error",
+            description: `Failed to fetch tokens. ${e instanceof Error ? e.message : String(e)}`,
+            variant: "destructive",
+          });
+        }
         return [];
       }
     },
