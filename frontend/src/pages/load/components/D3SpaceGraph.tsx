@@ -258,7 +258,7 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
     nodeEnter
       .append("circle")
       .attr("class", "node-icon")
-      .attr("cx", 14)
+      .attr("cx", 11)
       .attr("cy", 0)
       .attr("r", 3)
       .style("fill", "hsl(var(--muted-foreground))")
