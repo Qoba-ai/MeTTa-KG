@@ -84,20 +84,10 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
   }
 
   const margin = { top: 20, right: 40, bottom: 20, left: 40 };
-  const nodeHeight = 36;
+  const nodeHeight = 24;
   const nodeWidth = 280;
   const duration = 350;
-  const indentSize = 28;
-
-  const connector = (link: d3.HierarchyPointLink<D3Node>) => {
-    const source = link.source;
-    const target = link.target;
-    const midY = source.y + indentSize / 2;
-    return `M${source.y + 20},${source.x}
-            L${midY},${source.x}
-            L${midY},${target.x}
-            L${target.y},${target.x}`;
-  };
+  const indentSize = 0;
 
   const isExpandable = (d: D3Node) => {
     if (d._isLeaf) return false;
@@ -153,8 +143,6 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       n.x = idx * nodeHeight;
       n.y = n.depth * indentSize;
     });
-
-    const links = root.links();
 
     const node = g
       .selectAll<SVGGElement, D3Node>("g.node")
@@ -221,18 +209,6 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .style("stroke", "transparent")
       .style("stroke-width", "2px");
 
-    // Connection line to parent
-    nodeEnter
-      .append("line")
-      .attr("class", "parent-line")
-      .attr("x1", 0)
-      .attr("y1", 0)
-      .attr("x2", -indentSize / 2)
-      .attr("y2", 0)
-      .style("stroke", "hsl(var(--muted-foreground))")
-      .style("stroke-width", "1.5px")
-      .style("opacity", (d: D3Node) => (d.depth === 0 ? 0 : 0.5));
-
     const toggleGroup = nodeEnter
       .append("g")
       .attr("class", "toggle-group")
@@ -244,10 +220,10 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .append("rect")
       .attr("class", "toggle-bg")
       .attr("x", 4)
-      .attr("y", -10)
-      .attr("width", 20)
-      .attr("height", 20)
-      .attr("rx", 4)
+      .attr("y", -6)
+      .attr("width", 14)
+      .attr("height", 14)
+      .attr("rx", 2)
       .style("fill", "hsl(var(--muted))")
       .style("stroke", "hsl(var(--border))")
       .style("stroke-width", "1px");
@@ -255,11 +231,11 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
     toggleGroup
       .append("text")
       .attr("class", "toggle-icon")
-      .attr("x", 14)
-      .attr("y", 0)
+      .attr("x", 11)
+      .attr("y", 1)
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "middle")
-      .style("font-size", "14px")
+      .style("font-size", "12px")
       .style("font-weight", "700")
       .style("fill", "hsl(var(--foreground))")
       .style("pointer-events", "none")
@@ -273,7 +249,7 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
     nodeEnter
       .append("circle")
       .attr("class", "node-icon")
-      .attr("cx", 14)
+      .attr("cx", 11)
       .attr("cy", 0)
       .attr("r", 3)
       .style("fill", "hsl(var(--muted-foreground))")
@@ -326,42 +302,7 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .attr("transform", `translate(${source.y},${source.x})`)
       .remove();
 
-    const link = g
-      .selectAll<SVGPathElement, d3.HierarchyLink<D3Node>>("path.link")
-      .data(links, (d: d3.HierarchyLink<D3Node>) => d.target.id);
-
-    link
-      .enter()
-      .insert("path", "g")
-      .attr("class", "link")
-      .style("fill", "none")
-      .style("stroke", "hsl(var(--muted-foreground))")
-      .style("stroke-width", "2px")
-      .style("opacity", 0)
-      .attr("d", () =>
-        connector({
-          source: { x: source.x0, y: source.y0 },
-          target: { x: source.x0, y: source.y0 },
-        } as d3.HierarchyPointLink<D3Node>)
-      )
-      .merge(link)
-      .transition()
-      .duration(duration)
-      .style("opacity", 0.5)
-      .attr("d", connector);
-
-    link
-      .exit()
-      .transition()
-      .duration(duration)
-      .style("opacity", 0)
-      .attr("d", () =>
-        connector({
-          source: { x: source.x, y: source.y },
-          target: { x: source.x, y: source.y },
-        } as d3.HierarchyPointLink<D3Node>)
-      )
-      .remove();
+    g.selectAll("path.link").remove();
 
     allNodes.forEach((d: D3Node) => {
       d.x0 = d.x;
