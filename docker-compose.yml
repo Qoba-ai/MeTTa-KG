@@ -47,7 +47,7 @@ services:
       context: .
       dockerfile: Dockerfile.mork
     ports:
-      - "8001:8001"
+      - "${MORK_SERVER_PORT}:${MORK_SERVER_PORT}"
     environment:
       MORK_SERVER_ADDR: ${MORK_SERVER_ADDR}
       MORK_SERVER_PORT: ${MORK_SERVER_PORT}
