@@ -10,58 +10,76 @@ interface ExpressionListProps {
   data: { nodes: SpaceNode[]; prefix: string[] };
   pattern: string;
   onNodeClick?: (node: SpaceNode) => void;
+  ref?: (api: {
+    expandAll: () => void;
+    collapseAll: () => void;
+    collapseToRoot: () => void; // Add collapseToRoot to the API
+  }) => void;
 }
 
 interface FlatNode {
   node: SpaceNode;
   id: string;
   depth: number;
-  parentId?: string;
+  // parentId is not used, so it can be removed.
 }
 
 export default function ExpressionList(props: ExpressionListProps) {
   let scrollRef: HTMLDivElement;
   
-  const [expandedNodes, setExpandedNodes] = createSignal<Set<string>>(new Set());
+  const [expandedNodes, setExpandedNodes] = createSignal<Set<string>>(new Set<string>());
   const [childrenMap, setChildrenMap] = createSignal<Map<string, SpaceNode[]>>(new Map());
-  const [loadingNodes, setLoadingNodes] = createSignal<Set<string>>(new Set());
+  // The loadingNodes signal is no longer needed.
+
+  const expandAll = () => {
+    const allExpandableIds = new Set<string>();
+    const children = childrenMap();
+    for (const [id, childNodes] of children.entries()) {
+      // Only expand nodes that have children
+      if (childNodes.length > 0) {
+        allExpandableIds.add(id);
+      }
+    }
+    setExpandedNodes(allExpandableIds);
+  };
+
+  const collapseAll = () => {
+    setExpandedNodes(new Set<string>());
+  };
+
+  // This function will collapse all nodes back to the root level.
+  const collapseToRoot = () => {
+    setExpandedNodes(new Set<string>());
+  };
+
+  // Expose the API via the ref prop
+  if (props.ref) {
+    props.ref({ expandAll, collapseAll, collapseToRoot });
+  }
 
   const getNodeId = (node: SpaceNode) =>
     node.remoteData.token ? Array.from(node.remoteData.token).join(',') : node.label;
   
   const isExpandable = (node: SpaceNode) => {
-    console.log('🔍 Checking expandable for:', node.label, {
-      hasToken: !!node.remoteData.token,
-      tokenLength: node.remoteData.token?.length,
-      tokenValues: node.remoteData.token ? Array.from(node.remoteData.token) : null,
-      hasExpr: !!node.remoteData.expr,
-      expr: node.remoteData.expr,
-      exprLength: node.remoteData.expr?.length,
-      exprTrimmed: node.remoteData.expr?.trim()
-    });
 
     // No token = not expandable
     if (!node.remoteData.token || node.remoteData.token.length === 0) {
-      console.log('❌ Not expandable: No token or empty token');
       return false;
     }
     
     // Token is [-1] = leaf marker, not expandable
     if (node.remoteData.token.length === 1 && node.remoteData.token[0] === -1) {
-      console.log('❌ Not expandable: Token is [-1] leaf marker');
       return false;
     }
     
     // Check if all values in token are -1
     const allMinusOne = Array.from(node.remoteData.token).every(val => val === -1);
     if (allMinusOne) {
-      console.log('❌ Not expandable: All token values are -1');
       return false;
     }
     
     // If has valid token (not -1), it's expandable even if it has expr
     // The expr is just metadata that gets displayed, doesn't prevent expansion
-    console.log('✅ IS EXPANDABLE! (has valid token)');
     return true;
   };
 
@@ -70,24 +88,18 @@ export default function ExpressionList(props: ExpressionListProps) {
     const result: FlatNode[] = [];
     const expanded = expandedNodes();
     const children = childrenMap();
-
-    console.log('🔄 [MEMO] Flattening tree. Expanded nodes:', Array.from(expanded));
-    console.log('🗂️ [MEMO] Children map keys:', Array.from(children.keys()));
-
     const visited = new Set<string>();
 
     const addNode = (node: SpaceNode, depth: number, path: string) => {
       if (visited.has(path)) {
-        console.warn(`⚠️ [MEMO] Skipping already visited path: ${path}`);
         return;
       }
       visited.add(path);
       
-      result.push({ node, id: path, depth, parentId: depth > 0 ? path.split('/').slice(0, -1).join('/') : undefined });
+      result.push({ node, id: path, depth });
 
       if (expanded.has(path) && children.has(path)) {
         const nodeChildren = children.get(path)!;
-        console.log(`    ✅ [MEMO] Adding ${nodeChildren.length} children for path "${path}"`);
         nodeChildren.forEach((child, index) => {
           const childPath = `${path}/${getNodeId(child)}#${index}`;
           addNode(child, depth + 1, childPath);
@@ -100,9 +112,6 @@ export default function ExpressionList(props: ExpressionListProps) {
       addNode(node, 0, rootPath);
     });
     
-    console.log('📋 [MEMO] Final flattened list has', result.length, 'nodes');
-    result.forEach((n, i) => console.log(`   [${i}] depth:${n.depth} ${n.node.label.substring(0, 50)}`));
-    
     return result;
   });
 
@@ -112,7 +121,7 @@ export default function ExpressionList(props: ExpressionListProps) {
       return flattenedNodes().length;
     },
     getScrollElement: () => scrollRef,
-    estimateSize: () => 48,
+    estimateSize: () => 36, // Reduced line height
     overscan: 10,
     getItemKey: (index) => flattenedNodes()[index]?.id ?? index,
   }));
@@ -121,17 +130,8 @@ export default function ExpressionList(props: ExpressionListProps) {
     const { node, id: nodePath } = flatNode;
     const expanded = expandedNodes();
     
-    console.log('🖱️ Node clicked:', {
-      label: node.label,
-      nodePath: nodePath,
-      isExpanded: expanded.has(nodePath),
-      hasLoadedChildren: childrenMap().has(nodePath),
-      isExpandable: isExpandable(node)
-    });
-    
     // If already expanded, collapse it
     if (expanded.has(nodePath)) {
-      console.log('📂 Collapsing node');
       const newExpanded = new Set(expanded);
       newExpanded.delete(nodePath);
       setExpandedNodes(newExpanded);
@@ -140,22 +140,19 @@ export default function ExpressionList(props: ExpressionListProps) {
 
     // If children already loaded, just expand
     if (childrenMap().has(nodePath)) {
-      console.log('📂 Expanding node with cached children, count:', childrenMap().get(nodePath)!.length);
       setExpandedNodes(new Set(expanded).add(nodePath));
       return;
     }
 
     // Check if node is expandable
     if (!isExpandable(node)) {
-      console.log('🚫 Node not expandable, calling onNodeClick');
       // Not expandable, trigger click handler if provided
       props.onNodeClick?.(node);
       return;
     }
 
     // Fetch children from API
-    console.log('🌐 Fetching children from API...');
-    setLoadingNodes(new Set(loadingNodes()).add(nodePath));
+    // The setLoadingNodes call is removed.
     
     try {
       const response = await exploreSpace(
@@ -164,32 +161,17 @@ export default function ExpressionList(props: ExpressionListProps) {
         node.remoteData.token
       );
       
-      console.log('📥 API response received:', response);
-      
       const parsed = JSON.parse(response as any);
-      console.log('📊 Parsed response:', parsed, 'Length:', parsed?.length);
       
       if (parsed && parsed.length > 0) {
         // Process the API response using your existing logic
         const processedData = initNodesFromApiResponse(parsed);
-        console.log('⚙️ Processed data:', {
-          nodeCount: processedData.nodes.length,
-          prefix: processedData.prefix,
-          nodes: processedData.nodes.map(n => ({
-            label: n.label,
-            hasToken: !!n.remoteData.token,
-            tokenLength: n.remoteData.token?.length,
-            hasExpr: !!n.remoteData.expr
-          }))
-        });
         
         if (processedData.nodes.length > 0) {
           // Store children using the unique path as the key
-          console.log(`✅ Storing ${processedData.nodes.length} children under path: "${nodePath}"`);
           setChildrenMap(new Map(childrenMap()).set(nodePath, processedData.nodes));
           setExpandedNodes(new Set(expanded).add(nodePath));
         } else {
-          console.log('⚠️ No valid children after processing - marking as leaf');
           // No valid children - it's a leaf node
           // Mark it by storing empty array so we don't try to fetch again
           setChildrenMap(new Map(childrenMap()).set(nodePath, []));
@@ -200,7 +182,6 @@ export default function ExpressionList(props: ExpressionListProps) {
           });
         }
       } else {
-        console.log('⚠️ Empty or null response - marking as leaf');
         // Empty response - it's a leaf node
         // Mark it by storing empty array
         setChildrenMap(new Map(childrenMap()).set(nodePath, []));
@@ -211,7 +192,6 @@ export default function ExpressionList(props: ExpressionListProps) {
         });
       }
     } catch (error) {
-      console.error('❌ Error expanding node:', error);
       if (error instanceof Error && error.message === "noRootToken") {
         showToast({
           title: "Token Not Set",
@@ -225,18 +205,13 @@ export default function ExpressionList(props: ExpressionListProps) {
           variant: "destructive",
         });
       }
-    } finally {
-      const loading = new Set(loadingNodes());
-      loading.delete(nodePath);
-      setLoadingNodes(loading);
-      console.log('🏁 Finished processing node click');
-    }
+    } 
   };
 
   return (
     <div
       ref={scrollRef!}
-      class="w-full h-full overflow-auto custom-scrollbar bg-card rounded-lg border border-border shadow-sm"
+      class="w-full h-full overflow-auto custom-scrollbar bg-card rounded-lg border border-border shadow-sm font-mono" // Use mono font for the whole container
     >
       <div
         style={{
@@ -250,7 +225,7 @@ export default function ExpressionList(props: ExpressionListProps) {
             const flatNode = flattenedNodes()[virtualItem.index];
             const { node, id: nodeId, depth } = flatNode;
             const isExpanded = expandedNodes().has(nodeId);
-            const isLoading = loadingNodes().has(nodeId);
+            // The isLoading constant is removed.
             const canExpand = isExpandable(node);
             const hasChildren = childrenMap().has(nodeId);
             const childCount = hasChildren ? childrenMap().get(nodeId)!.length : 0;
@@ -267,52 +242,51 @@ export default function ExpressionList(props: ExpressionListProps) {
                   width: "100%",
                   height: `${virtualItem.size}px`,
                   transform: `translateY(${virtualItem.start}px)`,
-                  
                 }}
-                class="flex items-center gap-2 px-4 py-2 hover:bg-accent cursor-pointer border-b border-border transition-colors"
+                // Use classList for dynamic classes, including zebra striping
+                classList={{
+                  "flex items-center gap-2 pr-4 hover:bg-green-800/40 cursor-pointer": true,
+                  "bg-muted/20": true, 
+                }}
                 onClick={() => toggleNode(flatNode)}
               >
-                {/* Toggle icon */}
-                <div class="flex-shrink-0 w-4 h-4 flex items-center justify-center">
-                  <Show when={isLoading}>
-                    <div class="w-3 h-3 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
-                  </Show>
-                  <Show when={!isLoading && canExpand && !isLeaf}>
-                    <svg
-                      class="w-3 h-3 text-muted-foreground transition-transform"
-                      classList={{ "rotate-90": isExpanded }}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </Show>
-                  <Show when={!isLoading && (!canExpand || isLeaf)}>
-                    <div class="w-2 h-2 rounded-full bg-muted-foreground opacity-40" />
-                  </Show>
+                {/* Line Number */}
+                <div class="w-10 flex-shrink-0 text-right pr-3 text-xs text-muted-foreground/50 select-none">
+                  {virtualItem.index + 1}
                 </div>
 
-                {/* Node content */}
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium text-foreground truncate">
-                    {node.label}
+                {/* Indentation guides and content container */}
+                <div class="relative flex-1 flex items-center gap-2 min-w-0 h-full">
+                  {/* Toggle icon */}
+                  <div class="flex-shrink-0 w-4 h-4 flex items-center justify-center z-10 bg-transparent">
+                    {/* The Show component for the loading spinner is removed. */}
+                    <Show when={canExpand && !isLeaf}>
+                      <svg
+                        class="w-3 h-3 text-muted-foreground transition-transform"
+                        classList={{ "rotate-90": isExpanded }}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </Show>
+                    <Show when={!canExpand || isLeaf}>
+                      <div class="w-2 h-2 rounded-full bg-muted-foreground opacity-40" />
+                    </Show>
                   </div>
-                  <Show when={node.remoteData.expr && node.remoteData.expr.trim()}>
-                    <div class="text-xs text-muted-foreground font-mono truncate mt-0.5">
-                      {node.remoteData.expr}
-                    </div>
-                  </Show>
-                </div>
 
-                {/* Debug info */}
-                <div class="text-xs text-muted-foreground font-mono ml-2">
-                  {node.remoteData.token ? `[${Array.from(node.remoteData.token).slice(0, 5).join(',')}${node.remoteData.token.length > 5 ? '...' : ''}]` : 'no-token'}
+                  {/* Node content */}
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm text-foreground truncate"> {/* Reduced font size */}
+                      {node.label}
+                    </div>
+                  </div>
                 </div>
               </div>
             );
