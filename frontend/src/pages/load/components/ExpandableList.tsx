@@ -25,10 +25,10 @@ export default function ExpressionList(props: ExpressionListProps) {
   const [expandedNodes, setExpandedNodes] = createSignal<Set<string>>(new Set());
   const [childrenMap, setChildrenMap] = createSignal<Map<string, SpaceNode[]>>(new Map());
   const [loadingNodes, setLoadingNodes] = createSignal<Set<string>>(new Set());
-  const [refreshKey, setRefreshKey] = createSignal(0);
 
-const getNodeId = (node: SpaceNode) =>
-  node.remoteData.token ? Array.from(node.remoteData.token).join(',') : node.label;
+  const getNodeId = (node: SpaceNode) =>
+    node.remoteData.token ? Array.from(node.remoteData.token).join(',') : node.label;
+  
   const isExpandable = (node: SpaceNode) => {
     console.log('🔍 Checking expandable for:', node.label, {
       hasToken: !!node.remoteData.token,
@@ -63,55 +63,6 @@ const getNodeId = (node: SpaceNode) =>
     // The expr is just metadata that gets displayed, doesn't prevent expansion
     console.log('✅ IS EXPANDABLE! (has valid token)');
     return true;
-  };
-
-  // Flatten tree structure for virtualization
-  // This recalculates whenever expandedNodes or childrenMap changes
-  const getFlattenedNodes = (): FlatNode[] => {
-    const result: FlatNode[] = [];
-    const expanded = expandedNodes();
-    const children = childrenMap();
-
-    console.log('🔄 [NO-CACHE] Flattening tree. Expanded nodes:', Array.from(expanded));
-    console.log('🗂️ [NO-CACHE] Children map keys:', Array.from(children.keys()));
-
-    // Track visited nodes to prevent infinite recursion
-    const visited = new Set<string>();
-
-    // Recursively add node and its expanded children RIGHT AFTER the parent
-    const addNode = (node: SpaceNode, depth: number, path: string) => {
-      // Prevent infinite recursion - if we've seen this exact path, skip
-      if (visited.has(path)) {
-        console.warn(`⚠️ [NO-CACHE] Skipping already visited path: ${path}`);
-        return;
-      }
-      visited.add(path);
-      
-      // Add current node
-      result.push({ node, id: path, depth, parentId: depth > 0 ? path.split('/').slice(0, -1).join('/') : undefined });
-
-      // If expanded, immediately add children right after this node
-      if (expanded.has(path) && children.has(path)) {
-        const nodeChildren = children.get(path)!;
-        console.log(`    ✅ [NO-CACHE] Adding ${nodeChildren.length} children for path "${path}"`);
-        nodeChildren.forEach((child, index) => {
-          // Create unique path for child using getNodeId + index to handle duplicate labels
-          const childPath = `${path}/${getNodeId(child)}#${index}`;
-          addNode(child, depth + 1, childPath);
-        });
-      }
-    };
-
-    // Start from root nodes with unique paths using getNodeId
-    props.data.nodes.forEach((node, index) => {
-      const rootPath = `${getNodeId(node)}#${index}`;
-      addNode(node, 0, rootPath);
-    });
-    
-    console.log('📋 [NO-CACHE] Final flattened list has', result.length, 'nodes');
-    result.forEach((n, i) => console.log(`   [${i}] depth:${n.depth} ${n.node.label.substring(0, 50)}`));
-    
-    return result;
   };
 
   // Use createMemo to cache the flattened nodes
@@ -316,7 +267,7 @@ const getNodeId = (node: SpaceNode) =>
                   width: "100%",
                   height: `${virtualItem.size}px`,
                   transform: `translateY(${virtualItem.start}px)`,
-                  "padding-left": `${depth * 20}px`,
+                  
                 }}
                 class="flex items-center gap-2 px-4 py-2 hover:bg-accent cursor-pointer border-b border-border transition-colors"
                 onClick={() => toggleNode(flatNode)}
