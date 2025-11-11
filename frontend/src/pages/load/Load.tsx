@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import MettaEditor from "~/components/common/MettaEditor";
 import ZoomControls from "./components/ZoomControls";
 import MinimizeControls from "./components/MinimizeControls";
-import D3TreeGraph from "./components/D3SpaceGraph";
+import ExpressionList from "./components/ExpandableList";
 import Plus from "lucide-solid/icons/plus";
 import Minus from "lucide-solid/icons/minus";
 import { initNodesFromApiResponse } from "~/lib/space";
@@ -19,6 +19,8 @@ import {
   handleCollapseToRoot,
   setupGraphApi,
   handleToggleCard,
+  isIndented,
+  handleToggleIndent,
 } from "./lib";
 
 import "../../styles/variables.css";
@@ -69,15 +71,18 @@ const LoadPage = () => {
       </div>
 
       {/* Zoom Controls */}
-      <div class="absolute top-2.5 right-2.5 z-10">
+      <div class="absolute top-9 right-2.5 z-10">
         <ZoomControls
           onZoomIn={handleExpandAll}
           onZoomOut={handleCollapseToRoot}
         />
       </div>
       {/* Minimize Controls */}
-      <div class="absolute top-2.5 right-[74px] z-10">
-        <MinimizeControls onToggleCards={handleToggleCard} />
+      <div class="absolute top-9 right-[74px] z-10">
+        <MinimizeControls
+          onToggleCards={handleToggleCard}
+          onToggleIndent={handleToggleIndent}
+        />
       </div>
       {/* D3 Tree Canvas */}
       <div class="absolute inset-0 w-full h-full flex" style="z-index: 0;">
@@ -89,10 +94,11 @@ const LoadPage = () => {
             </div>
           }
         >
-          <D3TreeGraph
+          <ExpressionList
             data={initNodesFromApiResponse(subSpace()!)}
             pattern={pattern()}
             ref={setupGraphApi}
+            isIndented={isIndented()}
           />
         </Show>
       </div>
