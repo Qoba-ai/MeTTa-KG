@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  .error-line {
+    @apply bg-red-500/10 border-l-4 border-red-600 pl-1.5 -ml-2;
+  }
+
+  .warning-line {
+    @apply bg-amber-500/10 border-l-4 border-amber-500 pl-1.5 -ml-2;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-black/5 rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-black/20 rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-black/30;
+  }
+}

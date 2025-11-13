@@ -46,7 +46,7 @@ pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
 
 #[get("/token")]
 pub fn get(token: Token) -> Result<Json<Token>, Status> {
-    return Ok(Json(token));
+    Ok(Json(token))
 }
 
 #[post("/tokens", data = "<new_token>")]
