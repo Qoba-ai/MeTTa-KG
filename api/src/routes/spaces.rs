@@ -1,4 +1,5 @@
 use rocket::http::Status;
+use rocket::serde::json::serde_json;
 use rocket::serde::json::Json;
 use rocket::tokio::io::AsyncReadExt;
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,12 @@ pub struct Mm2Input {
 pub struct ExploreInput {
     pub pattern: String,
     pub token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExploreResponse {
+    pub token: Vec<i32>, // or Vec<u8> depending on how MORK serializes
+    pub expr: String,
 }
 
 /// Fetches the `<path..>` space content. Use cautously as it will load everything.
@@ -161,13 +168,49 @@ pub async fn explore(
         .pattern(explore_input.pattern.clone())
         .token(explore_input.token.clone());
 
-    println!("explore path: {:?}", request.path());
+    let response = mork_api_client
+        .dispatch(request)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
 
-    let response = mork_api_client.dispatch(request).await.map(Json);
-    println!("explore response: {response:?}");
-    response
+    // Parse the MORK response
+    let explore_results: Vec<ExploreResponse> =
+        serde_json::from_str(&response).map_err(|_| Status::InternalServerError)?;
+
+    let original_count = explore_results.len();
+    println!(
+        "Explore response - Total items before deduplication: {}",
+        original_count
+    );
+
+    // Deduplicate by expression content
+    let mut seen_exprs = std::collections::HashSet::new();
+    let deduplicated: Vec<ExploreResponse> = explore_results
+        .into_iter()
+        .filter(|item| {
+            let is_new = seen_exprs.insert(item.expr.clone());
+            if !is_new {
+                println!("Deduplication: Filtering duplicate expr: {}", item.expr);
+            }
+            is_new
+        })
+        .collect();
+
+    println!(
+        "Explore response - Total items after deduplication: {}",
+        deduplicated.len()
+    );
+    println!(
+        "Explore response - Removed {} duplicate(s)",
+        original_count - deduplicated.len()
+    );
+
+    // Serialize back to JSON
+    let json_response =
+        serde_json::to_string(&deduplicated).map_err(|_| Status::InternalServerError)?;
+
+    Ok(Json(json_response))
 }
-
 /// Performs an export operation on the `<path..>` space. Get the result that
 /// matches the `<pattern>` by incrementally traversing the resulting space.
 #[post("/spaces/export/<path..>", data = "<export_input>")]
