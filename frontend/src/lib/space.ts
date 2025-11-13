@@ -1,5 +1,6 @@
 import { ExploreDetail } from "~/lib/types";
 import { parseSExpression, serializeSExpr } from "./utils";
+import { formatedNamespace } from "~/lib/state";
 
 interface SpaceNode {
   id: string;
@@ -33,39 +34,89 @@ function initNodesFromApiResponse(
     expr: item.expr,
   }));
 
-  const tokens = processedData.map((item) => tokenToString(item.token));
-  const { prefix, labels } = extractLabels(processedData);
+  const currentNamespace = formatedNamespace();
+  const namespaceComponents = currentNamespace
+    .split("/")
+    .filter((part) => part.length > 0);
+
+  const currentName =
+    namespaceComponents[namespaceComponents.length - 1] || "root";
+  const dataTagPattern = `${currentName}a727d4f9-836a-4e4c-9480`;
+
+  const unwrappedData = processedData.map((item) => {
+    let expr = item.expr;
+
+    try {
+      const parsed = parseSExpression(expr);
+
+      if (parsed.type !== "list" || !parsed.children) {
+        return { ...item, expr };
+      }
+
+      let current = parsed;
+
+      // Unwrap namespace layers
+      for (const component of namespaceComponents) {
+        if (
+          current.type === "list" &&
+          Array.isArray(current.children) &&
+          current.children.length > 0 &&
+          current.children[0].type === "atom" &&
+          current.children[0].value === component
+        ) {
+          if (
+            current.children.length > 1 &&
+            current.children[1].type === "list"
+          ) {
+            current = current.children[1];
+          }
+        }
+      }
+
+      if (
+        current.children &&
+        current.type === "list" &&
+        current.children.length > 0 &&
+        current.children[0].type === "atom" &&
+        current.children[0].value === dataTagPattern
+      ) {
+        if (current.children.length > 1) {
+          if (current.children[1].type === "list") {
+            current = current.children[1];
+          } else {
+            const remainingChildren = current.children.slice(1);
+            expr = remainingChildren
+              .map((child) => serializeSExpr(child))
+              .join(" ");
+            return { ...item, expr };
+          }
+        }
+      }
+
+      expr = serializeSExpr(current);
+    } catch {
+      return { ...item, expr };
+    }
+
+    return { ...item, expr };
+  });
+
+  const tokens = unwrappedData.map((item) => tokenToString(item.token));
+  const { prefix, labels } = extractLabels(unwrappedData);
 
   const processedLabels = labels.map((item) => {
     if (!item) return null;
-
     if (typeof item === "string") {
       const cleaned = item.replace(/^["']|["']$/g, "");
-
-      try {
-        const expr = parseSExpression(cleaned);
-        if (expr.type === "list" && expr.children) {
-          if (expr.children.length === 0) {
-            return "()";
-          } else if (expr.children.length === 1) {
-            return "()";
-          } else if (
-            expr.children[0].type === "atom" &&
-            expr.children[0].value?.startsWith("root")
-          ) {
-            const newChildren = expr.children.slice(1);
-            return newChildren.map((child) => serializeSExpr(child)).join(" ");
-          } else {
-            return cleaned;
-          }
-        } else {
-          return "<malformed>";
+      if (cleaned.length > 50) {
+        const parts = cleaned.split("-");
+        if (parts.length > 1 && parts[0].length > 0) {
+          return parts[0] + "...";
         }
-      } catch {
-        return "<malformed>";
+        return cleaned.substring(0, 20) + "...";
       }
+      return cleaned;
     }
-
     return String(item);
   });
 
@@ -73,7 +124,7 @@ function initNodesFromApiResponse(
   for (let i = 0; i < tokens.length; i++) {
     const label = processedLabels[i];
     if (label !== null) {
-      nodes.push(initNode(tokens[i], label, processedData[i]));
+      nodes.push(initNode(tokens[i], label, unwrappedData[i]));
     }
   }
 
