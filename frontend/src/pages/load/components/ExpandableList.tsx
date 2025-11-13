@@ -1,4 +1,12 @@
-import { For, createSignal, Show, createMemo, onMount } from "solid-js";
+import {
+  For,
+  createSignal,
+  Show,
+  createMemo,
+  createEffect,
+  onMount,
+  on,
+} from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import type { ExploreResponse, SpaceNode } from "~/lib/space";
 import { exploreSpace } from "~/lib/api";
@@ -25,6 +33,14 @@ export default function ExpressionList(props: ExpressionListProps) {
   const [childrenMap, setChildrenMap] = createSignal<Map<string, SpaceNode[]>>(
     new Map()
   );
+
+  createEffect(
+    on(formatedNamespace, () => {
+      setExpandedNodes(new Set<string>());
+      setChildrenMap(new Map());
+    })
+  );
+
   const [cursorLine, setCursorLine] = createSignal<number>(0);
   const [isFocused, setIsFocused] = createSignal<boolean>(false);
 
