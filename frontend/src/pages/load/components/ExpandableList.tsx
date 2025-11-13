@@ -35,9 +35,16 @@ export default function ExpressionList(props: ExpressionListProps) {
   );
 
   createEffect(
-    on(formatedNamespace, () => {
+    on(formatedNamespace, async () => {
       setExpandedNodes(new Set<string>());
       setChildrenMap(new Map());
+      if (scrollRef) {
+        const viewportHeight = scrollRef.clientHeight;
+        const estimatedItemHeight = 24;
+        const targetCount = Math.ceil(viewportHeight / estimatedItemHeight);
+
+        await expandToFillViewport(targetCount);
+      }
     })
   );
 
@@ -202,9 +209,73 @@ export default function ExpressionList(props: ExpressionListProps) {
     });
   };
 
-  onMount(() => {
+  onMount(async () => {
     containerRef?.focus();
   });
+
+  const expandToFillViewport = async (targetCount: number) => {
+    let currentCount = flattenedNodes().length;
+    let attemptsWithoutProgress = 0;
+    const maxAttemptsWithoutProgress = 10; // Prevent infinite loops
+
+    while (
+      currentCount < targetCount &&
+      attemptsWithoutProgress < maxAttemptsWithoutProgress
+    ) {
+      // Get the first unexpanded node (depth-first)
+      const nodeToExpand = flattenedNodes().find(
+        (fn) => isExpandable(fn.node) && !expandedNodes().has(fn.id)
+      );
+
+      if (!nodeToExpand) {
+        // No more expandable nodes exist
+        break;
+      }
+
+      try {
+        const response = await exploreSpace(
+          formatedNamespace(),
+          props.pattern,
+          nodeToExpand.node.remoteData.token
+        );
+        const parsed = JSON.parse(response) as ExploreResponse[];
+
+        const newChildrenMap = new Map(childrenMap());
+        const newExpandedNodes = new Set(expandedNodes());
+
+        if (parsed?.length > 0) {
+          const processedData = initNodesFromApiResponse(parsed);
+          newChildrenMap.set(nodeToExpand.id, processedData.nodes);
+        } else {
+          // Mark as leaf (empty children)
+          newChildrenMap.set(nodeToExpand.id, []);
+        }
+        newExpandedNodes.add(nodeToExpand.id);
+
+        setChildrenMap(newChildrenMap);
+        setExpandedNodes(newExpandedNodes);
+
+        const newCount = flattenedNodes().length;
+
+        // Track progress
+        if (newCount === currentCount) {
+          // This was a leaf node, increment counter but continue
+          attemptsWithoutProgress++;
+        } else {
+          // Made progress, reset counter
+          attemptsWithoutProgress = 0;
+          currentCount = newCount;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      } catch {
+        const newExpandedNodes = new Set(expandedNodes());
+        newExpandedNodes.add(nodeToExpand.id);
+        setExpandedNodes(newExpandedNodes);
+        attemptsWithoutProgress++;
+      }
+    }
+  };
 
   return (
     <div
