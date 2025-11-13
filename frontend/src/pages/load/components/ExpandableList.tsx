@@ -128,7 +128,11 @@ export default function ExpressionList(props: ExpressionListProps) {
       const newExpanded = new Set(expanded);
       newExpanded.delete(nodePath);
       setExpandedNodes(newExpanded);
-
+      queueMicrotask(() => {
+        if (scrollRef) {
+          scrollRef.scrollTop = savedScrollTop;
+        }
+      });
       return;
     }
 
