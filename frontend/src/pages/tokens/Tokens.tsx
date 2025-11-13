@@ -187,10 +187,7 @@ export const TokensPage: Component = () => {
 
             <TokenTable
               tokens={filteredAndSortedTokens()}
-              sortState={{
-                column: sortColumn,
-                direction: sortDirection,
-              }}
+              sortState={{ column: sortColumn, direction: sortDirection }}
               onSort={handleSort}
               onSelectAll={handleSelectAll}
               onSelectToken={handleSelectToken}

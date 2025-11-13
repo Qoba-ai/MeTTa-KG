@@ -1,13 +1,8 @@
 import { onMount, onCleanup, createEffect } from "solid-js";
 import * as d3 from "d3";
 import type { SpaceNode } from "~/lib/space";
-import {
-  convertToD3TreeData,
-  initNodesFromApiResponse,
-  flattenNodes,
-} from "~/lib/space";
+import { convertToD3TreeData, initNodesFromApiResponse } from "~/lib/space";
 import { exploreSpace } from "~/lib/api";
-import parse from "s-expression";
 import { formatedNamespace } from "~/lib/state";
 import { showToast } from "~/components/ui/Toast";
 
@@ -89,20 +84,10 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
   }
 
   const margin = { top: 20, right: 40, bottom: 20, left: 40 };
-  const nodeHeight = 36;
+  const nodeHeight = 24;
   const nodeWidth = 280;
   const duration = 350;
-  const indentSize = 28;
-
-  const connector = (link: d3.HierarchyPointLink<D3Node>) => {
-    const source = link.source;
-    const target = link.target;
-    const midY = source.y + indentSize / 2;
-    return `M${source.y + 20},${source.x}
-            L${midY},${source.x}
-            L${midY},${target.x}
-            L${target.y},${target.x}`;
-  };
+  const indentSize = 0;
 
   const isExpandable = (d: D3Node) => {
     if (d._isLeaf) return false;
@@ -124,12 +109,8 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
     if (d.data.token && d.data.token.length > 0) return true;
 
     if (d.data.expr && d.data.expr.trim() !== "") {
-      try {
-        const flatNodes = flattenNodes(parse(d.data.expr));
-        return flatNodes.length > 1;
-      } catch {
-        return false;
-      }
+      // No parsing, expr is displayed as is, not expandable
+      return false;
     }
 
     return false;
@@ -162,8 +143,6 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       n.x = idx * nodeHeight;
       n.y = n.depth * indentSize;
     });
-
-    const links = root.links();
 
     const node = g
       .selectAll<SVGGElement, D3Node>("g.node")
@@ -230,18 +209,6 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .style("stroke", "transparent")
       .style("stroke-width", "2px");
 
-    // Connection line to parent
-    nodeEnter
-      .append("line")
-      .attr("class", "parent-line")
-      .attr("x1", 0)
-      .attr("y1", 0)
-      .attr("x2", -indentSize / 2)
-      .attr("y2", 0)
-      .style("stroke", "hsl(var(--muted-foreground))")
-      .style("stroke-width", "1.5px")
-      .style("opacity", (d: D3Node) => (d.depth === 0 ? 0 : 0.5));
-
     const toggleGroup = nodeEnter
       .append("g")
       .attr("class", "toggle-group")
@@ -253,10 +220,10 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .append("rect")
       .attr("class", "toggle-bg")
       .attr("x", 4)
-      .attr("y", -10)
-      .attr("width", 20)
-      .attr("height", 20)
-      .attr("rx", 4)
+      .attr("y", -6)
+      .attr("width", 14)
+      .attr("height", 14)
+      .attr("rx", 2)
       .style("fill", "hsl(var(--muted))")
       .style("stroke", "hsl(var(--border))")
       .style("stroke-width", "1px");
@@ -264,11 +231,11 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
     toggleGroup
       .append("text")
       .attr("class", "toggle-icon")
-      .attr("x", 14)
-      .attr("y", 0)
+      .attr("x", 11)
+      .attr("y", 1)
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "middle")
-      .style("font-size", "14px")
+      .style("font-size", "12px")
       .style("font-weight", "700")
       .style("fill", "hsl(var(--foreground))")
       .style("pointer-events", "none")
@@ -282,7 +249,7 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
     nodeEnter
       .append("circle")
       .attr("class", "node-icon")
-      .attr("cx", 14)
+      .attr("cx", 11)
       .attr("cy", 0)
       .attr("r", 3)
       .style("fill", "hsl(var(--muted-foreground))")
@@ -302,12 +269,7 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .style("fill", "hsl(var(--foreground))")
       .style("pointer-events", "none")
       .style("user-select", "none")
-      .text((d: D3Node) => {
-        const maxLength = 35;
-        return d.data.name.length > maxLength
-          ? d.data.name.substring(0, maxLength) + "..."
-          : d.data.name;
-      });
+      .text((d: D3Node) => d.data.name);
 
     nodeEnter.append("title").text((d: D3Node) => d.data.name);
 
@@ -340,42 +302,7 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
       .attr("transform", `translate(${source.y},${source.x})`)
       .remove();
 
-    const link = g
-      .selectAll<SVGPathElement, d3.HierarchyLink<D3Node>>("path.link")
-      .data(links, (d: d3.HierarchyLink<D3Node>) => d.target.id);
-
-    link
-      .enter()
-      .insert("path", "g")
-      .attr("class", "link")
-      .style("fill", "none")
-      .style("stroke", "hsl(var(--muted-foreground))")
-      .style("stroke-width", "2px")
-      .style("opacity", 0)
-      .attr("d", () =>
-        connector({
-          source: { x: source.x0, y: source.y0 },
-          target: { x: source.x0, y: source.y0 },
-        } as d3.HierarchyPointLink<D3Node>)
-      )
-      .merge(link)
-      .transition()
-      .duration(duration)
-      .style("opacity", 0.5)
-      .attr("d", connector);
-
-    link
-      .exit()
-      .transition()
-      .duration(duration)
-      .style("opacity", 0)
-      .attr("d", () =>
-        connector({
-          source: { x: source.x, y: source.y },
-          target: { x: source.x, y: source.y },
-        } as d3.HierarchyPointLink<D3Node>)
-      )
-      .remove();
+    g.selectAll("path.link").remove();
 
     allNodes.forEach((d: D3Node) => {
       d.x0 = d.x;
@@ -474,70 +401,9 @@ export default function D3TreeGraph(props: D3TreeGraphProps) {
         spaceNode.remoteData.expr &&
         spaceNode.remoteData.expr.trim() !== ""
       ) {
-        try {
-          const flatNodes = flattenNodes(parse(spaceNode.remoteData.expr));
-
-          let finalValue = null;
-
-          for (const node of flatNodes) {
-            if (
-              (node.startsWith('"') && node.endsWith('"')) ||
-              (node.startsWith("'") && node.endsWith("'"))
-            ) {
-              finalValue = node.slice(1, -1); // Remove quotes
-              break;
-            }
-          }
-
-          if (!finalValue && flatNodes.length > 0) {
-            const lastNode = flatNodes[flatNodes.length - 1];
-            if (lastNode && lastNode !== d.data.name) {
-              finalValue = lastNode;
-            }
-          }
-
-          if (
-            finalValue &&
-            (d.data.name === finalValue ||
-              d.data.name === `'${finalValue}'` ||
-              d.data.name === `"${finalValue}"`)
-          ) {
-            d.children = null;
-            d._children = null;
-            d._isLeaf = true;
-            update(d);
-            return;
-          }
-
-          if (finalValue && finalValue !== d.data.name) {
-            const childData = {
-              name: finalValue,
-              id: `${d.data.id}/value`,
-              token: Uint8Array.from([-1]),
-              expr: "",
-              isExpandable: false,
-              isFromBackend: false,
-            };
-
-            const childNode = d3.hierarchy(childData) as D3Node;
-            childNode.depth = d.depth + 1;
-            childNode.parent = d;
-            childNode.id = ++i;
-            childNode.x0 = d.x;
-            childNode.y0 = d.y;
-
-            d.children = [childNode];
-            update(d);
-          } else {
-            d.children = null;
-            d._children = null;
-            d._isLeaf = true;
-            update(d);
-          }
-        } catch {
-          d.children = null;
-          d._children = null;
-        }
+        // No parsing, expr is displayed as is, no expansion
+        d._isLeaf = true;
+        update(d);
       } else {
         d._isLeaf = true;
         d.children = null;

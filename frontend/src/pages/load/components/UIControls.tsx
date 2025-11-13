@@ -87,8 +87,7 @@ const UIControls: Component<UIControlsProps> = (props) => {
                   Animation (ms)
                 </label>
                 <span class="text-xs font-medium text-foreground">
-                  {layoutOptions().animationDuration || 1500}
-                  ms
+                  {layoutOptions().animationDuration || 1500}ms
                 </span>
               </div>
               <input

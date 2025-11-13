@@ -12,10 +12,7 @@ import X from "lucide-solid/icons/x";
 
 interface TokenTableProps {
   tokens: Token[];
-  sortState: {
-    column: () => SortableColumns;
-    direction: () => "asc" | "desc";
-  };
+  sortState: { column: () => SortableColumns; direction: () => "asc" | "desc" };
   onSort: (column: SortableColumns) => void;
   onSelectAll: (checked: boolean) => void;
   onSelectToken: (token: Token, checked: boolean) => void;
@@ -101,7 +98,7 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
                 </td>
                 <td class="p-3">
                   <div class="flex items-center gap-2 font-mono">
-                    <span>{token.code.substring(0, 8)}...</span>
+                    <span>{token.code}</span>
                     <Button
                       variant="ghost"
                       size="icon"

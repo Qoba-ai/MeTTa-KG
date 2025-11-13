@@ -1,5 +1,6 @@
 # frontend
 cd ./frontend
+pnpm prettier:check
 pnpm lint
 
 

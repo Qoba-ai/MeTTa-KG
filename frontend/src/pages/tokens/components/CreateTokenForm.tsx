@@ -254,10 +254,7 @@ export const CreateTokenForm: Component<CreateTokenFormProps> = (props) => {
             placeholder="e.g., Read-only access for team member"
             value={newToken().description}
             onInput={(e) =>
-              setNewToken((p) => ({
-                ...p,
-                description: e.currentTarget.value,
-              }))
+              setNewToken((p) => ({ ...p, description: e.currentTarget.value }))
             }
           />
         </TextField>
