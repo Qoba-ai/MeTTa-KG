@@ -3,6 +3,7 @@ import { createSignal, For } from "solid-js";
 import LoadPage from "../load/Load";
 import UploadPage from "../upload/Upload";
 import TransformPage from "../transform/Transform";
+import CompositionPage from "../composition/Composition";
 import ExportPage from "../export/Export";
 import TokensPage from "../tokens/Tokens";
 import ClearPage from "../clear/Clear";
@@ -45,6 +46,13 @@ const sidebarSections = [
         icon: RotateCcw,
         to: "/transform",
         component: TransformPage,
+      },
+      {
+        id: "composition",
+        label: "Composition",
+        icon: () => <span class="text-xl">∪</span>,
+        to: "/composition",
+        component: CompositionPage,
       },
       {
         id: "union",
