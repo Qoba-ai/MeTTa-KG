@@ -1,4 +1,12 @@
-import { Component, createSignal, Show, onCleanup, For, Index } from "solid-js";
+import {
+  Component,
+  createSignal,
+  Show,
+  onCleanup,
+  For,
+  Index,
+  createMemo,
+} from "solid-js";
 import { CommandCard } from "~/components/common/CommandCard";
 import { Button } from "~/components/ui/Button";
 import {
@@ -6,6 +14,7 @@ import {
   TextFieldTextArea,
   TextFieldLabel,
 } from "~/components/ui/TextField";
+import NameSpace from "~/pages/index/components/NameSpace";
 import { formatedNamespace } from "~/lib/state";
 import { isLoading, isPolling, executeTransform, stopPolling } from "./lib";
 
@@ -15,10 +24,15 @@ interface TransformInput {
 }
 
 const TransformPage: Component = () => {
-  const [transformInput, setTransformInput] = createSignal<TransformInput>({
-    patterns: ["$x"],
-    templates: ["$x"],
-  });
+  const [showGeneratedTransform, setShowGeneratedTransform] =
+    createSignal(false);
+  const [patterns, setPatterns] = createSignal<string[]>(["$x"]);
+  const [templates, setTemplates] = createSignal<string[]>(["$x"]);
+
+  const transformInput = createMemo(() => ({
+    patterns: patterns(),
+    templates: templates(),
+  }));
 
   onCleanup(stopPolling);
 
@@ -29,60 +43,45 @@ const TransformPage: Component = () => {
   };
 
   const handleTransform = () => {
-    const sExpr = buildTransformSExpr(
-      transformInput().patterns,
-      transformInput().templates
-    );
+    const sExpr = buildTransformSExpr(patterns(), templates());
     executeTransform(sExpr, formatedNamespace());
   };
 
   const addPattern = () => {
-    setTransformInput((prev) => ({
-      ...prev,
-      patterns: [...prev.patterns, ""],
-    }));
+    setPatterns((prev) => [...prev, ""]);
   };
 
   const removePattern = (index: number) => {
-    setTransformInput((prev) => ({
-      ...prev,
-      patterns: prev.patterns.filter((_, i) => i !== index),
-    }));
+    setPatterns((prev) => prev.filter((_, i) => i !== index));
   };
 
   const updatePattern = (index: number, value: string) => {
-    setTransformInput((prev) => ({
-      ...prev,
-      patterns: prev.patterns.map((p, i) => (i === index ? value : p)),
-    }));
+    setPatterns((prev) => {
+      const newPatterns = [...prev];
+      newPatterns[index] = value;
+      return newPatterns;
+    });
   };
 
   const addTemplate = () => {
-    setTransformInput((prev) => ({
-      ...prev,
-      templates: [...prev.templates, ""],
-    }));
+    setTemplates((prev) => [...prev, ""]);
   };
 
   const removeTemplate = (index: number) => {
-    setTransformInput((prev) => ({
-      ...prev,
-      templates: prev.templates.filter((_, i) => i !== index),
-    }));
+    setTemplates((prev) => prev.filter((_, i) => i !== index));
   };
 
   const updateTemplate = (index: number, value: string) => {
-    setTransformInput((prev) => ({
-      ...prev,
-      templates: prev.templates.map((t, i) => (i === index ? value : t)),
-    }));
+    setTemplates((prev) => {
+      const newTemplates = [...prev];
+      newTemplates[index] = value;
+      return newTemplates;
+    });
   };
 
   const canTransform = () => {
-    const input = transformInput();
     return (
-      input.patterns.some((p) => p.trim()) &&
-      input.templates.some((t) => t.trim())
+      patterns().some((p) => p.trim()) && templates().some((t) => t.trim())
     );
   };
 
@@ -93,112 +92,164 @@ const TransformPage: Component = () => {
         description="Apply templates to matched patterns. Add patterns and templates separately to create transform rules."
       >
         <div class="space-y-6">
-          {/* Patterns Section */}
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-foreground">Patterns</h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={addPattern}
-                class="text-xs"
-              >
-                Add Pattern
-              </Button>
-            </div>
-            <div class="space-y-2">
-              <For each={transformInput().patterns}>
-                {(pattern, index) => (
-                  <div class="flex gap-2">
-                    <TextField class="flex-1">
-                      <TextFieldLabel class="text-xs text-muted-foreground">
-                        Pattern {index() + 1}
-                      </TextFieldLabel>
-                      <TextFieldTextArea
-                        value={pattern}
-                        onInput={(e) =>
-                          updatePattern(index(), e.currentTarget.value)
-                        }
-                        placeholder="Enter pattern (e.g., $x, ($y $z))"
-                        class="min-h-[60px] text-sm font-mono"
-                      />
-                    </TextField>
-                    <Show when={transformInput().patterns.length > 1}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removePattern(index())}
-                        class="mt-6 text-destructive hover:text-destructive"
-                      >
-                        Remove
-                      </Button>
-                    </Show>
+          {/* Two-Column Layout */}
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column - Patterns */}
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-foreground">Patterns</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={addPattern}
+                  class="text-xs"
+                >
+                  Add Pattern
+                </Button>
+              </div>
+
+              {/* Namespace Selector for Patterns */}
+              <div class="p-3 bg-muted/50 rounded-md">
+                <div class="flex items-center gap-3">
+                  <span class="text-sm text-muted-foreground min-w-fit">
+                    Pattern Namespace:
+                  </span>
+                  <div class="flex-1">
+                    <NameSpace />
                   </div>
-                )}
-              </For>
+                </div>
+              </div>
+
+              {/* Pattern Inputs */}
+              <div class="space-y-2">
+                <For each={patterns()}>
+                  {(pattern, index) => (
+                    <div class="flex gap-2">
+                      <TextField class="flex-1">
+                        <TextFieldLabel class="text-sm text-muted-foreground">
+                          Pattern {index() + 1}
+                        </TextFieldLabel>
+                        <TextFieldTextArea
+                          value={pattern}
+                          onInput={(e) =>
+                            updatePattern(index(), e.currentTarget.value)
+                          }
+                          placeholder="Enter pattern (e.g., $x, ($y $z))"
+                          class="min-h-[60px] text-sm font-mono"
+                        />
+                      </TextField>
+                      <Show when={patterns().length > 1}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removePattern(index())}
+                          class="mt-6 text-destructive hover:text-destructive"
+                        >
+                          Remove
+                        </Button>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            {/* Right Column - Templates */}
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-foreground">Templates</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={addTemplate}
+                  class="text-xs"
+                >
+                  Add Template
+                </Button>
+              </div>
+
+              {/* Namespace Selector for Templates */}
+              <div class="p-3 bg-muted/50 rounded-md">
+                <div class="flex items-center gap-3">
+                  <span class="text-sm text-muted-foreground min-w-fit">
+                    Template Namespace:
+                  </span>
+                  <div class="flex-1">
+                    <NameSpace />
+                  </div>
+                </div>
+              </div>
+
+              {/* Template Inputs */}
+              <div class="space-y-2">
+                <For each={templates()}>
+                  {(template, index) => (
+                    <div class="flex gap-2">
+                      <TextField class="flex-1">
+                        <TextFieldLabel class="text-sm text-muted-foreground">
+                          Template {index() + 1}
+                        </TextFieldLabel>
+                        <TextFieldTextArea
+                          value={template}
+                          onInput={(e) =>
+                            updateTemplate(index(), e.currentTarget.value)
+                          }
+                          placeholder="Enter template (e.g., $x, ($z $y))"
+                          class="min-h-[60px] text-sm font-mono"
+                        />
+                      </TextField>
+                      <Show when={templates().length > 1}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeTemplate(index())}
+                          class="mt-6 text-destructive hover:text-destructive"
+                        >
+                          Remove
+                        </Button>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+              </div>
             </div>
           </div>
 
-          {/* Templates Section */}
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-foreground">Templates</h3>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={addTemplate}
-                class="text-xs"
-              >
-                Add Template
-              </Button>
-            </div>
+          {/* Generated S-Expression Preview - Behind Feature Flag */}
+          <Show when={showGeneratedTransform()}>
             <div class="space-y-2">
-              <For each={transformInput().templates}>
-                {(template, index) => (
-                  <div class="flex gap-2">
-                    <TextField class="flex-1">
-                      <TextFieldLabel class="text-xs text-muted-foreground">
-                        Template {index() + 1}
-                      </TextFieldLabel>
-                      <TextFieldTextArea
-                        value={template}
-                        onInput={(e) =>
-                          updateTemplate(index(), e.currentTarget.value)
-                        }
-                        placeholder="Enter template (e.g., $x, ($z $y))"
-                        class="min-h-[60px] text-sm font-mono"
-                      />
-                    </TextField>
-                    <Show when={transformInput().templates.length > 1}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeTemplate(index())}
-                        class="mt-6 text-destructive hover:text-destructive"
-                      >
-                        Remove
-                      </Button>
-                    </Show>
-                  </div>
-                )}
-              </For>
+              <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-foreground">
+                  Generated Transform
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowGeneratedTransform(false)}
+                  class="text-xs text-muted-foreground"
+                >
+                  Hide
+                </Button>
+              </div>
+              <div class="p-3 bg-muted rounded-md">
+                <code class="text-xs font-mono text-muted-foreground break-all">
+                  {buildTransformSExpr(patterns(), templates())}
+                </code>
+              </div>
             </div>
-          </div>
+          </Show>
 
-          {/* Generated S-Expression Preview */}
-          <div class="space-y-2">
-            <h3 class="text-sm font-semibold text-foreground">
-              Generated Transform
-            </h3>
-            <div class="p-3 bg-muted rounded-md">
-              <code class="text-xs font-mono text-muted-foreground break-all">
-                {buildTransformSExpr(
-                  transformInput().patterns,
-                  transformInput().templates
-                )}
-              </code>
-            </div>
-          </div>
+          {/* Show Generated Transform Button */}
+          <Show when={!showGeneratedTransform()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowGeneratedTransform(true)}
+              class="text-xs"
+            >
+              Show Generated Transform
+            </Button>
+          </Show>
         </div>
 
         <Button
