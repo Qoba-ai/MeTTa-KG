@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use crate::model::Token;
 use crate::mork_api::{
     ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, MorkApiClient,
-    ReadRequest, Request, TransformDetails, TransformRequest, UploadRequest,
+    Pattern, ReadRequest, Request, Template, TransformDetails, TransformRequest, UploadRequest,
 };
 
 /// The input for a transformation operation.
@@ -36,14 +36,29 @@ pub struct ExploreInput {
 
 /// Fetches the `<path..>` space content. Use cautously as it will load everything.
 /// It is recommended to use the `/spaces/<path..>?op=explore` instead for large queries
-#[get("/spaces/<path..>", rank = 1)]
-pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
+#[get("/spaces/<path..>", rank = 1, data = "<mm2>")]
+pub async fn read(
+    token: Token,
+    path: PathBuf,
+    mm2: Option<Json<Mm2InputMulti>>,
+) -> Result<Json<String>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
         return Err(Status::Unauthorized);
     }
 
+    // shadowing for backwards compatibility
+    // TODO: remove `Option` once all clients are updated
+    let mm2 = mm2.unwrap_or(Json(Mm2InputMulti::default()));
+
     let mork_api_client = MorkApiClient::new();
-    let request = ReadRequest::new().namespace(path);
+    let transform_input = TransformDetails::new()
+        .patterns(vec![Pattern::default()
+            .pattern(mm2.patterns.first().cloned().unwrap_or("$x".to_string()))
+            .namespace(path.to_path_buf())])
+        .templates(vec![Template::default()
+            .template(mm2.templates.first().cloned().unwrap_or("$x".to_string()))
+            .namespace(path.to_path_buf())]);
+    let request = ReadRequest::new().transform_input(transform_input);
 
     let response = mork_api_client.dispatch(request).await.map(Json);
     response
@@ -67,8 +82,26 @@ pub async fn transform(
         .namespace(path.to_path_buf())
         .transform_input(
             TransformDetails::new()
-                .patterns(mm2.patterns.clone())
-                .templates(mm2.templates.clone()),
+                .patterns(
+                    mm2.patterns
+                        .iter()
+                        .map(|p| {
+                            Pattern::default()
+                                .pattern(p.clone())
+                                .namespace(path.to_path_buf())
+                        })
+                        .collect(),
+                )
+                .templates(
+                    mm2.templates
+                        .iter()
+                        .map(|t| {
+                            Template::default()
+                                .template(t.clone())
+                                .namespace(path.to_path_buf())
+                        })
+                        .collect(),
+                ),
         );
 
     // TODO: use server sent events instead
@@ -123,8 +156,13 @@ pub async fn upload(
 }
 
 /// Imports data from `<uri>` into the `<path..>` space. Exectes mm2 on the imported data.
-#[post("/spaces/import/<path..>?<uri>")]
-pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<bool>, Status> {
+#[post("/spaces/import/<path..>?<uri>", data = "<template>")]
+pub async fn import(
+    token: Token,
+    path: PathBuf,
+    uri: String,
+    template: Option<String>,
+) -> Result<Json<bool>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
         return Err(Status::Unauthorized);
     }
@@ -135,7 +173,10 @@ pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<boo
     }
 
     let mork_api_client = MorkApiClient::new();
-    let request = ImportRequest::new().namespace(path).uri(uri);
+    let template = Template::default()
+        .namespace(path)
+        .template(template.unwrap_or("$x".to_string()));
+    let request = ImportRequest::new().to(template).uri(uri);
 
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),
