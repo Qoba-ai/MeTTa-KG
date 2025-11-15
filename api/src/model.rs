@@ -1,6 +1,6 @@
 use crate::schema::tokens;
 use chrono::NaiveDateTime;
-use diesel::{Insertable, Queryable, QueryableByName, Selectable};
+use diesel::{sql_types::Integer, Insertable, Queryable, QueryableByName, RunQueryDsl, Selectable};
 use rocket::serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Insertable, Clone)]
@@ -32,4 +32,26 @@ pub struct Token {
     pub permission_share_read: bool,
     pub permission_share_write: bool,
     pub parent: Option<i32>,
+}
+
+impl Token {
+    pub async fn get_decendants(
+        &self,
+        conn: &mut diesel::PgConnection,
+    ) -> Result<Vec<Token>, diesel::result::Error> {
+        diesel::sql_query(
+            "WITH RECURSIVE rectree AS (
+        SELECT * 
+            FROM tokens 
+        WHERE id = $1
+        UNION ALL 
+        SELECT t.* 
+            FROM tokens t 
+            JOIN rectree
+            ON t.parent = rectree.id
+        ) SELECT * FROM rectree;",
+        )
+        .bind::<Integer, _>(self.id)
+        .get_results::<Token>(conn)
+    }
 }

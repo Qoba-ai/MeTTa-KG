@@ -8,6 +8,7 @@ use rocket::response::status::Custom;
 use rocket::{get, post, Data};
 use std::path::PathBuf;
 
+use crate::db::establish_connection;
 use crate::model::Token;
 use crate::mork_api::{
     ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, MorkApiClient,
@@ -32,6 +33,12 @@ pub struct Mm2Input {
 pub struct ExploreInput {
     pub pattern: String,
     pub token: String,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct SetOperationInput {
+    source: Vec<String>,
+    target: Vec<String>,
 }
 
 /// Fetches the `<path..>` space content. Use cautously as it will load everything.
@@ -62,53 +69,6 @@ pub async fn read(
 
     let response = mork_api_client.dispatch(request).await.map(Json);
     response
-}
-
-/// Performs a transformation operation on the `<path..>` space
-#[post("/spaces/transform/<path..>", data = "<mm2>")]
-pub async fn transform(
-    token: Token,
-    path: PathBuf,
-    mm2: Json<Mm2InputMulti>,
-) -> Result<Json<bool>, Status> {
-    let token_namespace = token.namespace.strip_prefix("/").unwrap();
-
-    if !path.starts_with(token_namespace) || !token.permission_read || !token.permission_write {
-        return Err(Status::Unauthorized);
-    }
-
-    let mork_api_client = MorkApiClient::new();
-    let request = TransformRequest::new()
-        .namespace(path.to_path_buf())
-        .transform_input(
-            TransformDetails::new()
-                .patterns(
-                    mm2.patterns
-                        .iter()
-                        .map(|p| {
-                            Pattern::default()
-                                .pattern(p.clone())
-                                .namespace(path.to_path_buf())
-                        })
-                        .collect(),
-                )
-                .templates(
-                    mm2.templates
-                        .iter()
-                        .map(|t| {
-                            Template::default()
-                                .template(t.clone())
-                                .namespace(path.to_path_buf())
-                        })
-                        .collect(),
-                ),
-        );
-
-    // TODO: use server sent events instead
-    match mork_api_client.dispatch(request).await {
-        Ok(_) => Ok(Json(true)),
-        Err(e) => Err(e),
-    }
 }
 
 /// Upload to the `<path..>` space. Exectes mm2 on the imported data.
@@ -253,4 +213,151 @@ pub async fn clear(token: Token, path: PathBuf, expr: String) -> Result<Json<boo
         Ok(_) => Ok(Json(true)),
         Err(e) => Err(e),
     }
+}
+
+/// Performs a transformation operation on the `<path..>` space
+#[post("/spaces/transform/<path..>", data = "<mm2>")]
+pub async fn transform(
+    token: Token,
+    path: PathBuf,
+    mm2: Json<Mm2InputMulti>,
+) -> Result<Json<bool>, Status> {
+    let token_namespace = token.namespace.strip_prefix("/").unwrap();
+
+    if !path.starts_with(token_namespace) || !token.permission_read || !token.permission_write {
+        return Err(Status::Unauthorized);
+    }
+
+    let mork_api_client = MorkApiClient::new();
+    let request = TransformRequest::new().transform_input(
+        TransformDetails::new()
+            .patterns(
+                mm2.patterns
+                    .iter()
+                    .map(|p| {
+                        Pattern::default()
+                            .pattern(p.clone())
+                            .namespace(path.to_path_buf())
+                    })
+                    .collect(),
+            )
+            .templates(
+                mm2.templates
+                    .iter()
+                    .map(|t| {
+                        Template::default()
+                            .template(t.clone())
+                            .namespace(path.to_path_buf())
+                    })
+                    .collect(),
+            ),
+    );
+
+    // TODO: use server sent events instead
+    match mork_api_client.dispatch(request).await {
+        Ok(_) => Ok(Json(true)),
+        Err(e) => Err(e),
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////// SET OPERATIONS //////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Performs a composition operation on provided namespaces. `token` must have `permission_write`
+/// on the target namespace and `permission_read` on all source namespaces.
+/// # Composition Transformation
+/// ```lisp
+/// (transform
+///     (, (namespace1 $a) (namespace2 $b))  ; (namespace $c) (namespace $d) etc ...
+///     (, (output-namespace $a $b))  ; $c $d etc ...
+/// )
+/// ```
+///
+/// Currently it only handles a single target namespace
+#[post("/spaces/composition", data = "<operation_input>")]
+pub async fn composition(
+    token: Token,
+    operation_input: Json<SetOperationInput>,
+) -> Result<Json<bool>, Status> {
+    let conn = &mut establish_connection();
+
+    let decendants = token
+        .get_decendants(conn)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    // check `permission read`
+    // TODO: needs optimization, currently running in O(n^2)
+    let has_read_permission = operation_input.source.iter().any(|source| {
+        decendants
+            .iter()
+            .any(|decendant| decendant.permission_read && source == &decendant.namespace)
+    }) || (token.permission_read
+        && operation_input.source.contains(&token.namespace));
+
+    // check `permission write`
+    // TODO: needs optimization, currently running in O(n^2)
+    let has_write_permission = operation_input.target.iter().any(|target| {
+        decendants
+            .iter()
+            .any(|decendant| decendant.permission_write && target == &decendant.namespace)
+    }) || (token.permission_write
+        && operation_input.target.contains(&token.namespace));
+
+    if !has_read_permission || !has_write_permission {
+        return Err(Status::Unauthorized);
+    }
+
+    // Exceed the maximum number of source namespaces for composition, 26
+    // and
+    // Only one target namespace is allowed
+    if operation_input.source.len() > 26 && operation_input.target.len() != 1 {
+        return Err(Status::BadRequest);
+    }
+
+    let mut templates = format!("({}", operation_input.target.first().cloned().unwrap());
+
+    let patterns = operation_input
+        .source
+        .iter()
+        .enumerate()
+        .map(|(index, source_ns)| {
+            let c = int_to_lower(index as u8).unwrap();
+            templates.push_str(" $");
+            templates.push(c);
+
+            Pattern::default()
+                .pattern(format!("({} ${})", source_ns, c,))
+                .namespace(PathBuf::from(source_ns))
+        })
+        .collect::<Vec<Pattern>>();
+
+    let transform_input = TransformDetails::new()
+        .patterns(patterns)
+        .templates(vec![Template::default()]);
+
+    let request = TransformRequest::new().transform_input(transform_input);
+    let mork_api_client = MorkApiClient::new();
+
+    match mork_api_client.dispatch(request).await {
+        Ok(_) => Ok(Json(true)),
+        Err(e) => Err(e),
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////// HELPER FUNCTIONS ////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// Converts an integer to a lower case letter
+fn int_to_lower(n: u8) -> Option<char> {
+    const BASE: u8 = b'a';
+    const ALPHABET: usize = 26;
+
+    if n as usize >= ALPHABET {
+        return None;
+    };
+
+    Some((BASE + n) as char)
 }
