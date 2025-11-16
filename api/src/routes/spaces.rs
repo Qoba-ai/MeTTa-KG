@@ -8,7 +8,6 @@ use rocket::response::status::Custom;
 use rocket::{get, post, Data};
 use std::path::PathBuf;
 
-use crate::db::establish_connection;
 use crate::model::Token;
 use crate::mork_api::{
     ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, MorkApiClient,
@@ -37,8 +36,8 @@ pub struct ExploreInput {
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct SetOperationInput {
-    source: Vec<String>,
-    target: Vec<String>,
+    pub source: Vec<String>,
+    pub target: Vec<String>,
 }
 
 /// Fetches the `<path..>` space content. Use cautously as it will load everything.
@@ -280,64 +279,28 @@ pub async fn composition(
     token: Token,
     operation_input: Json<SetOperationInput>,
 ) -> Result<Json<bool>, Status> {
-    let conn = &mut establish_connection();
-
-    let decendants = token
-        .get_decendants(conn)
-        .await
-        .map_err(|_| Status::InternalServerError)?;
+    let token_namespace = token.namespace.strip_prefix("/").unwrap();
 
     // check `permission read`
-    // TODO: needs optimization, currently running in O(n^2)
-    let has_read_permission = operation_input.source.iter().any(|source| {
-        decendants
-            .iter()
-            .any(|decendant| decendant.permission_read && source == &decendant.namespace)
-    }) || (token.permission_read
-        && operation_input.source.contains(&token.namespace));
+    let has_read_permission = operation_input
+        .source
+        .iter()
+        .all(|source| source.starts_with(token_namespace))
+        && token.permission_read;
 
-    // check `permission write`
-    // TODO: needs optimization, currently running in O(n^2)
-    let has_write_permission = operation_input.target.iter().any(|target| {
-        decendants
-            .iter()
-            .any(|decendant| decendant.permission_write && target == &decendant.namespace)
-    }) || (token.permission_write
-        && operation_input.target.contains(&token.namespace));
+    let has_write_permission = operation_input
+        .target
+        .iter()
+        .all(|target| target.starts_with(token_namespace))
+        && token.permission_write;
 
     if !has_read_permission || !has_write_permission {
         return Err(Status::Unauthorized);
     }
 
-    // Exceed the maximum number of source namespaces for composition, 26
-    // and
-    // Only one target namespace is allowed
-    if operation_input.source.len() > 26 && operation_input.target.len() != 1 {
-        return Err(Status::BadRequest);
-    }
+    let transform_input = composition_transform(operation_input.into_inner())?;
 
-    let mut templates = format!("({}", operation_input.target.first().cloned().unwrap());
-
-    let patterns = operation_input
-        .source
-        .iter()
-        .enumerate()
-        .map(|(index, source_ns)| {
-            let c = int_to_lower(index as u8).unwrap();
-            templates.push_str(" $");
-            templates.push(c);
-
-            Pattern::default()
-                .pattern(format!("({} ${})", source_ns, c,))
-                .namespace(PathBuf::from(source_ns))
-        })
-        .collect::<Vec<Pattern>>();
-
-    let transform_input = TransformDetails::new()
-        .patterns(patterns)
-        .templates(vec![Template::default()]);
-
-    let request = TransformRequest::new().transform_input(transform_input);
+    let request = TransformRequest::new().transform_input(transform_input.clone());
     let mork_api_client = MorkApiClient::new();
 
     match mork_api_client.dispatch(request).await {
@@ -360,4 +323,69 @@ fn int_to_lower(n: u8) -> Option<char> {
     };
 
     Some((BASE + n) as char)
+}
+
+fn composition_transform(input: SetOperationInput) -> Result<TransformDetails, Status> {
+    // Exceed the maximum number of source namespaces for composition, 26
+    // and
+    // Only one target namespace is allowed
+    if input.source.len() > 26 && input.target.len() != 1 {
+        return Err(Status::BadRequest);
+    }
+
+    let mut template = String::new();
+
+    let patterns = input
+        .source
+        .iter()
+        .enumerate()
+        .map(|(index, source_ns)| {
+            let c = int_to_lower(index as u8).unwrap();
+            template.push('$');
+            template.push(c);
+            template.push(' ');
+
+            Pattern::default()
+                .namespace(PathBuf::from(source_ns))
+                .pattern(format!("${}", c))
+        })
+        .collect::<Vec<Pattern>>();
+
+    let transform_input =
+        TransformDetails::new()
+            .patterns(patterns)
+            .templates(vec![Template::default()
+                .namespace(PathBuf::from(input.target.first().cloned().unwrap()))
+                .template(template)]);
+
+    Ok(transform_input)
+}
+
+// unit tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_composition_transform() {
+        let input = SetOperationInput {
+            source: vec!["ns1".to_string(), "ns2".to_string()],
+            target: vec!["ns3".to_string()],
+        };
+
+        let transform_input = composition_transform(input).unwrap();
+
+        assert_eq!(
+            transform_input.patterns[0].build(),
+            "(ns1 (ns1a727d4f9-836a-4e4c-9480 $a))".to_string()
+        );
+        assert_eq!(
+            transform_input.patterns[1].build(),
+            "(ns2 (ns2a727d4f9-836a-4e4c-9480 $b))".to_string()
+        );
+        assert_eq!(
+            transform_input.templates[0].build(),
+            "(ns3 (ns3a727d4f9-836a-4e4c-9480 $a $b ))".to_string()
+        );
+    }
 }

@@ -35,7 +35,7 @@ pub enum ExportFormat {
 /// (parent (child (grandchild ($x))))
 /// ```
 ///
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Pattern {
     pub pattern: String,
     pub namespace: Namespace,
@@ -72,7 +72,7 @@ impl Pattern {
 
 /// A template inside a namespace similar to [`Pattern`]
 /// See [`Pattern`] for example
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Template {
     pub template: String,
     pub namespace: Namespace,
@@ -110,7 +110,7 @@ impl Template {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TransformDetails {
     /// the sub space as per playground convetions. ie. (/ ...)
     pub patterns: Vec<Pattern>, // A sub space
@@ -126,7 +126,7 @@ impl Default for TransformDetails {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
 #[serde(transparent)]
 pub struct Namespace {
     path: Vec<String>,
@@ -663,5 +663,33 @@ impl Request for ClearRequest {
 
     fn body(&self) -> Option<Self::Body> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::mork_api::Namespace;
+
+    #[test]
+    fn test_namespace() {
+        let ns = Namespace::from_path_string("/parent/child/grandchild");
+        assert_eq!(
+            ns.path,
+            vec![
+                "parent".to_string(),
+                "child".to_string(),
+                "grandchild".to_string()
+            ]
+        );
+        assert_eq!(ns.current_name(), "grandchild".to_string());
+        assert_eq!(ns.data_tag(), "grandchilda727d4f9-836a-4e4c-9480");
+    }
+
+    #[test]
+    fn test_with_namespace() {
+        let ns = Namespace::from_path_string("/parent/child/grandchild");
+        let expected = "(parent (child (grandchild (grandchilda727d4f9-836a-4e4c-9480 $x))))";
+
+        assert_eq!(ns.with_namespace("$x"), expected);
     }
 }

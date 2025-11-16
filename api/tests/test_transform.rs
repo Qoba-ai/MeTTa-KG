@@ -1,4 +1,5 @@
 use api::rocket;
+use api::routes::spaces::Mm2InputMulti;
 use httpmock::prelude::*;
 use rocket::http::{Header, Status};
 use rocket::local::asynchronous::Client;
@@ -6,8 +7,6 @@ use serial_test::serial;
 
 #[path = "common.rs"]
 mod common;
-// use crate::common;
-use api::routes::spaces::Mm2InputMulti;
 
 #[tokio::test]
 #[serial]
