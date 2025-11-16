@@ -3,43 +3,43 @@ import {
   createSignal,
   Show,
   onCleanup,
-  For,
-  Index,
-  createMemo,
+  createUniqueId,
 } from "solid-js";
 import { CommandCard } from "~/components/common/CommandCard";
 import { Button } from "~/components/ui/Button";
 import {
-  TextField,
-  TextFieldTextArea,
-  TextFieldLabel,
-} from "~/components/ui/TextField";
-import NameSpace from "~/pages/index/components/NameSpace";
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "~/components/ui/Card";
 import { formatedNamespace } from "~/lib/state";
 import { isLoading, isPolling, executeTransform, stopPolling } from "./lib";
+import { Copy, Check } from "lucide-solid";
+import { TransformInput as TransformInputComponent } from "./components/TransformInput";
 
-interface TransformInput {
-  patterns: string[];
-  templates: string[];
+interface Item {
+  id: string;
+  namespace: string;
+  value: string;
 }
 
 const TransformPage: Component = () => {
-  const [showGeneratedTransform, setShowGeneratedTransform] =
-    createSignal(false);
-  const [patterns, setPatterns] = createSignal<string[]>(["$x"]);
-  const [templates, setTemplates] = createSignal<string[]>(["$x"]);
-
-  const transformInput = createMemo(() => ({
-    patterns: patterns(),
-    templates: templates(),
-  }));
+  const [patterns, setPatterns] = createSignal<Item[]>([
+    { id: createUniqueId(), namespace: "", value: "" },
+  ]);
+  const [templates, setTemplates] = createSignal<Item[]>([
+    { id: createUniqueId(), namespace: "", value: "" },
+  ]);
+  const [copied, setCopied] = createSignal(false);
 
   onCleanup(stopPolling);
 
-  const buildTransformSExpr = (patterns: string[], templates: string[]) => {
-    const patternExprs = patterns.map((p) => `(, ${p})`).join(" ");
-    const templateExprs = templates.map((t) => `(, ${t})`).join(" ");
-    return `(transform ${patternExprs} ${templateExprs})`;
+  const buildTransformSExpr = (patterns: Item[], templates: Item[]) => {
+    const patternExprs = patterns.map((p) => `    (, ${p.value})`).join(" ");
+    const templateExprs = templates.map((t) => `    (, ${t.value})`).join(" ");
+    return `(transform\n${patternExprs}\n${templateExprs}\n)`;
   };
 
   const handleTransform = () => {
@@ -48,208 +48,125 @@ const TransformPage: Component = () => {
   };
 
   const addPattern = () => {
-    setPatterns((prev) => [...prev, ""]);
+    setPatterns((prev) => [
+      ...prev,
+      { id: createUniqueId(), namespace: "", value: "" },
+    ]);
   };
 
-  const removePattern = (index: number) => {
-    setPatterns((prev) => prev.filter((_, i) => i !== index));
+  const removePattern = (id: string) => {
+    setPatterns((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const updatePattern = (index: number, value: string) => {
-    setPatterns((prev) => {
-      const newPatterns = [...prev];
-      newPatterns[index] = value;
-      return newPatterns;
-    });
+  const updatePattern = (
+    id: string,
+    field: "namespace" | "value",
+    value: string
+  ) => {
+    setPatterns((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    );
   };
 
   const addTemplate = () => {
-    setTemplates((prev) => [...prev, ""]);
+    setTemplates((prev) => [
+      ...prev,
+      { id: createUniqueId(), namespace: "", value: "" },
+    ]);
   };
 
-  const removeTemplate = (index: number) => {
-    setTemplates((prev) => prev.filter((_, i) => i !== index));
+  const removeTemplate = (id: string) => {
+    setTemplates((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const updateTemplate = (index: number, value: string) => {
-    setTemplates((prev) => {
-      const newTemplates = [...prev];
-      newTemplates[index] = value;
-      return newTemplates;
-    });
+  const updateTemplate = (
+    id: string,
+    field: "namespace" | "value",
+    value: string
+  ) => {
+    setTemplates((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
+    );
   };
 
   const canTransform = () => {
     return (
-      patterns().some((p) => p.trim()) && templates().some((t) => t.trim())
+      patterns().some((p) => p.value.trim()) &&
+      templates().some((t) => t.value.trim())
     );
+  };
+
+  const copyExpression = () => {
+    navigator.clipboard.writeText(buildTransformSExpr(patterns(), templates()));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div class="ml-10 mt-8">
       <CommandCard
-        title="Transform Data"
-        description="Apply templates to matched patterns. Add patterns and templates separately to create transform rules."
+        title="S-Expression Builder"
+        description="Create transform expressions with patterns and templates"
       >
         <div class="space-y-6">
-          {/* Two-Column Layout */}
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Column - Patterns */}
-            <div class="space-y-4">
-              <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-foreground">Patterns</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={addPattern}
-                  class="text-xs"
-                >
-                  Add Pattern
-                </Button>
-              </div>
+          {/* Responsive Layout */}
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Builder - 2/3 */}
+            <div class="lg:col-span-2 space-y-6">
+              <TransformInputComponent
+                type="patterns"
+                items={patterns()}
+                addItem={addPattern}
+                removeItem={removePattern}
+                updateItem={updatePattern}
+                accentColor="blue-500"
+                dotColor="blue-500"
+              />
 
-              {/* Namespace Selector for Patterns */}
-              <div class="p-3 bg-muted/50 rounded-md">
-                <div class="flex items-center gap-3">
-                  <span class="text-sm text-muted-foreground min-w-fit">
-                    Pattern Namespace:
-                  </span>
-                  <div class="flex-1">
-                    <NameSpace />
-                  </div>
-                </div>
-              </div>
-
-              {/* Pattern Inputs */}
-              <div class="space-y-2">
-                <For each={patterns()}>
-                  {(pattern, index) => (
-                    <div class="flex gap-2">
-                      <TextField class="flex-1">
-                        <TextFieldLabel class="text-sm text-muted-foreground">
-                          Pattern {index() + 1}
-                        </TextFieldLabel>
-                        <TextFieldTextArea
-                          value={pattern}
-                          onInput={(e) =>
-                            updatePattern(index(), e.currentTarget.value)
-                          }
-                          placeholder="Enter pattern (e.g., $x, ($y $z))"
-                          class="min-h-[60px] text-sm font-mono"
-                        />
-                      </TextField>
-                      <Show when={patterns().length > 1}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removePattern(index())}
-                          class="mt-6 text-destructive hover:text-destructive"
-                        >
-                          Remove
-                        </Button>
-                      </Show>
-                    </div>
-                  )}
-                </For>
-              </div>
+              <TransformInputComponent
+                type="templates"
+                items={templates()}
+                addItem={addTemplate}
+                removeItem={removeTemplate}
+                updateItem={updateTemplate}
+                accentColor="green-500"
+                dotColor="green-500"
+              />
             </div>
 
-            {/* Right Column - Templates */}
-            <div class="space-y-4">
-              <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-foreground">Templates</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={addTemplate}
-                  class="text-xs"
-                >
-                  Add Template
-                </Button>
-              </div>
-
-              {/* Namespace Selector for Templates */}
-              <div class="p-3 bg-muted/50 rounded-md">
-                <div class="flex items-center gap-3">
-                  <span class="text-sm text-muted-foreground min-w-fit">
-                    Template Namespace:
-                  </span>
-                  <div class="flex-1">
-                    <NameSpace />
+            {/* Preview - 1/3 */}
+            <div class="lg:col-span-1">
+              <Card class="sticky top-4">
+                <CardHeader>
+                  <CardTitle>S-Expression Preview</CardTitle>
+                  <CardDescription>
+                    Live output of your transform
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <pre class="text-sm font-mono bg-muted p-3 rounded overflow-auto">
+                    {buildTransformSExpr(patterns(), templates())}
+                  </pre>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={copyExpression}
+                    class="w-full mt-4"
+                  >
+                    {copied() ? (
+                      <Check class="w-4 h-4 mr-2" />
+                    ) : (
+                      <Copy class="w-4 h-4 mr-2" />
+                    )}
+                    {copied() ? "Copied!" : "Copy Expression"}
+                  </Button>
+                  <div class="mt-4 p-3 bg-muted/50 rounded text-sm text-muted-foreground">
+                    Items are independently sized.
                   </div>
-                </div>
-              </div>
-
-              {/* Template Inputs */}
-              <div class="space-y-2">
-                <For each={templates()}>
-                  {(template, index) => (
-                    <div class="flex gap-2">
-                      <TextField class="flex-1">
-                        <TextFieldLabel class="text-sm text-muted-foreground">
-                          Template {index() + 1}
-                        </TextFieldLabel>
-                        <TextFieldTextArea
-                          value={template}
-                          onInput={(e) =>
-                            updateTemplate(index(), e.currentTarget.value)
-                          }
-                          placeholder="Enter template (e.g., $x, ($z $y))"
-                          class="min-h-[60px] text-sm font-mono"
-                        />
-                      </TextField>
-                      <Show when={templates().length > 1}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeTemplate(index())}
-                          class="mt-6 text-destructive hover:text-destructive"
-                        >
-                          Remove
-                        </Button>
-                      </Show>
-                    </div>
-                  )}
-                </For>
-              </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
-
-          {/* Generated S-Expression Preview - Behind Feature Flag */}
-          <Show when={showGeneratedTransform()}>
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-foreground">
-                  Generated Transform
-                </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowGeneratedTransform(false)}
-                  class="text-xs text-muted-foreground"
-                >
-                  Hide
-                </Button>
-              </div>
-              <div class="p-3 bg-muted rounded-md">
-                <code class="text-xs font-mono text-muted-foreground break-all">
-                  {buildTransformSExpr(patterns(), templates())}
-                </code>
-              </div>
-            </div>
-          </Show>
-
-          {/* Show Generated Transform Button */}
-          <Show when={!showGeneratedTransform()}>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowGeneratedTransform(true)}
-              class="text-xs"
-            >
-              Show Generated Transform
-            </Button>
-          </Show>
         </div>
 
         <Button
