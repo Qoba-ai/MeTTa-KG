@@ -216,19 +216,17 @@ export default function ExpressionList(props: ExpressionListProps) {
   const expandToFillViewport = async (targetCount: number) => {
     let currentCount = flattenedNodes().length;
     let attemptsWithoutProgress = 0;
-    const maxAttemptsWithoutProgress = 10; // Prevent infinite loops
+    const maxAttemptsWithoutProgress = 10;
 
     while (
       currentCount < targetCount &&
       attemptsWithoutProgress < maxAttemptsWithoutProgress
     ) {
-      // Get the first unexpanded node (depth-first)
       const nodeToExpand = flattenedNodes().find(
         (fn) => isExpandable(fn.node) && !expandedNodes().has(fn.id)
       );
 
       if (!nodeToExpand) {
-        // No more expandable nodes exist
         break;
       }
 
@@ -244,25 +242,82 @@ export default function ExpressionList(props: ExpressionListProps) {
         const newExpandedNodes = new Set(expandedNodes());
 
         if (parsed?.length > 0) {
-          const processedData = initNodesFromApiResponse(parsed);
+          let processedData = initNodesFromApiResponse(
+            parsed,
+            nodeToExpand.node.remoteData.token
+          );
+
+          // Recursive pull-up: if first child matches parent, replace it with its children
+          while (
+            processedData.nodes.length > 0 &&
+            processedData.nodes[0].remoteData.expr ===
+              nodeToExpand.node.remoteData.expr
+          ) {
+            console.log(
+              `[Recursive Replace] First child matches parent, pulling up: ${processedData.nodes[0].remoteData.expr.substring(0, 50)}...`
+            );
+
+            // Save all siblings BEFORE fetching grandchildren
+            const remainingSiblings = processedData.nodes.slice(1);
+            const currentChildCount = remainingSiblings.length;
+
+            try {
+              const duplicateChildResponse = await exploreSpace(
+                formatedNamespace(),
+                props.pattern,
+                processedData.nodes[0].remoteData.token
+              );
+              const parsed = JSON.parse(
+                duplicateChildResponse
+              ) as ExploreResponse[];
+              const grandchildren = initNodesFromApiResponse(
+                parsed,
+                nodeToExpand.node.remoteData.token
+              );
+
+              // Stop if we're not getting any new children
+              if (grandchildren.nodes.length === 0) {
+                processedData = {
+                  nodes: remainingSiblings,
+                  prefix: processedData.prefix,
+                };
+                break;
+              }
+
+              // Merge grandchildren with preserved siblings
+              processedData = {
+                nodes: [...grandchildren.nodes, ...remainingSiblings],
+                prefix: processedData.prefix,
+              };
+
+              // Stop if total children didn't increase (prevents infinite loops)
+              if (processedData.nodes.length <= currentChildCount) {
+                break;
+              }
+            } catch {
+              // If fetch fails, just remove the duplicate and keep siblings
+              processedData = {
+                nodes: remainingSiblings,
+                prefix: processedData.prefix,
+              };
+              break;
+            }
+          }
+
           newChildrenMap.set(nodeToExpand.id, processedData.nodes);
         } else {
-          // Mark as leaf (empty children)
           newChildrenMap.set(nodeToExpand.id, []);
         }
-        newExpandedNodes.add(nodeToExpand.id);
 
+        newExpandedNodes.add(nodeToExpand.id);
         setChildrenMap(newChildrenMap);
         setExpandedNodes(newExpandedNodes);
 
         const newCount = flattenedNodes().length;
 
-        // Track progress
         if (newCount === currentCount) {
-          // This was a leaf node, increment counter but continue
           attemptsWithoutProgress++;
         } else {
-          // Made progress, reset counter
           attemptsWithoutProgress = 0;
           currentCount = newCount;
         }
