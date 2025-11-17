@@ -221,7 +221,7 @@ export default function ExpressionList(props: ExpressionListProps) {
   const expandToFillViewport = async (targetCount: number) => {
     setIsExpanding(true);
     const BATCH_SIZE = 5;
-    const MAX_PULL_UP_DEPTH = 1000;
+    const MAX_PULL_UP_DEPTH = 100;
 
     let currentCount = flattenedNodes().length;
     let attemptsWithoutProgress = 0;
@@ -234,7 +234,7 @@ export default function ExpressionList(props: ExpressionListProps) {
       const currentFlattened = flattenedNodes();
       const nodesToExpand = currentFlattened
         .filter((fn) => isExpandable(fn.node) && !expandedNodes().has(fn.id))
-        .slice(0, BATCH_SIZE); // Batch up to BATCH_SIZE nodes
+        .slice(0, BATCH_SIZE);
 
       if (nodesToExpand.length === 0) {
         break;
@@ -252,22 +252,26 @@ export default function ExpressionList(props: ExpressionListProps) {
         return { nodeToExpand, parsed };
       });
 
-      // Execute fetches in parallel
       const results = await Promise.allSettled(fetchPromises);
       const successfulResults = results
         .filter((r) => r.status === "fulfilled")
-        .map((r) => (r as PromiseFulfilledResult<any>).value);
+        .map(
+          (r) =>
+            (
+              r as PromiseFulfilledResult<{
+                nodeToExpand: FlatNode;
+                parsed: ExploreResponse[];
+              }>
+            ).value
+        );
 
       if (successfulResults.length === 0) {
         attemptsWithoutProgress++;
         continue;
       }
 
-      // once for batch
       const newChildrenMap = new Map(childrenMap());
       const newExpandedNodes = new Set(expandedNodes());
-
-      let batchAddedCount = 0;
 
       for (const { nodeToExpand, parsed } of successfulResults) {
         if (parsed?.length > 0) {
@@ -340,11 +344,6 @@ export default function ExpressionList(props: ExpressionListProps) {
         setChildrenMap(newChildrenMap);
         setExpandedNodes(newExpandedNodes);
       });
-
-      // // Force virtualizer to re-measure after update
-      // queueMicrotask(() => {
-      //   virtualizer().measure();
-      // });
 
       const newCount = flattenedNodes().length;
       if (newCount === currentCount) {
