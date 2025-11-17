@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import MettaEditor from "~/components/common/MettaEditor";
 import ZoomControls from "./components/ZoomControls";
 import MinimizeControls from "./components/MinimizeControls";
-import ExpressionList from "./components/ExpandableList";
+import ExpressionList from "./components/expandableList/ExpandableList";
 import Plus from "lucide-solid/icons/plus";
 import Minus from "lucide-solid/icons/minus";
 import { initNodesFromApiResponse } from "~/lib/space";
