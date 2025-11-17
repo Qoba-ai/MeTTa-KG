@@ -1,11 +1,12 @@
 import {
   For,
-  createSignal,
   Show,
+  createSignal,
   createMemo,
   createEffect,
   onMount,
   on,
+  batch,
 } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import type { ExploreResponse, SpaceNode } from "~/lib/space";
@@ -34,10 +35,14 @@ export default function ExpressionList(props: ExpressionListProps) {
     new Map()
   );
 
+  const [isExpanding, setIsExpanding] = createSignal(false);
+
   createEffect(
     on(formatedNamespace, async () => {
-      setExpandedNodes(new Set<string>());
-      setChildrenMap(new Map());
+      batch(() => {
+        setExpandedNodes(new Set<string>());
+        setChildrenMap(new Map());
+      });
       if (scrollRef) {
         const viewportHeight = scrollRef.clientHeight;
         const estimatedItemHeight = 24;
@@ -174,7 +179,62 @@ export default function ExpressionList(props: ExpressionListProps) {
       const parsed = JSON.parse(response) as ExploreResponse[];
 
       if (parsed && parsed.length > 0) {
-        const processedData = initNodesFromApiResponse(parsed);
+        let processedData = initNodesFromApiResponse(
+          parsed,
+          node.remoteData.expr
+        );
+
+        let pullUpDepth = 0;
+        const MAX_PULL_UP_DEPTH = 100;
+        while (
+          pullUpDepth < MAX_PULL_UP_DEPTH &&
+          processedData.nodes.length > 0 &&
+          processedData.nodes[0].remoteData.expr === node.remoteData.expr
+        ) {
+          const remainingSiblings = processedData.nodes.slice(1);
+          const currentChildCount = remainingSiblings.length;
+
+          try {
+            const token = processedData.nodes[0].remoteData.token;
+            const duplicateChildResponse = await exploreSpace(
+              formatedNamespace(),
+              props.pattern,
+              token
+            );
+            const parsed = JSON.parse(
+              duplicateChildResponse
+            ) as ExploreResponse[];
+            const grandchildren = initNodesFromApiResponse(
+              parsed,
+              node.remoteData.expr
+            );
+
+            if (grandchildren.nodes.length === 0) {
+              processedData = {
+                nodes: remainingSiblings,
+                prefix: processedData.prefix,
+              };
+              break;
+            }
+
+            processedData = {
+              nodes: [...grandchildren.nodes, ...remainingSiblings],
+              prefix: processedData.prefix,
+            };
+
+            if (processedData.nodes.length <= currentChildCount) {
+              break;
+            }
+          } catch {
+            processedData = {
+              nodes: remainingSiblings,
+              prefix: processedData.prefix,
+            };
+            break;
+          }
+
+          pullUpDepth++;
+        }
 
         if (processedData.nodes.length > 0) {
           setChildrenMap(
@@ -214,67 +274,141 @@ export default function ExpressionList(props: ExpressionListProps) {
   });
 
   const expandToFillViewport = async (targetCount: number) => {
+    setIsExpanding(true);
+    const BATCH_SIZE = 5;
+    const MAX_PULL_UP_DEPTH = 100;
+
     let currentCount = flattenedNodes().length;
     let attemptsWithoutProgress = 0;
-    const maxAttemptsWithoutProgress = 10; // Prevent infinite loops
+    const maxAttemptsWithoutProgress = 10;
 
     while (
       currentCount < targetCount &&
       attemptsWithoutProgress < maxAttemptsWithoutProgress
     ) {
-      // Get the first unexpanded node (depth-first)
-      const nodeToExpand = flattenedNodes().find(
-        (fn) => isExpandable(fn.node) && !expandedNodes().has(fn.id)
-      );
+      const currentFlattened = flattenedNodes();
+      const nodesToExpand = currentFlattened
+        .filter((fn) => isExpandable(fn.node) && !expandedNodes().has(fn.id))
+        .slice(0, BATCH_SIZE);
 
-      if (!nodeToExpand) {
-        // No more expandable nodes exist
+      if (nodesToExpand.length === 0) {
         break;
       }
 
-      try {
+      // Prepare parallel fetches
+      const fetchPromises = nodesToExpand.map(async (nodeToExpand) => {
+        const token = nodeToExpand.node.remoteData.token;
         const response = await exploreSpace(
           formatedNamespace(),
           props.pattern,
-          nodeToExpand.node.remoteData.token
+          token
         );
         const parsed = JSON.parse(response) as ExploreResponse[];
+        return { nodeToExpand, parsed };
+      });
 
-        const newChildrenMap = new Map(childrenMap());
-        const newExpandedNodes = new Set(expandedNodes());
+      const results = await Promise.allSettled(fetchPromises);
+      const successfulResults = results
+        .filter((r) => r.status === "fulfilled")
+        .map(
+          (r) =>
+            (
+              r as PromiseFulfilledResult<{
+                nodeToExpand: FlatNode;
+                parsed: ExploreResponse[];
+              }>
+            ).value
+        );
 
+      if (successfulResults.length === 0) {
+        attemptsWithoutProgress++;
+        continue;
+      }
+
+      const newChildrenMap = new Map(childrenMap());
+      const newExpandedNodes = new Set(expandedNodes());
+
+      for (const { nodeToExpand, parsed } of successfulResults) {
         if (parsed?.length > 0) {
-          const processedData = initNodesFromApiResponse(parsed);
+          let processedData = initNodesFromApiResponse(
+            parsed,
+            nodeToExpand.node.remoteData.expr
+          );
+
+          let pullUpDepth = 0;
+          while (
+            pullUpDepth < MAX_PULL_UP_DEPTH &&
+            processedData.nodes.length > 0 &&
+            processedData.nodes[0].remoteData.expr ===
+              nodeToExpand.node.remoteData.expr
+          ) {
+            const remainingSiblings = processedData.nodes.slice(1);
+            const currentChildCount = remainingSiblings.length;
+
+            try {
+              const token = processedData.nodes[0].remoteData.token;
+              const duplicateChildResponse = await exploreSpace(
+                formatedNamespace(),
+                props.pattern,
+                token
+              );
+              const parsed = JSON.parse(
+                duplicateChildResponse
+              ) as ExploreResponse[];
+              const grandchildren = initNodesFromApiResponse(
+                parsed,
+                nodeToExpand.node.remoteData.expr
+              );
+
+              if (grandchildren.nodes.length === 0) {
+                processedData = {
+                  nodes: remainingSiblings,
+                  prefix: processedData.prefix,
+                };
+                break;
+              }
+
+              processedData = {
+                nodes: [...grandchildren.nodes, ...remainingSiblings],
+                prefix: processedData.prefix,
+              };
+
+              if (processedData.nodes.length <= currentChildCount) {
+                break;
+              }
+            } catch {
+              processedData = {
+                nodes: remainingSiblings,
+                prefix: processedData.prefix,
+              };
+              break;
+            }
+
+            pullUpDepth++;
+          }
+
           newChildrenMap.set(nodeToExpand.id, processedData.nodes);
         } else {
-          // Mark as leaf (empty children)
           newChildrenMap.set(nodeToExpand.id, []);
         }
-        newExpandedNodes.add(nodeToExpand.id);
 
+        newExpandedNodes.add(nodeToExpand.id);
+      }
+
+      batch(() => {
         setChildrenMap(newChildrenMap);
         setExpandedNodes(newExpandedNodes);
+      });
 
-        const newCount = flattenedNodes().length;
-
-        // Track progress
-        if (newCount === currentCount) {
-          // This was a leaf node, increment counter but continue
-          attemptsWithoutProgress++;
-        } else {
-          // Made progress, reset counter
-          attemptsWithoutProgress = 0;
-          currentCount = newCount;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      } catch {
-        const newExpandedNodes = new Set(expandedNodes());
-        newExpandedNodes.add(nodeToExpand.id);
-        setExpandedNodes(newExpandedNodes);
+      const newCount = flattenedNodes().length;
+      if (newCount === currentCount) {
         attemptsWithoutProgress++;
+      } else {
+        attemptsWithoutProgress = 0;
+        currentCount = newCount;
       }
     }
+    setIsExpanding(false);
   };
 
   return (
@@ -301,55 +435,64 @@ export default function ExpressionList(props: ExpressionListProps) {
         <span class="opacity-60">Code Explorer</span>
       </div>
 
-      {/* Main editor area */}
-      <div
-        ref={scrollRef!}
-        class="w-full overflow-auto"
-        style={{
-          height: "calc(100% - 2rem)",
-          "scrollbar-width": "thin",
-          "scrollbar-color": "#424242 #1e1e1e",
-        }}
-      >
+      {/* Main editor area with relative positioning */}
+      <div class="relative" style={{ height: "calc(100% - 2rem)" }}>
         <div
+          ref={scrollRef!}
+          class="w-full h-full overflow-auto"
           style={{
-            height: `${virtualizer().getTotalSize()}px`,
-            width: "100%",
-            position: "relative",
+            "scrollbar-width": "thin",
+            "scrollbar-color": "#424242 #1e1e1e",
           }}
         >
-          <For each={virtualizer().getVirtualItems()}>
-            {(virtualItem) => {
-              const flatNode = flattenedNodes()[virtualItem.index];
-              if (!flatNode) return null;
-
-              const isExpanded = expandedNodes().has(flatNode.id);
-              const canExpand = isExpandable(flatNode.node);
-              const hasChildren = childrenMap().has(flatNode.id);
-              const childCount = hasChildren
-                ? childrenMap().get(flatNode.id)!.length
-                : 0;
-              const isLeaf = hasChildren && childCount === 0;
-              const isCursor = cursorLine() === virtualItem.index;
-
-              return (
-                <ExpressionListItem
-                  virtualItem={virtualItem}
-                  flatNode={flatNode}
-                  isExpanded={isExpanded}
-                  canExpand={canExpand}
-                  isLeaf={isLeaf}
-                  isCursor={isCursor}
-                  isIndented={props.isIndented}
-                  onClick={() => {
-                    setCursorLine(virtualItem.index);
-                    toggleNode(flatNode);
-                  }}
-                />
-              );
+          <div
+            style={{
+              height: `${virtualizer().getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
             }}
-          </For>
+          >
+            <For each={virtualizer().getVirtualItems()}>
+              {(virtualItem) => {
+                const flatNode = flattenedNodes()[virtualItem.index];
+                if (!flatNode) return null;
+
+                const isExpanded = expandedNodes().has(flatNode.id);
+                const canExpand = isExpandable(flatNode.node);
+                const hasChildren = childrenMap().has(flatNode.id);
+                const childCount = hasChildren
+                  ? childrenMap().get(flatNode.id)!.length
+                  : 0;
+                const isLeaf = hasChildren && childCount === 0;
+                const isCursor = cursorLine() === virtualItem.index;
+
+                return (
+                  <ExpressionListItem
+                    virtualItem={virtualItem}
+                    flatNode={flatNode}
+                    isExpanded={isExpanded}
+                    canExpand={canExpand}
+                    isLeaf={isLeaf}
+                    isCursor={isCursor}
+                    isIndented={props.isIndented}
+                    onClick={() => {
+                      setCursorLine(virtualItem.index);
+                      toggleNode(flatNode);
+                    }}
+                  />
+                );
+              }}
+            </For>
+          </div>
         </div>
+
+        {/* Loading overlay */}
+        <Show when={isExpanding()}>
+          <div class="absolute inset-0 flex flex-col items-center justify-center bg-[#1e1e1e] z-10">
+            <div class="animate-ping rounded-full h-8 w-8 border-t-2 border-b-2 mb-4"></div>
+            <span class="text-white text-sm">Expanding...</span>
+          </div>
+        </Show>
       </div>
 
       {/* Cursor indicator when focused */}

@@ -115,7 +115,7 @@ export default function ExpressionListItem(props: ExpressionListItemProps) {
 
         {/* Node label with syntax-like coloring */}
         <div
-          class="flex-1 truncate text-sm leading-6"
+          class="flex-1 text-sm leading-6"
           style={{
             color: props.canExpand ? "#4ec9b0" : "#9cdcfe",
             "font-size": "13px",
