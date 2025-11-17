@@ -1,11 +1,12 @@
 import {
   For,
-  createSignal,
   Show,
+  createSignal,
   createMemo,
   createEffect,
   onMount,
   on,
+  batch,
 } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import type { ExploreResponse, SpaceNode } from "~/lib/space";
@@ -34,10 +35,14 @@ export default function ExpressionList(props: ExpressionListProps) {
     new Map()
   );
 
+  const [isExpanding, setIsExpanding] = createSignal(false);
+
   createEffect(
     on(formatedNamespace, async () => {
-      setExpandedNodes(new Set<string>());
-      setChildrenMap(new Map());
+      batch(() => {
+        setExpandedNodes(new Set<string>());
+        setChildrenMap(new Map());
+      });
       if (scrollRef) {
         const viewportHeight = scrollRef.clientHeight;
         const estimatedItemHeight = 24;
@@ -214,6 +219,10 @@ export default function ExpressionList(props: ExpressionListProps) {
   });
 
   const expandToFillViewport = async (targetCount: number) => {
+    setIsExpanding(true);
+    const BATCH_SIZE = 5;
+    const MAX_PULL_UP_DEPTH = 1000;
+
     let currentCount = flattenedNodes().length;
     let attemptsWithoutProgress = 0;
     const maxAttemptsWithoutProgress = 10;
@@ -222,50 +231,67 @@ export default function ExpressionList(props: ExpressionListProps) {
       currentCount < targetCount &&
       attemptsWithoutProgress < maxAttemptsWithoutProgress
     ) {
-      const nodeToExpand = flattenedNodes().find(
-        (fn) => isExpandable(fn.node) && !expandedNodes().has(fn.id)
-      );
+      const currentFlattened = flattenedNodes();
+      const nodesToExpand = currentFlattened
+        .filter((fn) => isExpandable(fn.node) && !expandedNodes().has(fn.id))
+        .slice(0, BATCH_SIZE); // Batch up to BATCH_SIZE nodes
 
-      if (!nodeToExpand) {
+      if (nodesToExpand.length === 0) {
         break;
       }
 
-      try {
+      // Prepare parallel fetches
+      const fetchPromises = nodesToExpand.map(async (nodeToExpand) => {
+        const token = nodeToExpand.node.remoteData.token;
         const response = await exploreSpace(
           formatedNamespace(),
           props.pattern,
-          nodeToExpand.node.remoteData.token
+          token
         );
         const parsed = JSON.parse(response) as ExploreResponse[];
+        return { nodeToExpand, parsed };
+      });
 
-        const newChildrenMap = new Map(childrenMap());
-        const newExpandedNodes = new Set(expandedNodes());
+      // Execute fetches in parallel
+      const results = await Promise.allSettled(fetchPromises);
+      const successfulResults = results
+        .filter((r) => r.status === "fulfilled")
+        .map((r) => (r as PromiseFulfilledResult<any>).value);
 
+      if (successfulResults.length === 0) {
+        attemptsWithoutProgress++;
+        continue;
+      }
+
+      // once for batch
+      const newChildrenMap = new Map(childrenMap());
+      const newExpandedNodes = new Set(expandedNodes());
+
+      let batchAddedCount = 0;
+
+      for (const { nodeToExpand, parsed } of successfulResults) {
         if (parsed?.length > 0) {
           let processedData = initNodesFromApiResponse(
             parsed,
             nodeToExpand.node.remoteData.token
           );
 
-          // Recursive pull-up: if first child matches parent, replace it with its children
+          let pullUpDepth = 0;
           while (
+            pullUpDepth < MAX_PULL_UP_DEPTH &&
             processedData.nodes.length > 0 &&
             processedData.nodes[0].remoteData.expr ===
               nodeToExpand.node.remoteData.expr
           ) {
-            console.log(
-              `[Recursive Replace] First child matches parent, pulling up: ${processedData.nodes[0].remoteData.expr.substring(0, 50)}...`
-            );
-
-            // Save all siblings BEFORE fetching grandchildren
             const remainingSiblings = processedData.nodes.slice(1);
             const currentChildCount = remainingSiblings.length;
 
             try {
+              const token = processedData.nodes[0].remoteData.token;
               const duplicateChildResponse = await exploreSpace(
                 formatedNamespace(),
                 props.pattern,
-                processedData.nodes[0].remoteData.token
+                token
               );
               const parsed = JSON.parse(
                 duplicateChildResponse
@@ -275,7 +301,6 @@ export default function ExpressionList(props: ExpressionListProps) {
                 nodeToExpand.node.remoteData.token
               );
 
-              // Stop if we're not getting any new children
               if (grandchildren.nodes.length === 0) {
                 processedData = {
                   nodes: remainingSiblings,
@@ -284,24 +309,23 @@ export default function ExpressionList(props: ExpressionListProps) {
                 break;
               }
 
-              // Merge grandchildren with preserved siblings
               processedData = {
                 nodes: [...grandchildren.nodes, ...remainingSiblings],
                 prefix: processedData.prefix,
               };
 
-              // Stop if total children didn't increase (prevents infinite loops)
               if (processedData.nodes.length <= currentChildCount) {
                 break;
               }
             } catch {
-              // If fetch fails, just remove the duplicate and keep siblings
               processedData = {
                 nodes: remainingSiblings,
                 prefix: processedData.prefix,
               };
               break;
             }
+
+            pullUpDepth++;
           }
 
           newChildrenMap.set(nodeToExpand.id, processedData.nodes);
@@ -310,26 +334,27 @@ export default function ExpressionList(props: ExpressionListProps) {
         }
 
         newExpandedNodes.add(nodeToExpand.id);
+      }
+
+      batch(() => {
         setChildrenMap(newChildrenMap);
         setExpandedNodes(newExpandedNodes);
+      });
 
-        const newCount = flattenedNodes().length;
+      // // Force virtualizer to re-measure after update
+      // queueMicrotask(() => {
+      //   virtualizer().measure();
+      // });
 
-        if (newCount === currentCount) {
-          attemptsWithoutProgress++;
-        } else {
-          attemptsWithoutProgress = 0;
-          currentCount = newCount;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      } catch {
-        const newExpandedNodes = new Set(expandedNodes());
-        newExpandedNodes.add(nodeToExpand.id);
-        setExpandedNodes(newExpandedNodes);
+      const newCount = flattenedNodes().length;
+      if (newCount === currentCount) {
         attemptsWithoutProgress++;
+      } else {
+        attemptsWithoutProgress = 0;
+        currentCount = newCount;
       }
     }
+    setIsExpanding(false);
   };
 
   return (
@@ -356,55 +381,64 @@ export default function ExpressionList(props: ExpressionListProps) {
         <span class="opacity-60">Code Explorer</span>
       </div>
 
-      {/* Main editor area */}
-      <div
-        ref={scrollRef!}
-        class="w-full overflow-auto"
-        style={{
-          height: "calc(100% - 2rem)",
-          "scrollbar-width": "thin",
-          "scrollbar-color": "#424242 #1e1e1e",
-        }}
-      >
+      {/* Main editor area with relative positioning */}
+      <div class="relative" style={{ height: "calc(100% - 2rem)" }}>
         <div
+          ref={scrollRef!}
+          class="w-full h-full overflow-auto"
           style={{
-            height: `${virtualizer().getTotalSize()}px`,
-            width: "100%",
-            position: "relative",
+            "scrollbar-width": "thin",
+            "scrollbar-color": "#424242 #1e1e1e",
           }}
         >
-          <For each={virtualizer().getVirtualItems()}>
-            {(virtualItem) => {
-              const flatNode = flattenedNodes()[virtualItem.index];
-              if (!flatNode) return null;
-
-              const isExpanded = expandedNodes().has(flatNode.id);
-              const canExpand = isExpandable(flatNode.node);
-              const hasChildren = childrenMap().has(flatNode.id);
-              const childCount = hasChildren
-                ? childrenMap().get(flatNode.id)!.length
-                : 0;
-              const isLeaf = hasChildren && childCount === 0;
-              const isCursor = cursorLine() === virtualItem.index;
-
-              return (
-                <ExpressionListItem
-                  virtualItem={virtualItem}
-                  flatNode={flatNode}
-                  isExpanded={isExpanded}
-                  canExpand={canExpand}
-                  isLeaf={isLeaf}
-                  isCursor={isCursor}
-                  isIndented={props.isIndented}
-                  onClick={() => {
-                    setCursorLine(virtualItem.index);
-                    toggleNode(flatNode);
-                  }}
-                />
-              );
+          <div
+            style={{
+              height: `${virtualizer().getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
             }}
-          </For>
+          >
+            <For each={virtualizer().getVirtualItems()}>
+              {(virtualItem) => {
+                const flatNode = flattenedNodes()[virtualItem.index];
+                if (!flatNode) return null;
+
+                const isExpanded = expandedNodes().has(flatNode.id);
+                const canExpand = isExpandable(flatNode.node);
+                const hasChildren = childrenMap().has(flatNode.id);
+                const childCount = hasChildren
+                  ? childrenMap().get(flatNode.id)!.length
+                  : 0;
+                const isLeaf = hasChildren && childCount === 0;
+                const isCursor = cursorLine() === virtualItem.index;
+
+                return (
+                  <ExpressionListItem
+                    virtualItem={virtualItem}
+                    flatNode={flatNode}
+                    isExpanded={isExpanded}
+                    canExpand={canExpand}
+                    isLeaf={isLeaf}
+                    isCursor={isCursor}
+                    isIndented={props.isIndented}
+                    onClick={() => {
+                      setCursorLine(virtualItem.index);
+                      toggleNode(flatNode);
+                    }}
+                  />
+                );
+              }}
+            </For>
+          </div>
         </div>
+
+        {/* Loading overlay */}
+        <Show when={isExpanding()}>
+          <div class="absolute inset-0 flex flex-col items-center justify-center bg-[#1e1e1e] z-10">
+            <div class="animate-ping rounded-full h-8 w-8 border-t-2 border-b-2 mb-4"></div>
+            <span class="text-white text-sm">Expanding...</span>
+          </div>
+        </Show>
       </div>
 
       {/* Cursor indicator when focused */}
