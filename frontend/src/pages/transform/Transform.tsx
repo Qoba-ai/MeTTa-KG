@@ -1,10 +1,5 @@
-import {
-  Component,
-  createSignal,
-  Show,
-  onCleanup,
-  createUniqueId,
-} from "solid-js";
+import { Component, Show, onCleanup, createUniqueId } from "solid-js";
+import { createStore, produce } from "solid-js/store";
 import { CommandCard } from "~/components/common/CommandCard";
 import { Button } from "~/components/ui/Button";
 import {
@@ -26,36 +21,34 @@ interface Item {
 }
 
 const TransformPage: Component = () => {
-  const [patterns, setPatterns] = createSignal<Item[]>([
-    { id: createUniqueId(), namespace: "", value: "" },
-  ]);
-  const [templates, setTemplates] = createSignal<Item[]>([
-    { id: createUniqueId(), namespace: "", value: "" },
-  ]);
-  const [copied, setCopied] = createSignal(false);
+  const [state, setState] = createStore({
+    patterns: [{ id: createUniqueId(), namespace: "", value: "" }],
+    templates: [{ id: createUniqueId(), namespace: "", value: "" }],
+    copied: false,
+  });
 
   onCleanup(stopPolling);
 
   const buildTransformSExpr = (patterns: Item[], templates: Item[]) => {
-    const patternExprs = patterns.map((p) => `    (, ${p.value})`).join(" ");
-    const templateExprs = templates.map((t) => `    (, ${t.value})`).join(" ");
-    return `(transform\n${patternExprs}\n${templateExprs}\n)`;
+    const patternExprs = patterns.map((p) => `(, ${p.value})`).join(" ");
+    const templateExprs = templates.map((t) => `(, ${t.value})`).join(" ");
+    return `(transform\n    ${patternExprs}\n    ${templateExprs}\n)`;
   };
 
   const handleTransform = () => {
-    const sExpr = buildTransformSExpr(patterns(), templates());
+    const sExpr = buildTransformSExpr(state.patterns, state.templates);
     executeTransform(sExpr, formatedNamespace());
   };
 
   const addPattern = () => {
-    setPatterns((prev) => [
+    setState("patterns", (prev) => [
       ...prev,
       { id: createUniqueId(), namespace: "", value: "" },
     ]);
   };
 
   const removePattern = (id: string) => {
-    setPatterns((prev) => prev.filter((p) => p.id !== id));
+    setState("patterns", (prev) => prev.filter((p) => p.id !== id));
   };
 
   const updatePattern = (
@@ -63,20 +56,24 @@ const TransformPage: Component = () => {
     field: "namespace" | "value",
     value: string
   ) => {
-    setPatterns((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    setState(
+      "patterns",
+      produce((patterns) => {
+        const item = patterns.find((p) => p.id === id);
+        if (item) item[field] = value;
+      })
     );
   };
 
   const addTemplate = () => {
-    setTemplates((prev) => [
+    setState("templates", (prev) => [
       ...prev,
       { id: createUniqueId(), namespace: "", value: "" },
     ]);
   };
 
   const removeTemplate = (id: string) => {
-    setTemplates((prev) => prev.filter((t) => t.id !== id));
+    setState("templates", (prev) => prev.filter((t) => t.id !== id));
   };
 
   const updateTemplate = (
@@ -84,22 +81,28 @@ const TransformPage: Component = () => {
     field: "namespace" | "value",
     value: string
   ) => {
-    setTemplates((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
+    setState(
+      "templates",
+      produce((templates) => {
+        const item = templates.find((t) => t.id === id);
+        if (item) item[field] = value;
+      })
     );
   };
 
   const canTransform = () => {
     return (
-      patterns().some((p) => p.value.trim()) &&
-      templates().some((t) => t.value.trim())
+      state.patterns.some((p) => p.value.trim()) &&
+      state.templates.some((t) => t.value.trim())
     );
   };
 
   const copyExpression = () => {
-    navigator.clipboard.writeText(buildTransformSExpr(patterns(), templates()));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(
+      buildTransformSExpr(state.patterns, state.templates)
+    );
+    setState("copied", true);
+    setTimeout(() => setState("copied", false), 2000);
   };
 
   return (
@@ -115,22 +118,20 @@ const TransformPage: Component = () => {
             <div class="lg:col-span-2 space-y-6">
               <TransformInputComponent
                 type="patterns"
-                items={patterns()}
+                items={state.patterns}
                 addItem={addPattern}
                 removeItem={removePattern}
                 updateItem={updatePattern}
                 accentColor="blue-500"
-                dotColor="blue-500"
               />
 
               <TransformInputComponent
                 type="templates"
-                items={templates()}
+                items={state.templates}
                 addItem={addTemplate}
                 removeItem={removeTemplate}
                 updateItem={updateTemplate}
                 accentColor="green-500"
-                dotColor="green-500"
               />
             </div>
 
@@ -145,7 +146,7 @@ const TransformPage: Component = () => {
                 </CardHeader>
                 <CardContent>
                   <pre class="text-sm font-mono bg-muted p-3 rounded overflow-auto">
-                    {buildTransformSExpr(patterns(), templates())}
+                    {buildTransformSExpr(state.patterns, state.templates)}
                   </pre>
                   <Button
                     variant="default"
@@ -153,12 +154,12 @@ const TransformPage: Component = () => {
                     onClick={copyExpression}
                     class="w-full mt-4"
                   >
-                    {copied() ? (
+                    {state.copied ? (
                       <Check class="w-4 h-4 mr-2" />
                     ) : (
                       <Copy class="w-4 h-4 mr-2" />
                     )}
-                    {copied() ? "Copied!" : "Copy Expression"}
+                    {state.copied ? "Copied!" : "Copy Expression"}
                   </Button>
                   <div class="mt-4 p-3 bg-muted/50 rounded text-sm text-muted-foreground">
                     Items are independently sized.

@@ -23,7 +23,6 @@ interface TransformInputProps {
   removeItem: (id: string) => void;
   updateItem: (id: string, field: "namespace" | "value", value: string) => void;
   accentColor: string;
-  dotColor: string;
 }
 
 export function TransformInput(props: TransformInputProps) {
@@ -37,7 +36,9 @@ export function TransformInput(props: TransformInputProps) {
     <Card class={`border-l-4 border-l-${props.accentColor}`}>
       <CardHeader>
         <div class="flex items-center">
-          <div class={`w-2 h-2 bg-${props.dotColor} rounded-full mr-2`}></div>
+          <div
+            class={`w-2 h-2 bg-${props.accentColor} rounded-full mr-2`}
+          ></div>
           <CardTitle>{title}</CardTitle>
         </div>
         <CardDescription>{description}</CardDescription>
@@ -65,6 +66,13 @@ export function TransformInput(props: TransformInputProps) {
                   <TextField>
                     <TextFieldInput
                       value={item.value}
+                      onInput={(e) =>
+                        props.updateItem(
+                          item.id,
+                          "value",
+                          e.currentTarget.value
+                        )
+                      }
                       placeholder="Pattern/Template value"
                       class="text-sm font-mono resize-none"
                     />
