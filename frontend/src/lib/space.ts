@@ -24,12 +24,30 @@ function initNode(
     remoteData,
   };
 }
-
+const globalExprCache = new Map<string, Uint8Array[]>();
 function initNodesFromApiResponse(
   data: ExploreResponse[],
-  _parentLabel?: string
+  parentExpr?: string
 ): { nodes: SpaceNode[]; prefix: string[] } {
-  const processedData = data.map((item) => ({
+  console.log(
+    `[initNodesFromApiResponse] Received ${data.length} items from backend`
+  );
+
+  // Filter out parent expression if provided
+  let filteredData = data;
+  if (parentExpr) {
+    filteredData = data.filter((item, idx) => {
+      if (item.expr === parentExpr) {
+        console.log(
+          `[Filter] Removing parent from children at index ${idx}: ${item.expr}...`
+        );
+        return false;
+      }
+      return true;
+    });
+  }
+
+  const processedData = filteredData.map((item) => ({
     token: new Uint8Array(item.token),
     expr: item.expr,
   }));
@@ -38,17 +56,14 @@ function initNodesFromApiResponse(
   const namespaceComponents = currentNamespace
     .split("/")
     .filter((part) => part.length > 0);
-
   const currentName =
     namespaceComponents[namespaceComponents.length - 1] || "root";
   const dataTagPattern = `${currentName}a727d4f9-836a-4e4c-9480`;
 
   const unwrappedData = processedData.map((item) => {
     let expr = item.expr;
-
     try {
       const parsed = parseSExpression(expr);
-
       if (parsed.type !== "list" || !parsed.children) {
         return { ...item, expr };
       }
@@ -69,52 +84,60 @@ function initNodesFromApiResponse(
             current.children[1].type === "list"
           ) {
             current = current.children[1];
+          } else {
+            break;
           }
+        } else {
+          break;
         }
       }
 
+      // Check for data tag pattern
       if (
-        current.children &&
         current.type === "list" &&
+        Array.isArray(current.children) &&
         current.children.length > 0 &&
         current.children[0].type === "atom" &&
-        current.children[0].value === dataTagPattern
+        current.children[0].value.includes(dataTagPattern)
       ) {
-        if (current.children.length > 1) {
-          if (current.children[1].type === "list") {
-            current = current.children[1];
-          } else {
-            const remainingChildren = current.children.slice(1);
-            expr = remainingChildren
-              .map((child) => serializeSExpr(child))
-              .join(" ");
-            return { ...item, expr };
-          }
+        if (
+          current.children.length > 1 &&
+          current.children[1].type === "list"
+        ) {
+          current = current.children[1];
         }
       }
 
-      expr = serializeSExpr(current);
-    } catch {
+      const unwrapped = serializeSExpr(current);
+      console.log(`[Unwrap] CHANGED: "${expr}" -> "${unwrapped}"`);
+      return { ...item, expr: unwrapped };
+    } catch (e) {
+      console.error(`[Unwrap] Error processing expression:`, e);
       return { ...item, expr };
     }
-
-    return { ...item, expr };
   });
 
-  const tokens = unwrappedData.map((item) => tokenToString(item.token));
-  const { prefix, labels } = extractLabels(unwrappedData);
+  // Simple deduplication: only remove exact duplicates (same expr AND token)
+  const seenKeys = new Set<string>();
+  const dedupedData = [];
+
+  for (const item of unwrappedData) {
+    const tokenKey = Array.from(item.token).join(",");
+    const key = `${item.expr}|||${tokenKey}`;
+
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      dedupedData.push(item);
+    }
+  }
+
+  const tokens = dedupedData.map((item) => tokenToString(item.token));
+  const { prefix, labels } = extractLabels(dedupedData);
 
   const processedLabels = labels.map((item) => {
     if (!item) return null;
     if (typeof item === "string") {
       const cleaned = item.replace(/^["']|["']$/g, "");
-      if (cleaned.length > 50) {
-        const parts = cleaned.split("-");
-        if (parts.length > 1 && parts[0].length > 0) {
-          return parts[0] + "...";
-        }
-        return cleaned.substring(0, 20) + "...";
-      }
       return cleaned;
     }
     return String(item);
@@ -124,10 +147,11 @@ function initNodesFromApiResponse(
   for (let i = 0; i < tokens.length; i++) {
     const label = processedLabels[i];
     if (label !== null) {
-      nodes.push(initNode(tokens[i], label, unwrappedData[i]));
+      nodes.push(initNode(tokens[i], label, dedupedData[i]));
     }
   }
 
+  console.log(`[initNodesFromApiResponse] Returning ${nodes.length} nodes`);
   return { nodes, prefix };
 }
 
@@ -215,6 +239,17 @@ function convertToD3TreeData(
   return root;
 }
 
+function resetGlobalDeduplication() {
+  console.log(
+    `[Global Dedup] Resetting cache (had ${globalExprCache.size} expressions)`
+  );
+  globalExprCache.clear();
+}
+
 export type { ExploreResponse, SpaceNode };
 
-export { initNodesFromApiResponse, convertToD3TreeData };
+export {
+  initNodesFromApiResponse,
+  convertToD3TreeData,
+  resetGlobalDeduplication,
+};
