@@ -79,15 +79,6 @@ export function TransformInput(props: TransformInputProps) {
                       />
                     </TextField>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={props.addItem}
-                    class="w-full mt-2"
-                  >
-                    <Plus class="w-4 h-4 mr-2" />
-                    Add {props.type === "patterns" ? "Pattern" : "Template"}
-                  </Button>
                 </div>
                 <Button
                   variant="ghost"
@@ -101,6 +92,16 @@ export function TransformInput(props: TransformInputProps) {
               </div>
             )}
           </For>
+          <hr class="my-4" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={props.addItem}
+            class="w-full"
+          >
+            <Plus class="w-4 h-4 mr-2" />
+            Add {props.type === "patterns" ? "Pattern" : "Template"}
+          </Button>
         </div>
       </CardContent>
     </Card>
