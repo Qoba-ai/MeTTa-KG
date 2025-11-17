@@ -24,7 +24,7 @@ pub enum ExportFormat {
 ///
 /// let ns = Namespace::from_path_string("/parent/child/grandchild");
 /// let pattern = Pattern {
-///     pattern: "$x://example.com/ns/example#pattern".to_string(),
+///     pattern: "$x".to_string(),
 ///     namespace: ns,
 /// };
 /// ```
@@ -32,7 +32,7 @@ pub enum ExportFormat {
 /// will be represented as
 ///
 /// ```lisp
-/// (parent (child (grandchild ($x))))
+/// (parent (child (grandchild (grandchilda727d4f9-836a-4e4c-9480 $x))))
 /// ```
 ///
 #[derive(Serialize, Deserialize, Clone, Debug)]
