@@ -25,42 +25,35 @@ function initNode(
   };
 }
 const globalExprCache = new Map<string, Uint8Array[]>();
-function initNodesFromApiResponse(
+function filterParentExpression(
   data: ExploreResponse[],
   parentExpr?: string
-): { nodes: SpaceNode[]; prefix: string[] } {
-  console.log(
-    `[initNodesFromApiResponse] Received ${data.length} items from backend`
-  );
+): ExploreResponse[] {
+  if (!parentExpr) return data;
+  return data.filter((item, idx) => {
+    if (item.expr === parentExpr) {
+      console.log(
+        `[Filter] Removing parent from children at index ${idx}: ${item.expr}...`
+      );
+      return false;
+    }
+    return true;
+  });
+}
 
-  // Filter out parent expression if provided
-  let filteredData = data;
-  if (parentExpr) {
-    filteredData = data.filter((item, idx) => {
-      if (item.expr === parentExpr) {
-        console.log(
-          `[Filter] Removing parent from children at index ${idx}: ${item.expr}...`
-        );
-        return false;
-      }
-      return true;
-    });
-  }
-
-  const processedData = filteredData.map((item) => ({
+function processTokens(data: ExploreResponse[]): { token: Uint8Array; expr: string }[] {
+  return data.map((item) => ({
     token: new Uint8Array(item.token),
     expr: item.expr,
   }));
+}
 
-  const currentNamespace = formatedNamespace();
-  const namespaceComponents = currentNamespace
-    .split("/")
-    .filter((part) => part.length > 0);
-  const currentName =
-    namespaceComponents[namespaceComponents.length - 1] || "root";
-  const dataTagPattern = `${currentName}a727d4f9-836a-4e4c-9480`;
-
-  const unwrappedData = processedData.map((item) => {
+function unwrapExpressions(
+  data: { token: Uint8Array; expr: string }[],
+  namespaceComponents: string[],
+  dataTagPattern: string
+): { token: Uint8Array; expr: string }[] {
+  return data.map((item) => {
     let expr = item.expr;
     try {
       const parsed = parseSExpression(expr);
@@ -116,12 +109,13 @@ function initNodesFromApiResponse(
       return { ...item, expr };
     }
   });
+}
 
-  // Simple deduplication: only remove exact duplicates (same expr AND token)
+function deduplicateData(data: { token: Uint8Array; expr: string }[]): { token: Uint8Array; expr: string }[] {
   const seenKeys = new Set<string>();
   const dedupedData = [];
 
-  for (const item of unwrappedData) {
+  for (const item of data) {
     const tokenKey = Array.from(item.token).join(",");
     const key = `${item.expr}|||${tokenKey}`;
 
@@ -131,8 +125,12 @@ function initNodesFromApiResponse(
     }
   }
 
-  const tokens = dedupedData.map((item) => tokenToString(item.token));
-  const { prefix, labels } = extractLabels(dedupedData);
+  return dedupedData;
+}
+
+function processLabels(data: { token: Uint8Array; expr: string }[]): { tokens: string[]; labels: (string | null)[]; prefix: string[] } {
+  const tokens = data.map((item) => tokenToString(item.token));
+  const { prefix, labels } = extractLabels(data);
 
   const processedLabels = labels.map((item) => {
     if (!item) return null;
@@ -143,13 +141,47 @@ function initNodesFromApiResponse(
     return String(item);
   });
 
+  return { tokens, labels: processedLabels, prefix };
+}
+
+function createNodes(
+  tokens: string[],
+  labels: (string | null)[],
+  data: { token: Uint8Array; expr: string }[]
+): SpaceNode[] {
   const nodes = [];
   for (let i = 0; i < tokens.length; i++) {
-    const label = processedLabels[i];
+    const label = labels[i];
     if (label !== null) {
-      nodes.push(initNode(tokens[i], label, dedupedData[i]));
+      nodes.push(initNode(tokens[i], label, data[i]));
     }
   }
+  return nodes;
+}
+
+function initNodesFromApiResponse(
+  data: ExploreResponse[],
+  parentExpr?: string
+): { nodes: SpaceNode[]; prefix: string[] } {
+  console.log(
+    `[initNodesFromApiResponse] Received ${data.length} items from backend`
+  );
+
+  const filteredData = filterParentExpression(data, parentExpr);
+  const processedData = processTokens(filteredData);
+
+  const currentNamespace = formatedNamespace();
+  const namespaceComponents = currentNamespace
+    .split("/")
+    .filter((part) => part.length > 0);
+  const currentName =
+    namespaceComponents[namespaceComponents.length - 1] || "root";
+  const dataTagPattern = `${currentName}a727d4f9-836a-4e4c-9480`;
+
+  const unwrappedData = unwrapExpressions(processedData, namespaceComponents, dataTagPattern);
+  const dedupedData = deduplicateData(unwrappedData);
+  const { tokens, labels, prefix } = processLabels(dedupedData);
+  const nodes = createNodes(tokens, labels, dedupedData);
 
   console.log(`[initNodesFromApiResponse] Returning ${nodes.length} nodes`);
   return { nodes, prefix };
