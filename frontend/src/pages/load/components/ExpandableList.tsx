@@ -179,7 +179,62 @@ export default function ExpressionList(props: ExpressionListProps) {
       const parsed = JSON.parse(response) as ExploreResponse[];
 
       if (parsed && parsed.length > 0) {
-        const processedData = initNodesFromApiResponse(parsed);
+        let processedData = initNodesFromApiResponse(
+          parsed,
+          node.remoteData.expr
+        );
+
+        let pullUpDepth = 0;
+        const MAX_PULL_UP_DEPTH = 100;
+        while (
+          pullUpDepth < MAX_PULL_UP_DEPTH &&
+          processedData.nodes.length > 0 &&
+          processedData.nodes[0].remoteData.expr === node.remoteData.expr
+        ) {
+          const remainingSiblings = processedData.nodes.slice(1);
+          const currentChildCount = remainingSiblings.length;
+
+          try {
+            const token = processedData.nodes[0].remoteData.token;
+            const duplicateChildResponse = await exploreSpace(
+              formatedNamespace(),
+              props.pattern,
+              token
+            );
+            const parsed = JSON.parse(
+              duplicateChildResponse
+            ) as ExploreResponse[];
+            const grandchildren = initNodesFromApiResponse(
+              parsed,
+              node.remoteData.expr
+            );
+
+            if (grandchildren.nodes.length === 0) {
+              processedData = {
+                nodes: remainingSiblings,
+                prefix: processedData.prefix,
+              };
+              break;
+            }
+
+            processedData = {
+              nodes: [...grandchildren.nodes, ...remainingSiblings],
+              prefix: processedData.prefix,
+            };
+
+            if (processedData.nodes.length <= currentChildCount) {
+              break;
+            }
+          } catch {
+            processedData = {
+              nodes: remainingSiblings,
+              prefix: processedData.prefix,
+            };
+            break;
+          }
+
+          pullUpDepth++;
+        }
 
         if (processedData.nodes.length > 0) {
           setChildrenMap(
@@ -277,7 +332,7 @@ export default function ExpressionList(props: ExpressionListProps) {
         if (parsed?.length > 0) {
           let processedData = initNodesFromApiResponse(
             parsed,
-            nodeToExpand.node.remoteData.token
+            nodeToExpand.node.remoteData.expr
           );
 
           let pullUpDepth = 0;
@@ -302,7 +357,7 @@ export default function ExpressionList(props: ExpressionListProps) {
               ) as ExploreResponse[];
               const grandchildren = initNodesFromApiResponse(
                 parsed,
-                nodeToExpand.node.remoteData.token
+                nodeToExpand.node.remoteData.expr
               );
 
               if (grandchildren.nodes.length === 0) {
