@@ -122,7 +122,7 @@ const TransformPage: Component = () => {
                 addItem={addPattern}
                 removeItem={removePattern}
                 updateItem={updatePattern}
-                accentColor="blue-500"
+                accentColor="primary"
               />
 
               <TransformInputComponent
@@ -131,7 +131,7 @@ const TransformPage: Component = () => {
                 addItem={addTemplate}
                 removeItem={removeTemplate}
                 updateItem={updateTemplate}
-                accentColor="green-500"
+                accentColor="primary"
               />
             </div>
 

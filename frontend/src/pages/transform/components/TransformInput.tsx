@@ -48,35 +48,46 @@ export function TransformInput(props: TransformInputProps) {
           <For each={props.items}>
             {(item) => (
               <div class="flex gap-2">
-                <div class="flex-1 grid grid-cols-2 gap-2">
-                  <TextField>
-                    <TextFieldInput
-                      value={item.namespace}
-                      onInput={(e) =>
-                        props.updateItem(
-                          item.id,
-                          "namespace",
-                          e.currentTarget.value
-                        )
-                      }
-                      placeholder="Namespace"
-                      class="text-sm"
-                    />
-                  </TextField>
-                  <TextField>
-                    <TextFieldInput
-                      value={item.value}
-                      onInput={(e) =>
-                        props.updateItem(
-                          item.id,
-                          "value",
-                          e.currentTarget.value
-                        )
-                      }
-                      placeholder="Pattern/Template value"
-                      class="text-sm font-mono resize-none"
-                    />
-                  </TextField>
+                <div class="flex-1 flex flex-col gap-2">
+                  <div class="flex gap-2 items-center">
+                    <TextField class="flex-1">
+                      <TextFieldInput
+                        value={item.namespace}
+                        onInput={(e) =>
+                          props.updateItem(
+                            item.id,
+                            "namespace",
+                            e.currentTarget.value
+                          )
+                        }
+                        placeholder="Namespace"
+                        class="text-sm"
+                      />
+                    </TextField>
+                    <TextField class="flex-1">
+                      <TextFieldInput
+                        value={item.value}
+                        onInput={(e) =>
+                          props.updateItem(
+                            item.id,
+                            "value",
+                            e.currentTarget.value
+                          )
+                        }
+                        placeholder="Pattern/Template value"
+                        class="text-sm font-mono resize-none"
+                      />
+                    </TextField>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={props.addItem}
+                    class="w-full mt-2"
+                  >
+                    <Plus class="w-4 h-4 mr-2" />
+                    Add {props.type === "patterns" ? "Pattern" : "Template"}
+                  </Button>
                 </div>
                 <Button
                   variant="ghost"
@@ -91,15 +102,6 @@ export function TransformInput(props: TransformInputProps) {
             )}
           </For>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={props.addItem}
-          class="w-full mt-4"
-        >
-          <Plus class="w-4 h-4 mr-2" />
-          Add {props.type === "patterns" ? "Pattern" : "Template"}
-        </Button>
       </CardContent>
     </Card>
   );
