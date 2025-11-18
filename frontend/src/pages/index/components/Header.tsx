@@ -1,11 +1,24 @@
 import NameSpace from "./NameSpace";
+import { getAllTokens } from "~/lib/api";
+import {
+  rootToken,
+  namespace,
+  setNamespace,
+  tokenRootNamespace,
+} from "~/lib/state";
 
 export default function Header() {
   return (
     <>
       {/* Header */}
       <header class="h-16 bg-neutral-800 border-b border-neutral-700 flex items-center justify-between px-6">
-        <NameSpace />
+        <NameSpace
+          namespace={namespace()}
+          setNamespace={setNamespace}
+          rootToken={rootToken()}
+          tokenRootNamespace={tokenRootNamespace}
+          getAllTokens={getAllTokens}
+        />
         <div class="flex items-center gap-4">
           <a
             href="https://github.com/trueagi-io/MORK"
