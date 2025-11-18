@@ -21,7 +21,7 @@ export const [isMinimized, setIsMinimized] = createSignal(true);
 export const [pattern, setPattern] = createSignal("$x");
 
 // Add state and handler for indentation
-export const [isIndented, setIsIndented] = createSignal(true);
+export const [isIndented, setIsIndented] = createSignal(false);
 export const handleToggleIndent = () => setIsIndented((prev) => !prev);
 
 export const [subSpace, { refetch: refetchSubSpace }] = createResource(
