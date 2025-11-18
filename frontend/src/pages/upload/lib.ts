@@ -14,11 +14,12 @@ export const [urlFormat, setUrlFormat] = createSignal("metta");
 export const [selectedFile, setSelectedFile] = createSignal<File | null>(null);
 export const [textContent, setTextContent] = createSignal(`()`);
 export const [textFormat, setTextFormat] = createSignal("metta");
+export const [fileFormat, setFileFormat] = createSignal("metta");
 export const [activeTab, setActiveTab] = createSignal("url");
 export const [isLoading, setIsLoading] = createSignal(false);
 export const [result, setResult] = createSignal<UploadResult>(null);
 
-export const isFileUploadImplemented = false;
+export const isFileUploadImplemented = true;
 
 export const handleFileSelect = (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
@@ -81,7 +82,12 @@ export const handleImport = async (spacePath: string) => {
         }
         const formData = new FormData();
         formData.append("file", selectedFile()!);
-        const response = await importData("file", formData, "metta");
+        const response = await importData(
+          "file",
+          formData,
+          fileFormat(),
+          spacePath
+        );
         if (response.status === "success") {
           setResult({ data: response.data, status: "success" });
           showToast({

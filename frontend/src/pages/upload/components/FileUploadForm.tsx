@@ -4,6 +4,13 @@ import {
   TextFieldInput,
   TextFieldLabel,
 } from "~/components/ui/TextField";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "~/components/ui/Select";
 import NotImplemented from "~/components/common/NotImplemented";
 import File from "lucide-solid/icons/file";
 
@@ -13,6 +20,8 @@ interface FileUploadFormProps {
   isLoading: boolean;
   isFileUploadImplemented: boolean;
   formatFileSize: (bytes: number) => string;
+  format: string;
+  onFormatChange: (value: string) => void;
 }
 
 export const FileUploadForm: Component<FileUploadFormProps> = (props) => {
@@ -23,6 +32,27 @@ export const FileUploadForm: Component<FileUploadFormProps> = (props) => {
     >
       <div class="space-y-4">
         <div class="space-y-2">
+          <TextField>
+            <TextFieldLabel for="text-format">Format</TextFieldLabel>
+            <Select
+              value={props.format}
+              onChange={(newValue) => {
+                if (newValue) props.onFormatChange(newValue);
+              }}
+              disabled={props.isLoading}
+              options={["metta", "json", "csv", "raw"]}
+              itemComponent={(p) => (
+                <SelectItem item={p.item}>{p.item.rawValue}</SelectItem>
+              )}
+              placeholder="Select format"
+            >
+              <SelectTrigger id="text-format">
+                <SelectValue>{props.format}</SelectValue>
+              </SelectTrigger>
+              <SelectContent />
+            </Select>
+          </TextField>
+
           <TextField>
             <TextFieldLabel for="file-upload">Select File</TextFieldLabel>
             <TextFieldInput
