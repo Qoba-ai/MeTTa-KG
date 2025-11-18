@@ -176,6 +176,20 @@ impl From<PathBuf> for Namespace {
     }
 }
 
+impl std::fmt::Display for Namespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.path
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+                .join("/")
+        )
+    }
+}
+
 #[allow(dead_code)]
 impl TransformDetails {
     pub fn new() -> Self {

@@ -11,8 +11,35 @@ use std::path::PathBuf;
 use crate::model::Token;
 use crate::mork_api::{
     ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, MorkApiClient,
-    Pattern, ReadRequest, Request, Template, TransformDetails, TransformRequest, UploadRequest,
+    Namespace, Pattern, ReadRequest, Request, Template, TransformDetails, TransformRequest,
+    UploadRequest,
 };
+
+trait SourceTargetPermissions {
+    type Ns: ToString + Clone;
+
+    fn source(&self) -> Vec<Self::Ns>;
+    fn target(&self) -> Vec<Self::Ns>;
+
+    fn source_target_permissions(&self, token: Token) -> bool {
+        let token_namespace = token.namespace.strip_prefix("/").unwrap();
+
+        // check `permission read`
+        let has_read_permission = self
+            .source()
+            .iter()
+            .all(|pattern| pattern.to_string().starts_with(token_namespace))
+            && token.permission_read;
+
+        let has_write_permission = self
+            .target()
+            .iter()
+            .all(|template| template.to_string().starts_with(token_namespace))
+            && token.permission_write;
+
+        has_read_permission && has_write_permission
+    }
+}
 
 /// The input for a transformation operation.
 /// see mm2 operations for more    // TODO: Add links
@@ -20,6 +47,24 @@ use crate::mork_api::{
 pub struct Mm2InputMulti {
     pub patterns: Vec<String>,
     pub templates: Vec<String>,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct Mm2InputMultiWithNamespace {
+    pub patterns: Vec<Pattern>,
+    pub templates: Vec<Template>,
+}
+
+impl SourceTargetPermissions for Mm2InputMultiWithNamespace {
+    type Ns = Namespace;
+
+    fn source(&self) -> Vec<Self::Ns> {
+        self.patterns.iter().map(|p| p.namespace.clone()).collect()
+    }
+
+    fn target(&self) -> Vec<Self::Ns> {
+        self.templates.iter().map(|t| t.namespace.clone()).collect()
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -38,6 +83,18 @@ pub struct ExploreInput {
 pub struct SetOperationInput {
     pub source: Vec<String>,
     pub target: Vec<String>,
+}
+
+impl SourceTargetPermissions for SetOperationInput {
+    type Ns = String;
+
+    fn source(&self) -> Vec<Self::Ns> {
+        self.source.clone()
+    }
+
+    fn target(&self) -> Vec<Self::Ns> {
+        self.target.clone()
+    }
 }
 
 /// Fetches the `<path..>` space content. Use cautously as it will load everything.
@@ -215,41 +272,21 @@ pub async fn clear(token: Token, path: PathBuf, expr: String) -> Result<Json<boo
 }
 
 /// Performs a transformation operation on the `<path..>` space
-#[post("/spaces/transform/<path..>", data = "<mm2>")]
+#[post("/spaces/transform", data = "<mm2>")]
 pub async fn transform(
     token: Token,
-    path: PathBuf,
-    mm2: Json<Mm2InputMulti>,
+    mm2: Json<Mm2InputMultiWithNamespace>,
 ) -> Result<Json<bool>, Status> {
-    let token_namespace = token.namespace.strip_prefix("/").unwrap();
-
-    if !path.starts_with(token_namespace) || !token.permission_read || !token.permission_write {
+    let mm2 = mm2.into_inner();
+    if !mm2.clone().source_target_permissions(token) {
         return Err(Status::Unauthorized);
     }
 
     let mork_api_client = MorkApiClient::new();
     let request = TransformRequest::new().transform_input(
         TransformDetails::new()
-            .patterns(
-                mm2.patterns
-                    .iter()
-                    .map(|p| {
-                        Pattern::default()
-                            .pattern(p.clone())
-                            .namespace(path.to_path_buf())
-                    })
-                    .collect(),
-            )
-            .templates(
-                mm2.templates
-                    .iter()
-                    .map(|t| {
-                        Template::default()
-                            .template(t.clone())
-                            .namespace(path.to_path_buf())
-                    })
-                    .collect(),
-            ),
+            .patterns(mm2.clone().patterns)
+            .templates(mm2.templates),
     );
 
     // TODO: use server sent events instead
@@ -279,22 +316,7 @@ pub async fn composition(
     token: Token,
     operation_input: Json<SetOperationInput>,
 ) -> Result<Json<bool>, Status> {
-    let token_namespace = token.namespace.strip_prefix("/").unwrap();
-
-    // check `permission read`
-    let has_read_permission = operation_input
-        .source
-        .iter()
-        .all(|source| source.starts_with(token_namespace))
-        && token.permission_read;
-
-    let has_write_permission = operation_input
-        .target
-        .iter()
-        .all(|target| target.starts_with(token_namespace))
-        && token.permission_write;
-
-    if !has_read_permission || !has_write_permission {
+    if !operation_input.source_target_permissions(token) {
         return Err(Status::Unauthorized);
     }
 
