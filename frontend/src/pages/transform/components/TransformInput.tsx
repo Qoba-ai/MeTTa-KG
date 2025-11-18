@@ -9,10 +9,16 @@ import {
   CardContent,
 } from "~/components/ui/Card";
 import { Plus, Trash2 } from "lucide-solid";
+import NameSpace from "~/pages/index/components/NameSpace";
+
+type Token = {
+  namespace: string;
+  description: string;
+};
 
 interface Item {
   id: string;
-  namespace: string;
+  namespace: string[];
   value: string;
 }
 
@@ -21,8 +27,15 @@ interface TransformInputProps {
   items: Item[];
   addItem: () => void;
   removeItem: (id: string) => void;
-  updateItem: (id: string, field: "namespace" | "value", value: string) => void;
+  updateItem: (
+    id: string,
+    field: "namespace" | "value",
+    value: string | string[]
+  ) => void;
   accentColor: string;
+  rootToken: boolean;
+  tokenRootNamespace: () => string[];
+  getAllTokens: () => Promise<Token[]>;
 }
 
 export function TransformInput(props: TransformInputProps) {
@@ -47,38 +60,31 @@ export function TransformInput(props: TransformInputProps) {
         <div class="space-y-2">
           <For each={props.items}>
             {(item) => (
-              <div class="flex gap-2">
+              <div class="flex gap-2 bg-neutral-800 p-3">
                 <div class="flex-1 flex flex-col gap-2">
-                  <div class="flex gap-2 items-center">
-                    <TextField class="flex-1">
-                      <TextFieldInput
-                        value={item.namespace}
-                        onInput={(e) =>
-                          props.updateItem(
-                            item.id,
-                            "namespace",
-                            e.currentTarget.value
-                          )
-                        }
-                        placeholder="Namespace"
-                        class="text-sm"
-                      />
-                    </TextField>
-                    <TextField class="flex-1">
-                      <TextFieldInput
-                        value={item.value}
-                        onInput={(e) =>
-                          props.updateItem(
-                            item.id,
-                            "value",
-                            e.currentTarget.value
-                          )
-                        }
-                        placeholder="Pattern/Template value"
-                        class="text-sm font-mono resize-none"
-                      />
-                    </TextField>
-                  </div>
+                  <NameSpace
+                    namespace={item.namespace}
+                    setNamespace={(ns) =>
+                      props.updateItem(item.id, "namespace", ns)
+                    }
+                    rootToken={props.rootToken}
+                    tokenRootNamespace={props.tokenRootNamespace}
+                    getAllTokens={props.getAllTokens}
+                  />
+                  <TextField class="flex-1">
+                    <TextFieldInput
+                      value={item.value}
+                      onInput={(e) =>
+                        props.updateItem(
+                          item.id,
+                          "value",
+                          e.currentTarget.value
+                        )
+                      }
+                      placeholder="Pattern/Template value"
+                      class="text-sm font-mono resize-none"
+                    />
+                  </TextField>
                 </div>
                 <Button
                   variant="ghost"

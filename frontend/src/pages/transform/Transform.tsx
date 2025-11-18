@@ -10,20 +10,22 @@ import {
   CardContent,
 } from "~/components/ui/Card";
 import { formatedNamespace } from "~/lib/state";
+import { getAllTokens } from "~/lib/api";
+import { rootToken, tokenRootNamespace } from "~/lib/state";
 import { isLoading, isPolling, executeTransform, stopPolling } from "./lib";
 import { Copy, Check } from "lucide-solid";
 import { TransformInput as TransformInputComponent } from "./components/TransformInput";
 
 interface Item {
   id: string;
-  namespace: string;
+  namespace: string[];
   value: string;
 }
 
 const TransformPage: Component = () => {
   const [state, setState] = createStore({
-    patterns: [{ id: createUniqueId(), namespace: "", value: "" }],
-    templates: [{ id: createUniqueId(), namespace: "", value: "" }],
+    patterns: [{ id: createUniqueId(), namespace: [""], value: "" }],
+    templates: [{ id: createUniqueId(), namespace: [""], value: "" }],
     copied: false,
   });
 
@@ -43,7 +45,7 @@ const TransformPage: Component = () => {
   const addPattern = () => {
     setState("patterns", (prev) => [
       ...prev,
-      { id: createUniqueId(), namespace: "", value: "" },
+      { id: createUniqueId(), namespace: [""], value: "" },
     ]);
   };
 
@@ -54,7 +56,7 @@ const TransformPage: Component = () => {
   const updatePattern = (
     id: string,
     field: "namespace" | "value",
-    value: string
+    value: string | string[]
   ) => {
     setState(
       "patterns",
@@ -68,7 +70,7 @@ const TransformPage: Component = () => {
   const addTemplate = () => {
     setState("templates", (prev) => [
       ...prev,
-      { id: createUniqueId(), namespace: "", value: "" },
+      { id: createUniqueId(), namespace: [""], value: "" },
     ]);
   };
 
@@ -79,7 +81,7 @@ const TransformPage: Component = () => {
   const updateTemplate = (
     id: string,
     field: "namespace" | "value",
-    value: string
+    value: string | string[]
   ) => {
     setState(
       "templates",
@@ -123,6 +125,9 @@ const TransformPage: Component = () => {
                 removeItem={removePattern}
                 updateItem={updatePattern}
                 accentColor="primary"
+                rootToken={rootToken()}
+                tokenRootNamespace={tokenRootNamespace}
+                getAllTokens={getAllTokens}
               />
 
               <TransformInputComponent
@@ -132,6 +137,9 @@ const TransformPage: Component = () => {
                 removeItem={removeTemplate}
                 updateItem={updateTemplate}
                 accentColor="primary"
+                rootToken={rootToken()}
+                tokenRootNamespace={tokenRootNamespace}
+                getAllTokens={getAllTokens}
               />
             </div>
 
