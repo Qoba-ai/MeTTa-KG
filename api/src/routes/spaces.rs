@@ -10,8 +10,8 @@ use std::path::PathBuf;
 
 use crate::model::Token;
 use crate::mork_api::{
-    ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, MorkApiClient,
-    Namespace, Pattern, ReadRequest, Request, Template, TransformDetails, TransformRequest,
+    ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, Mm2Cell,
+    MorkApiClient, Namespace, ReadRequest, Request, TransformDetails, TransformRequest,
     UploadRequest,
 };
 
@@ -51,19 +51,25 @@ pub struct Mm2InputMulti {
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Mm2InputMultiWithNamespace {
-    pub patterns: Vec<Pattern>,
-    pub templates: Vec<Template>,
+    pub patterns: Vec<Mm2Cell>,
+    pub templates: Vec<Mm2Cell>,
 }
 
 impl SourceTargetPermissions for Mm2InputMultiWithNamespace {
     type Ns = Namespace;
 
     fn source(&self) -> Vec<Self::Ns> {
-        self.patterns.iter().map(|p| p.namespace.clone()).collect()
+        self.patterns
+            .iter()
+            .map(|p| p.namespace().clone())
+            .collect()
     }
 
     fn target(&self) -> Vec<Self::Ns> {
-        self.templates.iter().map(|t| t.namespace.clone()).collect()
+        self.templates
+            .iter()
+            .map(|t| t.namespace().clone())
+            .collect()
     }
 }
 
@@ -115,12 +121,14 @@ pub async fn read(
 
     let mork_api_client = MorkApiClient::new();
     let transform_input = TransformDetails::new()
-        .patterns(vec![Pattern::default()
-            .pattern(mm2.patterns.first().cloned().unwrap_or("$x".to_string()))
-            .namespace(path.to_path_buf())])
-        .templates(vec![Template::default()
-            .template(mm2.templates.first().cloned().unwrap_or("$x".to_string()))
-            .namespace(path.to_path_buf())]);
+        .patterns(vec![Mm2Cell::new_pattern(
+            mm2.patterns.first().cloned().unwrap_or("$x".to_string()),
+            Namespace::from(path.to_path_buf()),
+        )])
+        .templates(vec![Mm2Cell::new_template(
+            mm2.templates.first().cloned().unwrap_or("$x".to_string()),
+            Namespace::from(path.to_path_buf()),
+        )]);
     let request = ReadRequest::new().transform_input(transform_input);
 
     let response = mork_api_client.dispatch(request).await.map(Json);
@@ -189,9 +197,8 @@ pub async fn import(
     }
 
     let mork_api_client = MorkApiClient::new();
-    let template = Template::default()
-        .namespace(path)
-        .template(template.unwrap_or("$x".to_string()));
+    let template =
+        Mm2Cell::new_template(template.unwrap_or("$x".to_string()), Namespace::from(path));
     let request = ImportRequest::new().to(template).uri(uri);
 
     match mork_api_client.dispatch(request).await {
@@ -367,18 +374,17 @@ fn composition_transform(input: SetOperationInput) -> Result<TransformDetails, S
             template.push(c);
             template.push(' ');
 
-            Pattern::default()
-                .namespace(PathBuf::from(source_ns))
-                .pattern(format!("${}", c))
+            Mm2Cell::new_pattern(format!("${}", c), Namespace::from(PathBuf::from(source_ns)))
         })
-        .collect::<Vec<Pattern>>();
+        .collect::<Vec<Mm2Cell>>();
 
     let transform_input =
         TransformDetails::new()
             .patterns(patterns)
-            .templates(vec![Template::default()
-                .namespace(PathBuf::from(input.target.first().cloned().unwrap()))
-                .template(template)]);
+            .templates(vec![Mm2Cell::new_template(
+                template,
+                Namespace::from(PathBuf::from(input.target.first().cloned().unwrap())),
+            )]);
 
     Ok(transform_input)
 }

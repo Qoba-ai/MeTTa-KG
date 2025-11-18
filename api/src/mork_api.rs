@@ -14,19 +14,16 @@ pub enum ExportFormat {
     Raw,
 }
 
-/// A pattern inside a namespace
+/// Represents a pattern or a template with a namespace
 ///
 /// # Examples
 ///
 /// ```
-/// use api::mork_api::Pattern;
+/// use api::mork_api::Mm2Cell;
 /// use api::mork_api::Namespace;
 ///
 /// let ns = Namespace::from_path_string("/parent/child/grandchild");
-/// let pattern = Pattern {
-///     pattern: "$x".to_string(),
-///     namespace: ns,
-/// };
+/// let pattern = Mm2Cell::new_pattern("$x".to_string(), ns);
 /// ```
 ///
 /// will be represented as
@@ -36,92 +33,70 @@ pub enum ExportFormat {
 /// ```
 ///
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Pattern {
-    pub pattern: String,
-    pub namespace: Namespace,
+#[serde(tag = "kind")]
+pub enum Mm2Cell {
+    #[serde(rename = "pattern")]
+    Pattern(Mm2CellValue),
+    #[serde(rename = "template")]
+    Template(Mm2CellValue),
 }
 
-impl Default for Pattern {
-    fn default() -> Self {
-        Pattern {
-            pattern: "$x".to_string(),
-            namespace: Namespace::default(),
-        }
-    }
-}
-
-impl Pattern {
-    pub fn new(pattern: String, namespace: Namespace) -> Self {
-        Pattern { pattern, namespace }
-    }
-
-    pub fn pattern(mut self, pattern: String) -> Self {
-        self.pattern = pattern;
-        self
-    }
-
-    pub fn namespace(mut self, ns: PathBuf) -> Self {
-        self.namespace = Namespace::from(ns);
-        self
-    }
-
-    pub fn build(&self) -> String {
-        self.namespace.with_namespace(&self.pattern)
-    }
-}
-
-/// A template inside a namespace similar to [`Pattern`]
-/// See [`Pattern`] for example
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Template {
-    pub template: String,
+pub struct Mm2CellValue {
+    pub value: String,
     pub namespace: Namespace,
 }
 
-impl Default for Template {
+impl Default for Mm2Cell {
     fn default() -> Self {
-        Template {
-            template: "$x".to_string(),
+        Mm2Cell::Pattern(Mm2CellValue {
+            value: "$x".to_string(),
             namespace: Namespace::default(),
-        }
+        })
     }
 }
 
-impl Template {
-    pub fn new(template: String, namespace: Namespace) -> Self {
-        Template {
-            template,
-            namespace,
+impl Mm2Cell {
+    pub fn new_pattern(value: String, namespace: Namespace) -> Self {
+        Mm2Cell::Pattern(Mm2CellValue { value, namespace })
+    }
+
+    pub fn new_template(value: String, namespace: Namespace) -> Self {
+        Mm2Cell::Template(Mm2CellValue { value, namespace })
+    }
+
+    pub fn value(&self) -> &str {
+        match self {
+            Mm2Cell::Pattern(p) | Mm2Cell::Template(p) => &p.value,
         }
     }
 
-    pub fn template(mut self, template: String) -> Self {
-        self.template = template;
-        self
-    }
-
-    pub fn namespace(mut self, ns: PathBuf) -> Self {
-        self.namespace = Namespace::from(ns);
-        self
+    pub fn namespace(&self) -> &Namespace {
+        match self {
+            Mm2Cell::Pattern(p) | Mm2Cell::Template(p) => &p.namespace,
+        }
     }
 
     pub fn build(&self) -> String {
-        self.namespace.with_namespace(&self.template)
+        self.namespace().with_namespace(self.value())
     }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TransformDetails {
     /// the sub space as per playground convetions. ie. (/ ...)
-    pub patterns: Vec<Pattern>, // A sub space
-    pub templates: Vec<Template>,
+    pub patterns: Vec<Mm2Cell>, // A sub space
+    pub templates: Vec<Mm2Cell>,
 }
 
 impl Default for TransformDetails {
     fn default() -> Self {
         TransformDetails {
-            patterns: vec![Pattern::default()],
-            templates: vec![Template::default()],
+            patterns: vec![Mm2Cell::default()],
+            templates: vec![Mm2Cell::Template(Mm2CellValue {
+                value: "$x".to_string(),
+                namespace: Namespace::default(),
+            })],
         }
     }
 }
@@ -196,12 +171,12 @@ impl TransformDetails {
         Default::default()
     }
 
-    pub fn patterns(mut self, patterns: Vec<Pattern>) -> Self {
+    pub fn patterns(mut self, patterns: Vec<Mm2Cell>) -> Self {
         self.patterns = patterns;
         self
     }
 
-    pub fn templates(mut self, templates: Vec<Template>) -> Self {
+    pub fn templates(mut self, templates: Vec<Mm2Cell>) -> Self {
         self.templates = templates;
         self
     }
@@ -375,9 +350,9 @@ impl ImportRequest {
 
     /// Set the import structure, pattern is always `$x` and template is also
     /// `$x` by default which can be overridden
-    pub fn to(mut self, template: Template) -> Self {
+    pub fn to(mut self, template: Mm2Cell) -> Self {
         self.transform_input = TransformDetails::new()
-            .patterns(vec![Pattern::default()])
+            .patterns(vec![Mm2Cell::default()])
             .templates(vec![template]);
         self
     }

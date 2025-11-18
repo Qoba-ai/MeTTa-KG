@@ -1,6 +1,4 @@
-use std::path::PathBuf;
-
-use api::mork_api::{Pattern, Template};
+use api::mork_api::Mm2Cell;
 use api::rocket;
 use api::routes::spaces::Mm2InputMultiWithNamespace;
 use httpmock::prelude::*;
@@ -37,12 +35,14 @@ async fn test_transform_success() {
         .expect("valid rocket instance");
 
     let mm2_input = Mm2InputMultiWithNamespace {
-        patterns: vec![Pattern::default()
-            .pattern("$x".to_string())
-            .namespace(PathBuf::from("/test/space"))],
-        templates: vec![Template::default()
-            .template("($x)".to_string())
-            .namespace(PathBuf::from("/test/space"))],
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/test/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/test/space"),
+        )],
     };
 
     let response = client
@@ -76,12 +76,14 @@ async fn test_non_existent_namespace() {
         .expect("valid rocket instance");
 
     let mm2_input = Mm2InputMultiWithNamespace {
-        patterns: vec![Pattern::default()
-            .pattern("$x".to_string())
-            .namespace(PathBuf::from("/other/space"))],
-        templates: vec![Template::default()
-            .template("($x)".to_string())
-            .namespace(PathBuf::from("/other/space"))],
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/other/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/other/space"),
+        )],
     };
 
     // Path does not start with /test/
@@ -119,12 +121,14 @@ async fn test_existing_empty_namespace() {
         .expect("valid rocket instance");
 
     let mm2_input = Mm2InputMultiWithNamespace {
-        patterns: vec![Pattern::default()
-            .pattern("$x".to_string())
-            .namespace(PathBuf::from("/test/space"))],
-        templates: vec![Template::default()
-            .template("($x)".to_string())
-            .namespace(PathBuf::from("/test/space"))],
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/test/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/test/space"),
+        )],
     };
 
     let response = client
@@ -164,21 +168,25 @@ async fn test_different_namespaces() {
         .expect("valid rocket instance");
 
     let mm2_input1 = Mm2InputMultiWithNamespace {
-        patterns: vec![Pattern::default()
-            .pattern("$x".to_string())
-            .namespace(PathBuf::from("/ns1/space"))],
-        templates: vec![Template::default()
-            .template("($x)".to_string())
-            .namespace(PathBuf::from("/ns1/space"))],
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/ns1/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/ns1/space"),
+        )],
     };
 
     let mm2_input2 = Mm2InputMultiWithNamespace {
-        patterns: vec![Pattern::default()
-            .pattern("$x".to_string())
-            .namespace(PathBuf::from("/ns2/space"))],
-        templates: vec![Template::default()
-            .template("($x)".to_string())
-            .namespace(PathBuf::from("/ns2/space"))],
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/ns2/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/ns2/space"),
+        )],
     };
 
     // Transform in ns1
@@ -219,12 +227,14 @@ async fn test_namespace_mismatch() {
         .expect("valid rocket instance");
 
     let mm2_input = Mm2InputMultiWithNamespace {
-        patterns: vec![Pattern::default()
-            .pattern("$x".to_string())
-            .namespace(PathBuf::from("/other/space"))],
-        templates: vec![Template::default()
-            .template("($x)".to_string())
-            .namespace(PathBuf::from("/other/space"))],
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/other/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/other/space"),
+        )],
     };
 
     // Path does not start with /test/
