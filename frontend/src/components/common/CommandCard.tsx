@@ -15,7 +15,7 @@ interface CommandCardProps {
 
 export const CommandCard: Component<CommandCardProps> = (props) => {
   return (
-    <Card class="w-full max-w-4xl">
+    <Card class="w-full max-w-7xl">
       <CardHeader>
         <CardTitle>{props.title}</CardTitle>
         <CardDescription>{props.description}</CardDescription>
