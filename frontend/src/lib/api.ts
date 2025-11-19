@@ -85,6 +85,27 @@ export const transform = (path: string, transformation: Mm2Input) => {
     });
 };
 
+export const union = (unification: Mm2Input) => {
+  const patterns = Array.isArray(unification.pattern)
+    ? unification.pattern
+    : [unification.pattern];
+  const templates = Array.isArray(unification.template)
+    ? unification.template
+    : [unification.template];
+
+  return request<boolean>(`/spaces/union`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source: patterns, target: templates }),
+  })
+    .then((result) => {
+      return result;
+    })
+    .catch((error) => {
+      throw error;
+    });
+};
+
 export const readSpace = (path: string) => {
   return request<string>(`/spaces${path}`);
 };
@@ -321,7 +342,6 @@ export const exploreSpace = (
   if (token instanceof Array) {
     token = Uint8Array.from(token);
   }
-  console.log("exploring: ", path, pattern, token);
   return request<ExploreDetail[]>(`/spaces/explore${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
