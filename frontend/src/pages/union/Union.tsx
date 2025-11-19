@@ -47,12 +47,12 @@ const UnionPage: Component = () => {
 
     patterns.forEach((pattern_ns, index) => {
       // convert name space path to stringsItem
-      const key = "$" + index.toString();
-      patternExprs.push(pathToSExpr(pattern_ns.namespace, key));
-      templatesExprs.push(pathToSExpr(templates[0].namespace, key));
+      const key = `<source-${(index + 1).toString()}> $${index.toString()}`;
+      patternExprs.push(`(${key})`);
+      templatesExprs.push(`$${index}`);
     });
 
-    return `(union\n (, ${patternExprs.join(" ")})\n (, ${templatesExprs.join(" ")})\n)`;
+    return `(transform\n (, ${patternExprs.join(" ")})\n (, (<target> ${templatesExprs.join(" ")}))\n)`;
   };
 
   const buildUnionSetInput = (state: Store<AppState>) => {
