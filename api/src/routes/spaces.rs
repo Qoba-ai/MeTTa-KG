@@ -338,22 +338,7 @@ pub async fn union(
     token: Token,
     operation_input: Json<SetOperationInput>,
 ) -> Result<Json<bool>, Status> {
-    let token_namespace = token.namespace.strip_prefix("/").unwrap();
-
-    // check `permission read`
-    let has_read_permission = operation_input
-        .source
-        .iter()
-        .all(|source| source.starts_with(token_namespace))
-        && token.permission_read;
-
-    let has_write_permission = operation_input
-        .target
-        .iter()
-        .all(|target| target.starts_with(token_namespace))
-        && token.permission_write;
-
-    if !has_read_permission || !has_write_permission {
+    if !operation_input.source_target_permissions(token) {
         return Err(Status::Unauthorized);
     }
 
