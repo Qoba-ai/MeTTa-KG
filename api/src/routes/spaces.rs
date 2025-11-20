@@ -1,3 +1,4 @@
+use rocket::futures::future::join_all;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::tokio::io::AsyncReadExt;
@@ -332,6 +333,55 @@ pub async fn composition(
     }
 }
 
+#[post("/spaces/union", data = "<operation_input>")]
+pub async fn union(
+    token: Token,
+    operation_input: Json<SetOperationInput>,
+) -> Result<Json<bool>, Status> {
+    let token_namespace = token.namespace.strip_prefix("/").unwrap();
+
+    // check `permission read`
+    let has_read_permission = operation_input
+        .source
+        .iter()
+        .all(|source| source.starts_with(token_namespace))
+        && token.permission_read;
+
+    let has_write_permission = operation_input
+        .target
+        .iter()
+        .all(|target| target.starts_with(token_namespace))
+        && token.permission_write;
+
+    if !has_read_permission || !has_write_permission {
+        return Err(Status::Unauthorized);
+    }
+
+    // create a vector of queries
+    let transform_inputs = union_transform(operation_input.into_inner())?;
+
+    let futures = transform_inputs
+        .iter()
+        .map(async |transform_input| {
+            let request = TransformRequest::new().transform_input(transform_input.clone());
+            let mork_api_client = MorkApiClient::new();
+
+            mork_api_client.dispatch(request).await
+        })
+        .collect::<Vec<_>>();
+
+    let results = join_all(futures).await;
+
+    // Check if any requests failed
+    for result in results {
+        if let Err(e) = result {
+            Err(e)?
+        }
+    }
+
+    Ok(Json(true))
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////// HELPER FUNCTIONS ////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -383,6 +433,33 @@ fn composition_transform(input: SetOperationInput) -> Result<TransformDetails, S
     Ok(transform_input)
 }
 
+fn union_transform(input: SetOperationInput) -> Result<Vec<TransformDetails>, Status> {
+    // Exceed the maximum number of source namespaces for composition, 26
+    // and
+    // Only one target namespace is allowed
+    if input.source.len() > 26 && input.target.len() != 1 {
+        return Err(Status::BadRequest);
+    }
+
+    let mut union_query: Vec<TransformDetails> = Vec::new();
+
+    for source_ns in input.source.iter() {
+        union_query.push(
+            TransformDetails::new()
+                .patterns(vec![Mm2Cell::new_pattern(
+                    "$x".to_string(),
+                    Namespace::from_path_string(source_ns),
+                )])
+                .templates(vec![Mm2Cell::new_template(
+                    "$x".to_string(),
+                    Namespace::from_path_string(input.target.first().unwrap()),
+                )]),
+        );
+    }
+
+    Ok(union_query)
+}
+
 // unit tests
 #[cfg(test)]
 mod tests {
@@ -408,6 +485,35 @@ mod tests {
         assert_eq!(
             transform_input.templates[0].build(),
             "(ns3 (ns3a727d4f9-836a-4e4c-9480 $a $b ))".to_string()
+        );
+    }
+
+    #[test]
+    fn test_union_transform() {
+        let input = SetOperationInput {
+            source: vec!["ns1".to_string(), "ns2".to_string()],
+            target: vec!["ns3".to_string()],
+        };
+
+        let transform_inputs = union_transform(input).unwrap();
+
+        assert_eq!(transform_inputs.len(), 2);
+
+        assert_eq!(
+            transform_inputs[0].patterns[0].build(),
+            "(ns1 (ns1a727d4f9-836a-4e4c-9480 $x))".to_string()
+        );
+        assert_eq!(
+            transform_inputs[1].patterns[0].build(),
+            "(ns2 (ns2a727d4f9-836a-4e4c-9480 $x))".to_string()
+        );
+        assert_eq!(
+            transform_inputs[0].templates[0].build(),
+            "(ns3 (ns3a727d4f9-836a-4e4c-9480 $x))".to_string()
+        );
+        assert_eq!(
+            transform_inputs[1].templates[0].build(),
+            "(ns3 (ns3a727d4f9-836a-4e4c-9480 $x))".to_string()
         );
     }
 }
