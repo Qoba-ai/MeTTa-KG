@@ -106,6 +106,26 @@ export const union = (unification: Mm2Input) => {
     });
 };
 
+export const composition = (compositionInput: {
+  source: string[];
+  target: string[];
+}) => {
+  return request<boolean>(`/spaces/composition`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: compositionInput.source,
+      target: compositionInput.target,
+    }),
+  })
+    .then((result) => {
+      return result;
+    })
+    .catch((error) => {
+      throw error;
+    });
+};
+
 export const readSpace = (path: string) => {
   return request<string>(`/spaces${path}`);
 };
