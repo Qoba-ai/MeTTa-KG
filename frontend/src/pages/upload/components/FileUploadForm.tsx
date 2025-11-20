@@ -1,8 +1,5 @@
 import { Component, Show } from "solid-js";
-import {
-  TextField,
-  TextFieldLabel,
-} from "~/components/ui/TextField";
+import { TextField, TextFieldLabel } from "~/components/ui/TextField";
 import {
   Select,
   SelectTrigger,
@@ -26,7 +23,10 @@ interface FileUploadFormProps {
 
 export const FileUploadForm: Component<FileUploadFormProps> = (props) => {
   return (
-    <Show when={props.isFileUploadImplemented} fallback={<NotImplemented name="File Upload" />}>
+    <Show
+      when={props.isFileUploadImplemented}
+      fallback={<NotImplemented name="File Upload" />}
+    >
       <div class="space-y-4">
         <div class="space-y-2">
           <TextField>
@@ -49,15 +49,16 @@ export const FileUploadForm: Component<FileUploadFormProps> = (props) => {
               <SelectContent />
             </Select>
           </TextField>
-          
+
           <TextField>
             <TextFieldLabel for="file-upload">Select File</TextFieldLabel>
+            {/* Replaced TextFieldInput with native input to avoid DOMException on value assignment */}
             <input
               id="file-upload"
               type="file"
               onChange={props.onFileSelect}
               disabled={props.isLoading}
-              class="cursor-pointer flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              class="cursor-pointer flex w-full rounded-md border border-input bg-transparent text-sm shadow-sm transition-colors file:border-0 file:bg-secondary file:text-secondary-foreground file:mr-4 file:py-2 file:px-4 file:text-sm file:font-medium hover:file:bg-secondary/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               accept=".json,.metta,.csv,.txt"
               value=""
             />
@@ -75,7 +76,6 @@ export const FileUploadForm: Component<FileUploadFormProps> = (props) => {
                 {props.formatFileSize(props.selectedFile!.size)} •{" "}
                 {props.selectedFile!.type || "Unknown type"}
               </p>
-              
             </div>
           </div>
         </Show>
