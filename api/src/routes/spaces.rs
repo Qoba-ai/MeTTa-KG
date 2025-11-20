@@ -180,13 +180,8 @@ pub async fn upload(
 }
 
 /// Imports data from `<uri>` into the `<path..>` space. Exectes mm2 on the imported data.
-#[post("/spaces/import/<path..>?<uri>", data = "<template>")]
-pub async fn import(
-    token: Token,
-    path: PathBuf,
-    uri: String,
-    template: Option<String>,
-) -> Result<Json<bool>, Status> {
+#[post("/spaces/import/<path..>?<uri>")]
+pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<bool>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
         return Err(Status::Unauthorized);
     }
@@ -197,8 +192,7 @@ pub async fn import(
     }
 
     let mork_api_client = MorkApiClient::new();
-    let template =
-        Mm2Cell::new_template(template.unwrap_or("$x".to_string()), Namespace::from(path));
+    let template = Mm2Cell::new_template("$x".to_string(), Namespace::from(path));
     let request = ImportRequest::new().to(template).uri(uri);
 
     match mork_api_client.dispatch(request).await {

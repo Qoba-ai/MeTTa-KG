@@ -229,10 +229,13 @@ export const uploadTextToSpace = (
 };
 
 export const importSpace = (path: string, uri: string) => {
-  return request<boolean>(`/spaces/import${path}?uri=${uri}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
+  return request<boolean>(
+    `/spaces/import/${path.replace(/^\/+/, "")}?uri=${encodeURIComponent(uri)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
 };
 
 export const fetchTokens = async (token: string | null): Promise<Token[]> => {
