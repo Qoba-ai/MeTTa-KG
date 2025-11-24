@@ -371,18 +371,6 @@ pub async fn union(
 ////////////////////////////////////////////// HELPER FUNCTIONS ////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Converts an integer to a lower case letter
-fn int_to_lower(n: u8) -> Option<char> {
-    const BASE: u8 = b'a';
-    const ALPHABET: usize = 26;
-
-    if n as usize >= ALPHABET {
-        return None;
-    };
-
-    Some((BASE + n) as char)
-}
-
 fn composition_transform(input: SetOperationInput) -> Result<TransformDetails, Status> {
     // Exceed the maximum number of source namespaces for composition, 26
     // and
@@ -398,9 +386,9 @@ fn composition_transform(input: SetOperationInput) -> Result<TransformDetails, S
         .iter()
         .enumerate()
         .map(|(index, source_ns)| {
-            let c = int_to_lower(index as u8).unwrap();
+            let c = index.to_string();
             template.push('$');
-            template.push(c);
+            template.push_str(&c);
             template.push(' ');
 
             Mm2Cell::new_pattern(format!("${}", c), Namespace::from(PathBuf::from(source_ns)))
@@ -461,15 +449,15 @@ mod tests {
 
         assert_eq!(
             transform_input.patterns[0].build(),
-            "(ns1 (ns1a727d4f9-836a-4e4c-9480 $a))".to_string()
+            "(ns1 (ns1a727d4f9-836a-4e4c-9480 $0))".to_string()
         );
         assert_eq!(
             transform_input.patterns[1].build(),
-            "(ns2 (ns2a727d4f9-836a-4e4c-9480 $b))".to_string()
+            "(ns2 (ns2a727d4f9-836a-4e4c-9480 $1))".to_string()
         );
         assert_eq!(
             transform_input.templates[0].build(),
-            "(ns3 (ns3a727d4f9-836a-4e4c-9480 $a $b ))".to_string()
+            "(ns3 (ns3a727d4f9-836a-4e4c-9480 $0 $1 ))".to_string()
         );
     }
 
