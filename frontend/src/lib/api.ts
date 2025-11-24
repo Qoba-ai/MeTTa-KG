@@ -179,7 +179,7 @@ export async function importData(
   type: string,
   data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */ = null,
   format: string = "metta",
-  path: string = "/"
+  path: string
 ): Promise<ImportDataResponse> {
   try {
     switch (type) {
@@ -199,28 +199,23 @@ export async function importData(
       }
 
       case "file":
-        // Expect `data` to be a FormData containing a `file` entry, or a File directly.
         try {
-          let file: File | null = null;
-          if (data instanceof FormData) {
-            const maybe = data.get("file");
-            if (maybe instanceof File) file = maybe;
-          } else if (data instanceof File) {
-            file = data as File;
-          }
+          const file: File = data.get("file");
 
           if (!file) {
             return { status: "error", message: "No file provided" };
           }
 
-          // Read file text (works for text-like formats: metta, json, csv, txt)
           const text = await file.text();
-
-          // POST to the Rocket backend upload route for spaces
-          // `path` should be like "/namespace/space"
+          let contentType = "text/plain";
+          if (format === "json") {
+            contentType = "application/json";
+          } else if (format === "csv") {
+            contentType = "text/csv";
+          }
           const resp = await request<string>(`/spaces/upload${path}`, {
             method: "POST",
-            headers: { "Content-Type": "text/plain" },
+            headers: { "Content-Type": contentType },
             body: text,
           });
 
