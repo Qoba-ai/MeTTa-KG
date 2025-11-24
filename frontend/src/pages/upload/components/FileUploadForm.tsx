@@ -52,7 +52,6 @@ export const FileUploadForm: Component<FileUploadFormProps> = (props) => {
 
           <TextField>
             <TextFieldLabel for="file-upload">Select File</TextFieldLabel>
-            {/* Replaced TextFieldInput with native input to avoid DOMException on value assignment */}
             <input
               id="file-upload"
               type="file"

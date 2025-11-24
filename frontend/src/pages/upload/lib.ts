@@ -18,7 +18,9 @@ export interface FileState {
 
 export const [uri, setUri] = createSignal("");
 export const [urlFormat, setUrlFormat] = createSignal("metta");
-export const [selectedFile, setSelectedFile] = createSignal<FileState | null>(null);
+export const [selectedFile, setSelectedFile] = createSignal<FileState | null>(
+  null
+);
 export const [textContent, setTextContent] = createSignal(`()`);
 export const [textFormat, setTextFormat] = createSignal("metta");
 export const [fileFormat, setFileFormat] = createSignal("metta");
@@ -95,11 +97,19 @@ export const handleImport = async (spacePath: string) => {
           return;
         }
         const formData = new FormData();
-        const blob = new Blob([fileState.content], { type: fileState.type });
-        const file = new File([blob], fileState.name, { type: fileState.type });
-        formData.append("file", file);
-        
-        const response = await importData("file", formData, fileFormat(), spacePath);
+        formData.append(
+          "file",
+          new File([fileState.content], fileState.name, {
+            type: fileState.type,
+          })
+        );
+
+        const response = await importData(
+          "file",
+          formData,
+          fileFormat(),
+          spacePath
+        );
         if (response.status === "success") {
           setResult({ data: response.data, status: "success" });
           showToast({
