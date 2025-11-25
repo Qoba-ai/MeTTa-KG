@@ -372,13 +372,6 @@ pub async fn union(
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 fn composition_transform(input: SetOperationInput) -> Result<TransformDetails, Status> {
-    // Exceed the maximum number of source namespaces for composition, 26
-    // and
-    // Only one target namespace is allowed
-    if input.source.len() > 26 && input.target.len() != 1 {
-        return Err(Status::BadRequest);
-    }
-
     let mut template = String::new();
 
     let patterns = input
