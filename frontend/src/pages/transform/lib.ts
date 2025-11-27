@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { transform, isPathClear } from "~/lib/api";
-import { Mm2Input } from "~/lib/types";
+import { Mm2InputMultiWithNamespace } from "~/lib/types";
 import { showToast } from "~/components/ui/Toast";
 import { parseTransformExpression } from "~/lib/utils";
 import { refreshSpace } from "../load/lib";
@@ -65,11 +65,21 @@ export const executeTransform = async (sExpr: string, spacePath: string) => {
     }
 
     const { patterns, templates } = parseTransformExpression(sExpr);
-    const transformation: Mm2Input = {
-      pattern: patterns,
-      template: templates,
+    const pathComponents =
+      spacePath === "/" ? [""] : spacePath.split("/").filter(Boolean);
+    const input: Mm2InputMultiWithNamespace = {
+      patterns: patterns.map((p) => ({
+        kind: "pattern" as const,
+        value: p,
+        namespace: pathComponents,
+      })),
+      templates: templates.map((t) => ({
+        kind: "template" as const,
+        value: t,
+        namespace: pathComponents,
+      })),
     };
-    const success = await transform(spacePath, transformation);
+    const success = await transform(input);
 
     if (success) {
       showToast({

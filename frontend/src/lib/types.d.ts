@@ -29,7 +29,7 @@ export interface Mm2Input {
 }
 interface Mm2CellValue {
   value: string;
-  namespace: string;
+  namespace: string[];
 }
 
 interface Mm2CellPattern extends Mm2CellValue {
