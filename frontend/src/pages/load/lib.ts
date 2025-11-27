@@ -3,6 +3,10 @@ import { formatedNamespace } from "~/lib/state";
 import { ParseError } from "~/types";
 import { exploreSpace } from "~/lib/api";
 import { showToast } from "~/components/ui/Toast";
+import {
+  expandAll as expandableListExpandAll,
+  collapseToRoot as expandableListCollapseToRoot,
+} from "./components/expandableList/lib";
 
 type ExploreResponse = {
   id: string;
@@ -19,6 +23,10 @@ export const [mettaText, setMettaText] = createSignal("$x");
 export const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
 export const [isMinimized, setIsMinimized] = createSignal(true);
 export const [pattern, setPattern] = createSignal("$x");
+
+// Add state and handler for indentation
+export const [isIndented, setIsIndented] = createSignal(false);
+export const handleToggleIndent = () => setIsIndented((prev) => !prev);
 
 export const [subSpace, { refetch: refetchSubSpace }] = createResource(
   () => ({
@@ -64,11 +72,17 @@ export const handlePatternLoad = (newPattern: string) => setPattern(newPattern);
 export const toggleMinimize = () => setIsMinimized(!isMinimized());
 export const handleToggleCard = () => setIsMinimized((prev) => !prev);
 
-// New handlers for expand/collapse
-export const handleExpandAll = () => graphApi.expandAll?.();
-export const handleCollapseToRoot = () => graphApi.collapseToRoot?.();
+// Use the global expandable list functions
+export const handleExpandAll = () => {
+  expandableListExpandAll();
+  graphApi.expandAll?.();
+};
 
-// Function to register the graph's API
+export const handleCollapseToRoot = () => {
+  expandableListCollapseToRoot();
+  graphApi.collapseToRoot?.();
+};
+
 export const setupGraphApi = (api: typeof graphApi) => {
   graphApi = api;
 };
