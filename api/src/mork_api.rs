@@ -121,15 +121,19 @@ impl Namespace {
         Namespace { path: components }
     }
 
-    fn current_name(&self) -> String {
-        self.path
-            .last()
-            .cloned()
-            .unwrap_or_else(|| "root".to_string())
+    fn root_name(&self) -> String {
+        "root".to_string()
+    }
+
+    fn current_name(&self) -> Option<String> {
+        self.path.last().cloned()
     }
 
     fn data_tag(&self) -> String {
-        format!("{}a727d4f9-836a-4e4c-9480", self.current_name())
+        format!(
+            "__{}data__",
+            self.current_name().unwrap_or(self.root_name())
+        )
     }
 
     pub fn with_namespace(&self, value: &str) -> String {
@@ -140,6 +144,9 @@ impl Namespace {
         for name in self.path.iter().rev() {
             result = format!("({name} {result})");
         }
+
+        // add root namespace
+        result = format!("(__{}__ {})", self.root_name(), result);
 
         result
     }
@@ -653,7 +660,7 @@ mod tests {
     use crate::mork_api::Namespace;
 
     #[test]
-    fn test_namespace() {
+    fn test_basic_namespace() {
         let ns = Namespace::from_path_string("/parent/child/grandchild");
         assert_eq!(
             ns.path,
@@ -663,15 +670,47 @@ mod tests {
                 "grandchild".to_string()
             ]
         );
-        assert_eq!(ns.current_name(), "grandchild".to_string());
-        assert_eq!(ns.data_tag(), "grandchilda727d4f9-836a-4e4c-9480");
+        assert_eq!(ns.current_name().unwrap(), "grandchild".to_string());
+        assert_eq!(ns.data_tag(), "__grandchilddata__");
+        assert_eq!(
+            ns.with_namespace("$x"),
+            "(__root__ (parent (child (grandchild (__grandchilddata__ $x)))))"
+        );
     }
 
     #[test]
-    fn test_with_namespace() {
-        let ns = Namespace::from_path_string("/parent/child/grandchild");
-        let expected = "(parent (child (grandchild (grandchilda727d4f9-836a-4e4c-9480 $x))))";
+    fn test_empty_namespace() {
+        let ns = Namespace::from_path_string("/");
+        assert_eq!(ns.path, vec![] as Vec<String>);
+        assert_eq!(ns.current_name(), None);
+        assert_eq!(ns.data_tag(), "__rootdata__");
+        assert_eq!(ns.with_namespace("$x"), "(__root__ (__rootdata__ $x))");
 
-        assert_eq!(ns.with_namespace("$x"), expected);
+        let ns = Namespace::from_path_string("");
+        assert_eq!(ns.path, vec![] as Vec<String>);
+        assert_eq!(ns.current_name(), None);
+        assert_eq!(ns.data_tag(), "__rootdata__");
+        assert_eq!(ns.with_namespace("$x"), "(__root__ (__rootdata__ $x))");
+    }
+
+    #[test]
+    fn test_data_tag() {
+        let ns = Namespace::from_path_string("/parent/child/grandchild");
+        assert_eq!(ns.data_tag(), "__grandchilddata__");
+    }
+
+    #[test]
+    fn test_current_name() {
+        let ns = Namespace::from_path_string("/parent/child/grandchild");
+        assert_eq!(ns.current_name().unwrap(), "grandchild".to_string());
+
+        let ns = Namespace::from_path_string("/parent/child");
+        assert_eq!(ns.current_name().unwrap(), "child".to_string());
+
+        let ns = Namespace::from_path_string("/parent");
+        assert_eq!(ns.current_name().unwrap(), "parent".to_string());
+
+        let ns = Namespace::from_path_string("/");
+        assert_eq!(ns.current_name(), None);
     }
 }
