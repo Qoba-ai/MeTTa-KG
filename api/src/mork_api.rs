@@ -219,7 +219,6 @@ impl MorkApiClient {
                         .header("Content-Type", "text/plain")
                         .body(body_str.clone());
                 } else {
-                    eprintln!("Upload endpoint called with non-string body type");
                     return Err(Status::InternalServerError);
                 }
             }
@@ -231,15 +230,9 @@ impl MorkApiClient {
         match http_request.send().await {
             Ok(resp) => match resp.text().await {
                 Ok(text) => Ok(text),
-                Err(e) => {
-                    eprintln!("Error reading Mork API response text: {e}");
-                    Err(Status::InternalServerError)
-                }
+                Err(_) => Err(Status::InternalServerError),
             },
-            Err(e) => {
-                eprintln!("Error sending request to Mork API: {e}");
-                Err(Status::InternalServerError)
-            }
+            Err(_) => Err(Status::InternalServerError),
         }
     }
 }

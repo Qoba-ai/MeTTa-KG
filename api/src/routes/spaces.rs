@@ -11,8 +11,7 @@ use std::path::PathBuf;
 use crate::model::Token;
 use crate::mork_api::{
     ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, Mm2Cell,
-    MorkApiClient, Namespace, ReadRequest, Request, TransformDetails, TransformRequest,
-    UploadRequest,
+    MorkApiClient, Namespace, ReadRequest, TransformDetails, TransformRequest, UploadRequest,
 };
 
 trait SourceTargetPermissions {
@@ -135,7 +134,6 @@ pub async fn upload(
         .read_to_string(&mut body)
         .await
     {
-        eprintln!("Failed to read body: {e}");
         return Err(Custom(
             Status::BadRequest,
             format!("Failed to read body: {e}"),
@@ -201,10 +199,7 @@ pub async fn explore(
         .pattern(explore_input.pattern.clone())
         .token(explore_input.token.clone());
 
-    println!("explore path: {:?}", request.path());
-
     let response = mork_api_client.dispatch(request).await.map(Json);
-    println!("explore response: {response:?}");
     response
 }
 
@@ -227,13 +222,8 @@ pub async fn export(
         .template(export_input.template.clone())
         .format(ExportFormat::Metta);
 
-    println!("Dispatching export request to Mork: {}", request.path());
-
     match mork_api_client.dispatch(request).await {
-        Ok(data) => {
-            println!("Received export response from Mork: {data:?}");
-            Ok(Json(data))
-        }
+        Ok(data) => Ok(Json(data)),
         Err(e) => Err(e),
     }
 }
