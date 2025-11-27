@@ -27,3 +27,22 @@ export interface Mm2Input {
   pattern: string[] | string;
   template: string[] | string;
 }
+interface Mm2CellValue {
+  value: string;
+  namespace: string;
+}
+
+interface Mm2CellPattern extends Mm2CellValue {
+  kind: "pattern";
+}
+
+interface Mm2CellTemplate extends Mm2CellValue {
+  kind: "template";
+}
+
+type Mm2Cell = Mm2CellPattern | Mm2CellTemplate;
+
+interface Mm2InputMultiWithNamespace {
+  patterns: Mm2Cell[];
+  templates: Mm2Cell[];
+}

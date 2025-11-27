@@ -1,3 +1,4 @@
+use rocket::futures::future::join_all;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::tokio::io::AsyncReadExt;
@@ -10,9 +11,36 @@ use std::path::PathBuf;
 
 use crate::model::Token;
 use crate::mork_api::{
-    ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, MorkApiClient,
-    ReadRequest, Request, TransformDetails, TransformRequest, UploadRequest,
+    ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, Mm2Cell,
+    MorkApiClient, Namespace, ReadRequest, Request, TransformDetails, TransformRequest,
+    UploadRequest,
 };
+
+trait SourceTargetPermissions {
+    type Ns: ToString + Clone;
+
+    fn source(&self) -> Vec<Self::Ns>;
+    fn target(&self) -> Vec<Self::Ns>;
+
+    fn source_target_permissions(&self, token: Token) -> bool {
+        let token_namespace = token.namespace.strip_prefix("/").unwrap();
+
+        // check `permission read`
+        let has_read_permission = self
+            .source()
+            .iter()
+            .all(|pattern| pattern.to_string().starts_with(token_namespace))
+            && token.permission_read;
+
+        let has_write_permission = self
+            .target()
+            .iter()
+            .all(|template| template.to_string().starts_with(token_namespace))
+            && token.permission_write;
+
+        has_read_permission && has_write_permission
+    }
+}
 
 /// The input for a transformation operation.
 /// see mm2 operations for more    // TODO: Add links
@@ -20,6 +48,30 @@ use crate::mork_api::{
 pub struct Mm2InputMulti {
     pub patterns: Vec<String>,
     pub templates: Vec<String>,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct Mm2InputMultiWithNamespace {
+    pub patterns: Vec<Mm2Cell>,
+    pub templates: Vec<Mm2Cell>,
+}
+
+impl SourceTargetPermissions for Mm2InputMultiWithNamespace {
+    type Ns = Namespace;
+
+    fn source(&self) -> Vec<Self::Ns> {
+        self.patterns
+            .iter()
+            .map(|p| p.namespace().clone())
+            .collect()
+    }
+
+    fn target(&self) -> Vec<Self::Ns> {
+        self.templates
+            .iter()
+            .map(|t| t.namespace().clone())
+            .collect()
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -36,46 +88,34 @@ pub struct ExploreInput {
 
 /// Fetches the `<path..>` space content. Use cautously as it will load everything.
 /// It is recommended to use the `/spaces/<path..>?op=explore` instead for large queries
-#[get("/spaces/<path..>", rank = 1)]
-pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
+#[get("/spaces/<path..>", rank = 1, data = "<mm2>")]
+pub async fn read(
+    token: Token,
+    path: PathBuf,
+    mm2: Option<Json<Mm2InputMulti>>,
+) -> Result<Json<String>, Status> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
         return Err(Status::Unauthorized);
     }
 
+    // shadowing for backwards compatibility
+    // TODO: remove `Option` once all clients are updated
+    let mm2 = mm2.unwrap_or(Json(Mm2InputMulti::default()));
+
     let mork_api_client = MorkApiClient::new();
-    let request = ReadRequest::new().namespace(path);
+    let transform_input = TransformDetails::new()
+        .patterns(vec![Mm2Cell::new_pattern(
+            mm2.patterns.first().cloned().unwrap_or("$x".to_string()),
+            Namespace::from(path.to_path_buf()),
+        )])
+        .templates(vec![Mm2Cell::new_template(
+            mm2.templates.first().cloned().unwrap_or("$x".to_string()),
+            Namespace::from(path.to_path_buf()),
+        )]);
+    let request = ReadRequest::new().transform_input(transform_input);
 
     let response = mork_api_client.dispatch(request).await.map(Json);
     response
-}
-
-/// Performs a transformation operation on the `<path..>` space
-#[post("/spaces/transform/<path..>", data = "<mm2>")]
-pub async fn transform(
-    token: Token,
-    path: PathBuf,
-    mm2: Json<Mm2InputMulti>,
-) -> Result<Json<bool>, Status> {
-    let token_namespace = token.namespace.strip_prefix("/").unwrap();
-
-    if !path.starts_with(token_namespace) || !token.permission_read || !token.permission_write {
-        return Err(Status::Unauthorized);
-    }
-
-    let mork_api_client = MorkApiClient::new();
-    let request = TransformRequest::new()
-        .namespace(path.to_path_buf())
-        .transform_input(
-            TransformDetails::new()
-                .patterns(mm2.patterns.clone())
-                .templates(mm2.templates.clone()),
-        );
-
-    // TODO: use server sent events instead
-    match mork_api_client.dispatch(request).await {
-        Ok(_) => Ok(Json(true)),
-        Err(e) => Err(e),
-    }
 }
 
 /// Upload to the `<path..>` space. Exectes mm2 on the imported data.
@@ -135,7 +175,8 @@ pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<boo
     }
 
     let mork_api_client = MorkApiClient::new();
-    let request = ImportRequest::new().namespace(path).uri(uri);
+    let template = Mm2Cell::new_template("$x".to_string(), Namespace::from(path));
+    let request = ImportRequest::new().to(template).uri(uri);
 
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),
@@ -208,6 +249,31 @@ pub async fn clear(token: Token, path: PathBuf, expr: String) -> Result<Json<boo
     let mork_api_client = MorkApiClient::new();
     let request = ClearRequest::new().namespace(path).expr(expr);
 
+    match mork_api_client.dispatch(request).await {
+        Ok(_) => Ok(Json(true)),
+        Err(e) => Err(e),
+    }
+}
+
+/// Performs a transformation operation on the `<path..>` space
+#[post("/spaces/transform", data = "<mm2>")]
+pub async fn transform(
+    token: Token,
+    mm2: Json<Mm2InputMultiWithNamespace>,
+) -> Result<Json<bool>, Status> {
+    let mm2 = mm2.into_inner();
+    if !mm2.clone().source_target_permissions(token) {
+        return Err(Status::Unauthorized);
+    }
+
+    let mork_api_client = MorkApiClient::new();
+    let request = TransformRequest::new().transform_input(
+        TransformDetails::new()
+            .patterns(mm2.clone().patterns)
+            .templates(mm2.templates),
+    );
+
+    // TODO: use server sent events instead
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),
         Err(e) => Err(e),

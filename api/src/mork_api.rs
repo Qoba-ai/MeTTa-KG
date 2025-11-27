@@ -14,23 +14,95 @@ pub enum ExportFormat {
     Raw,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+/// Represents a pattern or a template with a namespace
+///
+/// # Examples
+///
+/// ```
+/// use api::mork_api::Mm2Cell;
+/// use api::mork_api::Namespace;
+///
+/// let ns = Namespace::from_path_string("/parent/child/grandchild");
+/// let pattern = Mm2Cell::new_pattern("$x".to_string(), ns);
+/// ```
+///
+/// will be represented as
+///
+/// ```lisp
+/// (parent (child (grandchild (grandchilda727d4f9-836a-4e4c-9480 $x))))
+/// ```
+///
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "kind")]
+pub enum Mm2Cell {
+    #[serde(rename = "pattern")]
+    Pattern(Mm2CellValue),
+    #[serde(rename = "template")]
+    Template(Mm2CellValue),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Mm2CellValue {
+    pub value: String,
+    pub namespace: Namespace,
+}
+
+impl Default for Mm2Cell {
+    fn default() -> Self {
+        Mm2Cell::Pattern(Mm2CellValue {
+            value: "$x".to_string(),
+            namespace: Namespace::default(),
+        })
+    }
+}
+
+impl Mm2Cell {
+    pub fn new_pattern(value: String, namespace: Namespace) -> Self {
+        Mm2Cell::Pattern(Mm2CellValue { value, namespace })
+    }
+
+    pub fn new_template(value: String, namespace: Namespace) -> Self {
+        Mm2Cell::Template(Mm2CellValue { value, namespace })
+    }
+
+    pub fn value(&self) -> &str {
+        match self {
+            Mm2Cell::Pattern(p) | Mm2Cell::Template(p) => &p.value,
+        }
+    }
+
+    pub fn namespace(&self) -> &Namespace {
+        match self {
+            Mm2Cell::Pattern(p) | Mm2Cell::Template(p) => &p.namespace,
+        }
+    }
+
+    pub fn build(&self) -> String {
+        self.namespace().with_namespace(self.value())
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TransformDetails {
     /// the sub space as per playground convetions. ie. (/ ...)
-    pub patterns: Vec<String>, // A sub space
-    pub templates: Vec<String>,
+    pub patterns: Vec<Mm2Cell>, // A sub space
+    pub templates: Vec<Mm2Cell>,
 }
 
 impl Default for TransformDetails {
     fn default() -> Self {
         TransformDetails {
-            patterns: vec![String::from("$x")],
-            templates: vec![String::from("$x")],
+            patterns: vec![Mm2Cell::default()],
+            templates: vec![Mm2Cell::Template(Mm2CellValue {
+                value: "$x".to_string(),
+                namespace: Namespace::default(),
+            })],
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
+#[serde(transparent)]
 pub struct Namespace {
     path: Vec<String>,
 }
@@ -79,9 +151,17 @@ impl From<PathBuf> for Namespace {
     }
 }
 
-impl Default for Namespace {
-    fn default() -> Self {
-        Namespace::new()
+impl std::fmt::Display for Namespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.path
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+                .join("/")
+        )
     }
 }
 
@@ -91,12 +171,12 @@ impl TransformDetails {
         Default::default()
     }
 
-    pub fn patterns(mut self, patterns: Vec<String>) -> Self {
+    pub fn patterns(mut self, patterns: Vec<Mm2Cell>) -> Self {
         self.patterns = patterns;
         self
     }
 
-    pub fn templates(mut self, templates: Vec<String>) -> Self {
+    pub fn templates(mut self, templates: Vec<Mm2Cell>) -> Self {
         self.templates = templates;
         self
     }
@@ -203,7 +283,7 @@ impl TransformRequest {
             self.transform_input
                 .patterns
                 .iter()
-                .map(|pattern| { self.namespace.with_namespace(pattern) })
+                .map(|pattern| { pattern.build() })
                 .collect::<Vec<String>>()
                 .join(" ")
         )
@@ -215,7 +295,7 @@ impl TransformRequest {
             self.transform_input
                 .templates
                 .iter()
-                .map(|pattern| { self.namespace.with_namespace(pattern) })
+                .map(|template| { template.build() })
                 .collect::<Vec<String>>()
                 .join(" ")
         )
@@ -248,7 +328,7 @@ impl Request for TransformRequest {
 
 #[derive(Default)]
 pub struct ImportRequest {
-    namespace: Namespace,
+    namespace: PathBuf,
     transform_input: TransformDetails,
     uri: String,
 }
@@ -259,12 +339,21 @@ impl ImportRequest {
     }
 
     pub fn namespace(mut self, ns: PathBuf) -> Self {
-        self.namespace = Namespace::from(ns);
+        self.namespace = ns;
         self
     }
 
     pub fn uri(mut self, uri: String) -> Self {
         self.uri = uri;
+        self
+    }
+
+    /// Set the import structure, pattern is always `$x` and template is also
+    /// `$x` by default which can be overridden
+    pub fn to(mut self, template: Mm2Cell) -> Self {
+        self.transform_input = TransformDetails::new()
+            .patterns(vec![Mm2Cell::default()])
+            .templates(vec![template]);
         self
     }
 }
@@ -281,12 +370,13 @@ impl Request for ImportRequest {
             "/import/{}/{}/?uri={}",
             urlencoding::encode("$x"),
             urlencoding::encode(
-                &self.namespace.with_namespace(
-                    self.transform_input
-                        .templates
-                        .first()
-                        .unwrap_or(&"$x".to_string())
-                )
+                &self
+                    .transform_input
+                    .templates
+                    .first()
+                    .cloned()
+                    .unwrap_or_default()
+                    .build()
             ),
             self.uri
         )
@@ -311,8 +401,8 @@ impl ReadRequest {
         Default::default()
     }
 
-    pub fn namespace(mut self, ns: PathBuf) -> Self {
-        self.namespace = Namespace::from(ns);
+    pub fn transform_input(mut self, inp: TransformDetails) -> Self {
+        self.transform_input = inp;
         self
     }
 }
@@ -328,18 +418,22 @@ impl Request for ReadRequest {
         let path = format!(
             "/export/{}/{}",
             urlencoding::encode(
-                &self.namespace.with_namespace(
-                    self.transform_input
-                        .patterns
-                        .first()
-                        .unwrap_or(&String::from("$x"))
-                )
+                &self
+                    .transform_input
+                    .patterns
+                    .first()
+                    .cloned()
+                    .unwrap_or_default()
+                    .build()
             ),
             urlencoding::encode(
-                self.transform_input
+                &self
+                    .transform_input
                     .templates
                     .first()
-                    .unwrap_or(&String::from("$x"))
+                    .cloned()
+                    .unwrap_or_default()
+                    .build()
             )
         );
         path
@@ -558,5 +652,33 @@ impl Request for ClearRequest {
 
     fn body(&self) -> Option<Self::Body> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::mork_api::Namespace;
+
+    #[test]
+    fn test_namespace() {
+        let ns = Namespace::from_path_string("/parent/child/grandchild");
+        assert_eq!(
+            ns.path,
+            vec![
+                "parent".to_string(),
+                "child".to_string(),
+                "grandchild".to_string()
+            ]
+        );
+        assert_eq!(ns.current_name(), "grandchild".to_string());
+        assert_eq!(ns.data_tag(), "grandchilda727d4f9-836a-4e4c-9480");
+    }
+
+    #[test]
+    fn test_with_namespace() {
+        let ns = Namespace::from_path_string("/parent/child/grandchild");
+        let expected = "(parent (child (grandchild (grandchilda727d4f9-836a-4e4c-9480 $x))))";
+
+        assert_eq!(ns.with_namespace("$x"), expected);
     }
 }

@@ -120,7 +120,6 @@ export const CreateTokenForm: Component<CreateTokenFormProps> = (props) => {
   };
 
   const handleSelectParent = (token: Token) => {
-    console.log("Selecting parent token:", token);
     setSelectedParentToken(token);
     setChildNamespace("");
     setNamespaceError("");
@@ -143,7 +142,6 @@ export const CreateTokenForm: Component<CreateTokenFormProps> = (props) => {
     try {
       const token = newToken();
       const fullNamespace = getFullNamespace();
-      console.log("Creating token with parent code:", parent.code);
       const created = await createToken(
         parent.code,
         token.description,
