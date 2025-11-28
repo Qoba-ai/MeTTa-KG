@@ -27,7 +27,7 @@ export interface Mm2Input {
   pattern: string[] | string;
   template: string[] | string;
 }
-interface Mm2CellValue {
+export interface Mm2CellValue {
   value: string;
   namespace: string[];
 }
@@ -41,6 +41,10 @@ interface Mm2CellTemplate extends Mm2CellValue {
 }
 
 type Mm2Cell = Mm2CellPattern | Mm2CellTemplate;
+
+export interface Item extends Mm2CellValue {
+  id: string;
+}
 
 interface Mm2InputMultiWithNamespace {
   patterns: Mm2Cell[];

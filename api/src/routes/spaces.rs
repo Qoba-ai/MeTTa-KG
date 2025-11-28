@@ -48,7 +48,7 @@ pub struct Mm2InputMulti {
     pub templates: Vec<String>,
 }
 
-#[derive(Default, Serialize, Deserialize, Clone)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct Mm2InputMultiWithNamespace {
     pub patterns: Vec<Mm2Cell>,
     pub templates: Vec<Mm2Cell>,
