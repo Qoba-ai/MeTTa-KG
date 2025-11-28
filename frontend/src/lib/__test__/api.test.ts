@@ -302,7 +302,10 @@ describe("API Tests: Upload Page", () => {
         buildExpectedUrl("/spaces/upload/", mockPath) + "/"
       );
       expect(options?.method).toBe("POST");
-      expect(options?.headers).toHaveProperty("Content-Type", "text/plain");
+      expect(options?.headers).toHaveProperty(
+        "Content-Type",
+        "application/json"
+      );
       expect(options?.body).toBe(mockData);
     });
 

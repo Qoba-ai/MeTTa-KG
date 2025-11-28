@@ -76,7 +76,7 @@ function unwrapExpressions(
       let changed = false;
 
       // Unwrap namespace layers (reuse current, short-circuit)
-      for (const component of namespaceComponents) {
+      for (const component of ["__root__", ...namespaceComponents]) {
         if (
           current.type === "list" &&
           Array.isArray(current.children) &&
@@ -97,7 +97,7 @@ function unwrapExpressions(
         Array.isArray(current.children) &&
         current.children.length > 1 &&
         current.children[0].type === "atom" &&
-        current.children[0].value.includes(dataTagPattern) &&
+        current.children[0].value?.includes(dataTagPattern) &&
         current.children[1].type === "list"
       ) {
         current = current.children[1];
@@ -178,8 +178,13 @@ function initNodesFromApiResponse(
     .split("/")
     .filter((part) => part.length > 0);
   const currentName =
-    namespaceComponents[namespaceComponents.length - 1] || "root";
-  const dataTagPattern = `${currentName}a727d4f9-836a-4e4c-9480`;
+    namespaceComponents[namespaceComponents.length - 1] || "__root__";
+  let dataTagPattern = "";
+  if (currentName === "__root__") {
+    dataTagPattern = "__rootdata__";
+  } else {
+    dataTagPattern = `__${currentName}data__`;
+  }
 
   const unwrappedData = unwrapExpressions(
     processedData,
