@@ -1,13 +1,6 @@
 import { For, Show } from "solid-js";
 import type { createVirtualizer } from "@tanstack/solid-virtual";
-import type { SpaceNode } from "~/lib/space";
-
-// The FlatNode interface is moved here as it's part of the component's props.
-export interface FlatNode {
-  node: SpaceNode;
-  id: string;
-  depth: number;
-}
+import type { FlatNode } from "./store"; // Changed import
 
 export interface ExpressionListItemProps {
   virtualItem: ReturnType<

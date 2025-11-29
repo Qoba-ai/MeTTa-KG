@@ -3,11 +3,7 @@ import { formatedNamespace } from "~/lib/state";
 import { ParseError } from "~/types";
 import { exploreSpace } from "~/lib/api";
 import { showToast } from "~/components/ui/Toast";
-import {
-  expandAll as expandableListExpandAll,
-  collapseToRoot as expandableListCollapseToRoot,
-  resetExpandableListState
-} from "./components/expandableList/lib";
+import { treeStore } from "./components/expandableList/store";
 
 type ExploreResponse = {
   id: string;
@@ -25,12 +21,10 @@ export const [mettaText, setMettaText] = createSignal("$x");
 export const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
 export const [isMinimized, setIsMinimized] = createSignal(true);
 export const [pattern, setPattern] = createSignal("$x");
-
 export const [shouldFillViewport, setShouldFillViewport] = createSignal(false);
-
-// Add state and handler for indentation
 export const [isIndented, setIsIndented] = createSignal(false);
-export const handleToggleIndent = () => setIsIndented((prev) => !prev);
+
+export const handleToggleIndent = () => setIsIndented((p) => !p);
 
 export const [subSpace, { refetch: refetchSubSpace }] = createResource(
   () => ({
@@ -40,61 +34,47 @@ export const [subSpace, { refetch: refetchSubSpace }] = createResource(
   }),
   async ({ path, expr, token }) => {
     try {
-      const responseString = await exploreSpace(path, expr, token);
-      const data: ExploreResponse[] = JSON.parse(responseString);
+      const data = JSON.parse(
+        await exploreSpace(path, expr, token)
+      ) as ExploreResponse[];
       showToast({
         title: "Success",
         description: `Loaded ${data.length} nodes.`,
       });
       return data;
     } catch (e) {
-      if (e instanceof Error && e.message === "noRootToken") {
-        showToast({
-          title: "Error",
-          description: "No token found, please add one in the Tokens page",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      showToast({
-        title: "Error",
-        description: "Failed to load space data.",
-        variant: "destructive",
-      });
+      const msg =
+        e instanceof Error && e.message === "noRootToken"
+          ? "No token found, please add one in the Tokens page"
+          : "Failed to load space data.";
+      showToast({ title: "Error", description: msg, variant: "destructive" });
       return;
     }
   }
 );
 
-export const refreshSpace = () => {
-  refetchSubSpace();
-};
-
+export const refreshSpace = () => refetchSubSpace();
 export const handleTextChange = (text: string) => setMettaText(text);
+
 export const handlePatternLoad = (newPattern: string) => {
-  resetExpandableListState();
+  treeStore.reset();
   setPattern(newPattern);
   setShouldFillViewport(true);
-}
-export const toggleMinimize = () => setIsMinimized(!isMinimized());
-export const handleToggleCard = () => setIsMinimized((prev) => !prev);
+};
 
-// Use the global expandable list functions
+export const toggleMinimize = () => setIsMinimized(!isMinimized());
+export const handleToggleCard = () => setIsMinimized((p) => !p);
 export const handleExpandAll = () => {
-  expandableListExpandAll();
+  treeStore.expandAll();
   graphApi.expandAll?.();
 };
-
 export const handleCollapseToRoot = () => {
-  expandableListCollapseToRoot();
+  treeStore.collapseToRoot();
   graphApi.collapseToRoot?.();
 };
-
 export const triggerViewportFill = async () => {
   await graphApi.expandToFillViewport?.();
-}
-
+};
 export const setupGraphApi = (api: typeof graphApi) => {
   graphApi = api;
 };
