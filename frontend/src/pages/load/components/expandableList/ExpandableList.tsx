@@ -120,11 +120,14 @@ export default function ExpressionList(props: Props) {
   onMount(async () => {
     if (scrollRef) {
       treeStore.setScrollRef(scrollRef);
+      // Restore scroll position immediately on mount
+      treeStore.restoreScroll();
       await doExpandToFillViewport();
     }
   });
 
   onCleanup(() => {
+    treeStore.saveScroll();
     treeStore.setScrollRef(null);
   });
 

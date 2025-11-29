@@ -187,6 +187,9 @@ export const treeStore = {
     return state.namespace;
   },
 
+  saveScroll,
+  restoreScroll,
+
   getNodeId,
   isExpandable,
   createFlattenedNodes: (data: { nodes: SpaceNode[]; prefix: string[] }) =>
