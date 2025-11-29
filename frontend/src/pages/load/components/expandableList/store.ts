@@ -19,6 +19,7 @@ interface TreeState {
   isExpanding: boolean;
   expandingNodeId: string | null;
   namespace: string;
+  initialExpansionDone: boolean;
 }
 
 const [state, setState] = createStore<TreeState>({
@@ -28,6 +29,7 @@ const [state, setState] = createStore<TreeState>({
   isExpanding: false,
   expandingNodeId: null,
   namespace: "",
+  initialExpansionDone: false,
 });
 
 let scrollRef: HTMLDivElement | null = null;
@@ -186,6 +188,9 @@ export const treeStore = {
   get namespace() {
     return state.namespace;
   },
+  get initialExpansionDone() {
+    return state.initialExpansionDone;
+  },
 
   saveScroll,
   restoreScroll,
@@ -216,6 +221,7 @@ export const treeStore = {
       isExpanding: false,
       expandingNodeId: null,
       namespace: "",
+      initialExpansionDone: false,
     });
     savedScrollTop = 0;
   },
@@ -323,6 +329,9 @@ export const treeStore = {
       staleAttempts = newCount === currentCount ? staleAttempts + 1 : 0;
       currentCount = newCount;
     }
+
+    setState("initialExpansionDone", true);
+
     restoreScroll();
   },
 
