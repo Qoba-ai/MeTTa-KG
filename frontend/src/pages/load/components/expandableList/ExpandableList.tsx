@@ -88,12 +88,15 @@ export default function ExpressionList(props: Props) {
   );
 
   createEffect(
-    on(formatedNamespace, async () => {
-      treeStore.reset();
-      if (!props.data?.nodes?.length) return;
-      treeStore.setExpanding(true);
-      await new Promise((r) => requestAnimationFrame(r));
-      await doExpandToFillViewport();
+    on(formatedNamespace, async (ns) => {
+      if (treeStore.namespace !== ns) {
+        treeStore.reset();
+        treeStore.setNamespace(ns);
+        if (!props.data?.nodes?.length) return;
+        treeStore.setExpanding(true);
+        await new Promise((r) => requestAnimationFrame(r));
+        await doExpandToFillViewport();
+      }
     })
   );
 

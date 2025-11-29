@@ -18,6 +18,7 @@ interface TreeState {
   cursorLine: number;
   isExpanding: boolean;
   expandingNodeId: string | null;
+  namespace: string;
 }
 
 const [state, setState] = createStore<TreeState>({
@@ -26,6 +27,7 @@ const [state, setState] = createStore<TreeState>({
   cursorLine: 0,
   isExpanding: false,
   expandingNodeId: null,
+  namespace: "",
 });
 
 let scrollRef: HTMLDivElement | null = null;
@@ -181,6 +183,9 @@ export const treeStore = {
   get expandingNodeId() {
     return state.expandingNodeId;
   },
+  get namespace() {
+    return state.namespace;
+  },
 
   getNodeId,
   isExpandable,
@@ -196,6 +201,9 @@ export const treeStore = {
   setCursor(line: number) {
     setState("cursorLine", line);
   },
+  setNamespace(ns: string) {
+    setState("namespace", ns);
+  },
 
   reset() {
     setState({
@@ -204,6 +212,7 @@ export const treeStore = {
       cursorLine: 0,
       isExpanding: false,
       expandingNodeId: null,
+      namespace: "",
     });
     savedScrollTop = 0;
   },
