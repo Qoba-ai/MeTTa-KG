@@ -18,6 +18,7 @@ export const [childrenMap, setChildrenMap] = createSignal<
 export const [cursorLine, setCursorLine] = createSignal<number>(0);
 export const [isExpanding, setIsExpanding] = createSignal(false);
 
+
 // Track scroll position to preserve it during expansions
 let savedScrollTop = 0;
 
@@ -236,7 +237,6 @@ export const expandToFillViewport = async (
   pattern: string,
   getFlattenedNodes: () => FlatNode[]
 ) => {
-  setIsExpanding(true);
   const BATCH_SIZE = 5;
   const MAX_PULL_UP_DEPTH = 100;
 
@@ -366,7 +366,6 @@ export const expandToFillViewport = async (
       currentCount = newCount;
     }
   }
-  setIsExpanding(false);
 };
 
 // Reset state when namespace changes

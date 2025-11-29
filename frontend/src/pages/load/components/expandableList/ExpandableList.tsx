@@ -17,6 +17,7 @@ import {
   cursorLine,
   setCursorLine,
   isExpanding,
+  setIsExpanding, // Add this import
   expandAll,
   collapseToRoot,
   isExpandable,
@@ -26,12 +27,17 @@ import {
   handleNamespaceChange,
 } from "./lib";
 import { showToast } from "~/components/ui/Toast";
+import { shouldFillViewport, setShouldFillViewport, pattern } from "../../lib";
 
 interface ExpressionListProps {
   data: { nodes: SpaceNode[]; prefix: string[] };
   pattern: string;
   onNodeClick?: (node: SpaceNode) => void;
-  ref?: (api: { expandAll: () => void; collapseToRoot: () => void }) => void;
+  ref?: (api: {
+    expandAll: () => void;
+    collapseToRoot: () => void;
+    expandToFillViewport: () => Promise<void>;
+  }) => void;
   isIndented: boolean;
 }
 
@@ -45,40 +51,83 @@ export default function ExpressionList(props: ExpressionListProps) {
     return createFlattenedNodes(props.data);
   });
 
+  // Function to expand nodes to fill viewport
+  const doExpandToFillViewport = async () => {
+    if (!scrollRef) return;
+
+    if (!props.data?.nodes || props.data.nodes.length === 0) {
+      return;
+    }
+
+    // Show loading immediately before any async work
+    setIsExpanding(true);
+
+    // Allow the UI to render the loading state
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    const viewportHeight = scrollRef.clientHeight;
+    const estimatedItemHeight = 24;
+    const targetCount = Math.ceil(viewportHeight / estimatedItemHeight);
+
+    try {
+      await expandToFillViewport(targetCount, props.pattern, () =>
+        flattenedNodes()
+      );
+    } catch (error) {
+      showToast({
+        title: "Expansion Error",
+        description: `Failed to expand nodes, consider reloading the page\n ${error}`,
+        variant: "destructive",
+      });
+    } finally {
+      // Ensure loading is hidden even on error
+      setIsExpanding(false);
+    }
+  };
+
+  // Effect to handle expansion after pattern load (Visualize click)
+  createEffect(
+    on(
+      () => [shouldFillViewport(), props.data] as const,
+      async ([shouldExpand, data]) => {
+        if (shouldExpand && data?.nodes && data.nodes.length > 0) {
+          // Reset the signal first to prevent re-triggering
+          setShouldFillViewport(false);
+
+          // Show loading immediately
+          setIsExpanding(true);
+
+          // Small delay to ensure DOM is updated and loading screen renders
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          await new Promise((resolve) => setTimeout(resolve, 50));
+
+          await doExpandToFillViewport();
+        }
+      }
+    )
+  );
+
   createEffect(
     on(formatedNamespace, async (current, prev) => {
       if (prev !== undefined) {
         await handleNamespaceChange();
       }
 
+      // Show loading immediately
+      setIsExpanding(true);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      if (!scrollRef) return;
-
-      if (!props.data?.nodes || props.data.nodes.length === 0) {
-        return;
-      }
-
-      const viewportHeight = scrollRef.clientHeight;
-      const estimatedItemHeight = 24;
-      const targetCount = Math.ceil(viewportHeight / estimatedItemHeight);
-
-      try {
-        await expandToFillViewport(targetCount, props.pattern, () =>
-          flattenedNodes()
-        );
-      } catch (error) {
-        showToast({
-          title: "Expansion Error",
-          description: `Failed to Expand nodes consider reloading the page\n ${error}`,
-          variant: "destructive",
-        });
-      }
+      await doExpandToFillViewport();
     })
   );
 
   if (props.ref) {
-    props.ref({ expandAll, collapseToRoot });
+    props.ref({
+      expandAll,
+      collapseToRoot,
+      expandToFillViewport: doExpandToFillViewport,
+    });
   }
 
   const virtualizer = createMemo(() =>
@@ -101,10 +150,7 @@ export default function ExpressionList(props: ExpressionListProps) {
   onMount(async () => {
     containerRef?.focus();
     if (scrollRef) {
-      const viewportHeight = scrollRef.clientHeight;
-      const estimatedItemHeight = 24;
-      const targetCount = Math.ceil(viewportHeight / estimatedItemHeight);
-      expandToFillViewport(targetCount, props.pattern, () => flattenedNodes());
+      await doExpandToFillViewport();
     }
   });
 

@@ -6,6 +6,7 @@ import { showToast } from "~/components/ui/Toast";
 import {
   expandAll as expandableListExpandAll,
   collapseToRoot as expandableListCollapseToRoot,
+  resetExpandableListState
 } from "./components/expandableList/lib";
 
 type ExploreResponse = {
@@ -17,12 +18,15 @@ type ExploreResponse = {
 let graphApi: {
   expandAll?: () => void;
   collapseToRoot?: () => void;
+  expandToFillViewport?: () => Promise<void>;
 } = {};
 
 export const [mettaText, setMettaText] = createSignal("$x");
 export const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
 export const [isMinimized, setIsMinimized] = createSignal(true);
 export const [pattern, setPattern] = createSignal("$x");
+
+export const [shouldFillViewport, setShouldFillViewport] = createSignal(false);
 
 // Add state and handler for indentation
 export const [isIndented, setIsIndented] = createSignal(false);
@@ -68,7 +72,11 @@ export const refreshSpace = () => {
 };
 
 export const handleTextChange = (text: string) => setMettaText(text);
-export const handlePatternLoad = (newPattern: string) => setPattern(newPattern);
+export const handlePatternLoad = (newPattern: string) => {
+  resetExpandableListState();
+  setPattern(newPattern);
+  setShouldFillViewport(true);
+}
 export const toggleMinimize = () => setIsMinimized(!isMinimized());
 export const handleToggleCard = () => setIsMinimized((prev) => !prev);
 
@@ -82,6 +90,10 @@ export const handleCollapseToRoot = () => {
   expandableListCollapseToRoot();
   graphApi.collapseToRoot?.();
 };
+
+export const triggerViewportFill = async () => {
+  await graphApi.expandToFillViewport?.();
+}
 
 export const setupGraphApi = (api: typeof graphApi) => {
   graphApi = api;
