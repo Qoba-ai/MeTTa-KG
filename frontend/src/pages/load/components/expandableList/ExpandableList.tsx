@@ -76,19 +76,20 @@ export default function ExpressionList(props: Props) {
     on(
       () => [shouldFillViewport(), props.data] as const,
       async ([should, data]) => {
-        if (should && data?.nodes?.length) {
-          setShouldFillViewport(false);
-          treeStore.setExpanding(true);
-          await new Promise((r) => requestAnimationFrame(r));
-          await doExpandToFillViewport();
-        }
+        if (!should || !data?.nodes?.length) return;
+        setShouldFillViewport(false);
+        if (treeStore.isExpanding) return;
+        treeStore.setExpanding(true);
+        await new Promise((r) => requestAnimationFrame(r));
+        await doExpandToFillViewport();
       }
     )
   );
 
   createEffect(
-    on(formatedNamespace, async (_, prev) => {
-      if (prev !== undefined) treeStore.reset();
+    on(formatedNamespace, async (current, prev) => {
+      treeStore.reset();
+      if (!props.data?.nodes?.length) return;
       treeStore.setExpanding(true);
       await new Promise((r) => requestAnimationFrame(r));
       await doExpandToFillViewport();
