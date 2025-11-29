@@ -17,6 +17,7 @@ interface TreeState {
   childrenMap: Map<string, SpaceNode[]>;
   cursorLine: number;
   isExpanding: boolean;
+  expandingNodeId: string | null;
 }
 
 const [state, setState] = createStore<TreeState>({
@@ -24,9 +25,9 @@ const [state, setState] = createStore<TreeState>({
   childrenMap: new Map(),
   cursorLine: 0,
   isExpanding: false,
+  expandingNodeId: null,
 });
 
-// Scroll position tracking (outside store to avoid reactivity overhead)
 let scrollRef: HTMLDivElement | null = null;
 let savedScrollTop = 0;
 
@@ -40,7 +41,6 @@ const restoreScroll = () => {
   });
 };
 
-// Helper
 const getNodeId = (node: SpaceNode) =>
   node.remoteData.token
     ? Array.from(node.remoteData.token).join(",")
@@ -53,7 +53,6 @@ const isExpandable = (node: SpaceNode) => {
   return !Array.from(token).every((val) => val === -1);
 };
 
-// Flattening logic
 const createFlattenedNodes = (
   data: { nodes: SpaceNode[]; prefix: string[] },
   expanded: Set<string>,
@@ -81,7 +80,6 @@ const createFlattenedNodes = (
   return result;
 };
 
-// Pull-up logic for duplicate expressions
 const pullUpDuplicates = async (
   processedData: { nodes: SpaceNode[]; prefix: string[] },
   parentExpr: string,
@@ -127,9 +125,47 @@ const pullUpDuplicates = async (
   return result;
 };
 
-// Store actions
+const fetchChildrenNodes = async (node: SpaceNode, pattern: string) => {
+  const response = await exploreSpace(
+    formatedNamespace(),
+    pattern,
+    node.remoteData.token
+  );
+  const parsed = JSON.parse(response) as ExploreResponse[];
+
+  if (parsed?.length > 0) {
+    let processedData = initNodesFromApiResponse(parsed, node.remoteData.expr);
+    processedData = await pullUpDuplicates(
+      processedData,
+      node.remoteData.expr,
+      pattern
+    );
+    return processedData.nodes;
+  }
+  return [];
+};
+
+const fetchChildrenBatch = async (
+  items: { id: string; node: SpaceNode }[],
+  pattern: string
+) => {
+  const results = await Promise.allSettled(
+    items.map(async (item) => {
+      const children = await fetchChildrenNodes(item.node, pattern);
+      return { id: item.id, children };
+    })
+  );
+
+  return results
+    .filter((r) => r.status === "fulfilled")
+    .map(
+      (r) =>
+        (r as PromiseFulfilledResult<{ id: string; children: SpaceNode[] }>)
+          .value
+    );
+};
+
 export const treeStore = {
-  // Getters
   get expandedNodes() {
     return state.expandedNodes;
   },
@@ -142,23 +178,21 @@ export const treeStore = {
   get isExpanding() {
     return state.isExpanding;
   },
+  get expandingNodeId() {
+    return state.expandingNodeId;
+  },
 
-  // Helpers exposed for components
   getNodeId,
   isExpandable,
   createFlattenedNodes: (data: { nodes: SpaceNode[]; prefix: string[] }) =>
     createFlattenedNodes(data, state.expandedNodes, state.childrenMap),
 
-  // Register scroll element
   setScrollRef(ref: HTMLDivElement | null) {
     scrollRef = ref;
   },
-
-  // Mutations
   setExpanding(value: boolean) {
     setState("isExpanding", value);
   },
-
   setCursor(line: number) {
     setState("cursorLine", line);
   },
@@ -169,6 +203,7 @@ export const treeStore = {
       childrenMap: new Map(),
       cursorLine: 0,
       isExpanding: false,
+      expandingNodeId: null,
     });
     savedScrollTop = 0;
   },
@@ -189,17 +224,14 @@ export const treeStore = {
     restoreScroll();
   },
 
-  // Async actions
   async toggleNode(
     flatNode: FlatNode,
     pattern: string,
     onNodeClick?: (node: SpaceNode) => void
   ) {
     const { node, id: nodePath } = flatNode;
-
     saveScroll();
 
-    // Collapse if expanded
     if (state.expandedNodes.has(nodePath)) {
       setState("expandedNodes", (prev) => {
         const next = new Set(prev);
@@ -210,57 +242,26 @@ export const treeStore = {
       return;
     }
 
-    // Non-expandable: trigger click callback
     if (!isExpandable(node)) {
       onNodeClick?.(node);
       return;
     }
 
-    // Fetch children
     try {
-      const response = await exploreSpace(
-        formatedNamespace(),
-        pattern,
-        node.remoteData.token
-      );
-      const parsed = JSON.parse(response) as ExploreResponse[];
-
-      if (parsed?.length > 0) {
-        let processedData = initNodesFromApiResponse(
-          parsed,
-          node.remoteData.expr
+      const children = await fetchChildrenNodes(node, pattern);
+      batch(() => {
+        setState("childrenMap", (prev) =>
+          new Map(prev).set(nodePath, children)
         );
-        processedData = await pullUpDuplicates(
-          processedData,
-          node.remoteData.expr,
-          pattern
-        );
-
-        batch(() => {
-          setState("childrenMap", (prev) =>
-            new Map(prev).set(nodePath, processedData.nodes)
-          );
-          setState("expandedNodes", (prev) => new Set(prev).add(nodePath));
-        });
-      } else {
-        setState("childrenMap", (prev) => new Map(prev).set(nodePath, []));
-      }
+        setState("expandedNodes", (prev) => new Set(prev).add(nodePath));
+      });
     } catch (error) {
-      if (error instanceof Error && error.message === "noRootToken") {
-        showToast({
-          title: "Token Not Set",
-          description: "Please set the token in the Tokens page.",
-          variant: "destructive",
-        });
-      } else {
-        showToast({
-          title: "Error",
-          description: `Failed to expand node: ${error}`,
-          variant: "destructive",
-        });
-      }
+      const msg =
+        error instanceof Error && error.message === "noRootToken"
+          ? "Please set the token in the Tokens page."
+          : `Failed to expand node: ${error}`;
+      showToast({ title: "Error", description: msg, variant: "destructive" });
     }
-
     restoreScroll();
   },
 
@@ -270,7 +271,6 @@ export const treeStore = {
     getFlattenedNodes: () => FlatNode[]
   ) {
     saveScroll();
-
     const BATCH_SIZE = 5;
     let currentCount = getFlattenedNodes().length;
     let staleAttempts = 0;
@@ -284,28 +284,10 @@ export const treeStore = {
 
       if (nodesToExpand.length === 0) break;
 
-      const results = await Promise.allSettled(
-        nodesToExpand.map(async (n) => {
-          const response = await exploreSpace(
-            formatedNamespace(),
-            pattern,
-            n.node.remoteData.token
-          );
-          return { node: n, parsed: JSON.parse(response) as ExploreResponse[] };
-        })
+      const successful = await fetchChildrenBatch(
+        nodesToExpand.map((n) => ({ id: n.id, node: n.node })),
+        pattern
       );
-
-      const successful = results
-        .filter((r) => r.status === "fulfilled")
-        .map(
-          (r) =>
-            (
-              r as PromiseFulfilledResult<{
-                node: FlatNode;
-                parsed: ExploreResponse[];
-              }>
-            ).value
-        );
 
       if (successful.length === 0) {
         staleAttempts++;
@@ -315,22 +297,9 @@ export const treeStore = {
       const newChildren = new Map(state.childrenMap);
       const newExpanded = new Set(state.expandedNodes);
 
-      for (const { node: flatNode, parsed } of successful) {
-        if (parsed?.length > 0) {
-          let processedData = initNodesFromApiResponse(
-            parsed,
-            flatNode.node.remoteData.expr
-          );
-          processedData = await pullUpDuplicates(
-            processedData,
-            flatNode.node.remoteData.expr,
-            pattern
-          );
-          newChildren.set(flatNode.id, processedData.nodes);
-        } else {
-          newChildren.set(flatNode.id, []);
-        }
-        newExpanded.add(flatNode.id);
+      for (const { id, children } of successful) {
+        newChildren.set(id, children);
+        newExpanded.add(id);
       }
 
       batch(() => {
@@ -342,7 +311,100 @@ export const treeStore = {
       staleAttempts = newCount === currentCount ? staleAttempts + 1 : 0;
       currentCount = newCount;
     }
-
     restoreScroll();
+  },
+
+  async expandToLeaf(flatNode: FlatNode, pattern: string) {
+    const { node, id: startPath } = flatNode;
+    if (state.expandingNodeId) return;
+
+    setState("expandingNodeId", startPath);
+    saveScroll();
+
+    const newChildrenMap = new Map<string, SpaceNode[]>();
+    const newExpandedSet = new Set<string>();
+
+    try {
+      const queue: { id: string; node: SpaceNode }[] = [
+        { id: startPath, node },
+      ];
+      let count = 0;
+      const MAX_NODES = 1000;
+      const CONCURRENT_BATCH_SIZE = 5;
+
+      while (queue.length > 0 && count < MAX_NODES) {
+        const batchItems = queue.splice(0, CONCURRENT_BATCH_SIZE);
+
+        const itemsToFetch = batchItems.filter((item) => {
+          if (!isExpandable(item.node)) return false;
+
+          const hasChildren =
+            state.childrenMap.has(item.id) || newChildrenMap.has(item.id);
+
+          if (hasChildren) {
+            const children =
+              state.childrenMap.get(item.id) ||
+              newChildrenMap.get(item.id) ||
+              [];
+            newExpandedSet.add(item.id);
+            children.forEach((child, idx) => {
+              queue.push({
+                id: `${item.id}/${getNodeId(child)}#${idx}`,
+                node: child,
+              });
+            });
+            return false;
+          }
+          return true;
+        });
+
+        if (itemsToFetch.length === 0) continue;
+
+        const successful = await fetchChildrenBatch(itemsToFetch, pattern);
+
+        for (const { id, children } of successful) {
+          newChildrenMap.set(id, children);
+          newExpandedSet.add(id);
+          count++;
+
+          children.forEach((child, idx) => {
+            queue.push({ id: `${id}/${getNodeId(child)}#${idx}`, node: child });
+          });
+        }
+      }
+
+      if (count >= MAX_NODES) {
+        showToast({
+          title: "Expansion Limit",
+          description: "Stopped expanding after 1000 nodes.",
+        });
+      }
+
+      batch(() => {
+        if (newChildrenMap.size > 0) {
+          setState("childrenMap", (prev) => {
+            const next = new Map(prev);
+            for (const [key, val] of newChildrenMap) next.set(key, val);
+            return next;
+          });
+        }
+        if (newExpandedSet.size > 0) {
+          setState("expandedNodes", (prev) => {
+            const next = new Set(prev);
+            for (const key of newExpandedSet) next.add(key);
+            return next;
+          });
+        }
+      });
+    } catch (e) {
+      showToast({
+        title: "Expansion Error",
+        description: `Failed to expand recursively.\n ${e}`,
+        variant: "destructive",
+      });
+    } finally {
+      setState("expandingNodeId", null);
+      restoreScroll();
+    }
   },
 };

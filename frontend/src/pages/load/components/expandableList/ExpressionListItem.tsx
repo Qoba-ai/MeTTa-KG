@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
 import type { createVirtualizer } from "@tanstack/solid-virtual";
-import type { FlatNode } from "./store"; // Changed import
+import type { FlatNode } from "./store";
 
 export interface ExpressionListItemProps {
   virtualItem: ReturnType<
@@ -12,16 +12,15 @@ export interface ExpressionListItemProps {
   isLeaf: boolean;
   isCursor: boolean;
   isIndented: boolean;
-  onClick: () => void;
+  isExpandingToLeaf?: boolean;
+  onClick: (e: MouseEvent) => void;
 }
 
 export default function ExpressionListItem(props: ExpressionListItemProps) {
-  const { node, id: nodeId, depth } = props.flatNode;
-
   return (
     <div
       data-index={props.virtualItem.index}
-      data-key={nodeId}
+      data-key={props.flatNode.id}
       style={{
         position: "absolute",
         top: 0,
@@ -35,7 +34,7 @@ export default function ExpressionListItem(props: ExpressionListItemProps) {
           : "2px solid transparent",
       }}
       class="flex items-center cursor-pointer hover:bg-[#2a2d2e] transition-colors"
-      onClick={props.onClick}
+      onClick={(e) => props.onClick(e)}
     >
       {/* Line number gutter */}
       <div
@@ -62,12 +61,14 @@ export default function ExpressionListItem(props: ExpressionListItemProps) {
       <div
         class="flex-1 flex items-center h-full px-2"
         style={{
-          "padding-left": props.isIndented ? `${depth * 16 + 8}px` : "8px",
+          "padding-left": props.isIndented
+            ? `${props.flatNode.depth * 16 + 8}px`
+            : "8px",
         }}
       >
         {/* Indentation guides */}
-        <Show when={props.isIndented}>
-          <For each={Array.from({ length: depth })}>
+        <Show when={props.isIndented && props.flatNode.depth > 0}>
+          <For each={Array.from({ length: props.flatNode.depth })}>
             {(_, i) => (
               <div
                 class="absolute h-full"
@@ -108,14 +109,30 @@ export default function ExpressionListItem(props: ExpressionListItemProps) {
 
         {/* Node label with syntax-like coloring */}
         <div
-          class="flex-1 text-sm leading-6"
+          class="flex-1 text-sm leading-6 truncate"
           style={{
             color: props.canExpand ? "#4ec9b0" : "#9cdcfe",
             "font-size": "13px",
           }}
         >
-          {node.label}
+          {props.flatNode.node.label}
         </div>
+
+        {/* Expanding to leaf spinner */}
+        <Show when={props.isExpandingToLeaf}>
+          <div class="flex-shrink-0 ml-2 flex items-center">
+            <div
+              class="w-3 h-3 border border-t-transparent rounded-full animate-spin"
+              style={{
+                "border-color": "#4ec9b0",
+                "border-top-color": "transparent",
+              }}
+            />
+            <span class="ml-1 text-xs" style={{ color: "#4ec9b0" }}>
+              Expanding...
+            </span>
+          </div>
+        </Show>
       </div>
     </div>
   );

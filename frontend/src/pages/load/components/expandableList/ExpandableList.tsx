@@ -76,18 +76,19 @@ export default function ExpressionList(props: Props) {
     on(
       () => [shouldFillViewport(), props.data] as const,
       async ([should, data]) => {
-        if (!should || !data?.nodes?.length) return;
-        setShouldFillViewport(false);
-        if (treeStore.isExpanding) return;
-        treeStore.setExpanding(true);
-        await new Promise((r) => requestAnimationFrame(r));
-        await doExpandToFillViewport();
+        if (should && data?.nodes?.length) {
+          setShouldFillViewport(false);
+          if (treeStore.isExpanding) return;
+          treeStore.setExpanding(true);
+          await new Promise((r) => requestAnimationFrame(r));
+          await doExpandToFillViewport();
+        }
       }
     )
   );
 
   createEffect(
-    on(formatedNamespace, async (current, prev) => {
+    on(formatedNamespace, async () => {
       treeStore.reset();
       if (!props.data?.nodes?.length) return;
       treeStore.setExpanding(true);
@@ -102,9 +103,15 @@ export default function ExpressionList(props: Props) {
     expandToFillViewport: doExpandToFillViewport,
   });
 
-  const handleToggle = async (flatNode: FlatNode) => {
+  const handleToggle = async (flatNode: FlatNode, e: MouseEvent) => {
+    e.stopPropagation();
     treeStore.setCursor(flattenedNodes().indexOf(flatNode));
-    await treeStore.toggleNode(flatNode, props.pattern, props.onNodeClick);
+
+    if (e.ctrlKey || e.metaKey) {
+      await treeStore.expandToLeaf(flatNode, props.pattern);
+    } else {
+      await treeStore.toggleNode(flatNode, props.pattern, props.onNodeClick);
+    }
   };
 
   onMount(async () => {
@@ -173,7 +180,8 @@ export default function ExpressionList(props: Props) {
                     }
                     isCursor={treeStore.cursorLine === vi.index}
                     isIndented={props.isIndented}
-                    onClick={() => handleToggle(fn)}
+                    isExpandingToLeaf={treeStore.expandingNodeId === fn.id}
+                    onClick={(e) => handleToggle(fn, e)}
                   />
                 );
               }}
