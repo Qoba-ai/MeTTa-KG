@@ -5,8 +5,6 @@ import { Route, Router } from "@solidjs/router";
 import Editor from "./Editor";
 import Tokens from "./Tokens";
 
-import './styles/global.scss';
-
 import 'solid-devtools'
 
 const root = document.getElementById("root");
