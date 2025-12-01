@@ -38,11 +38,10 @@ export default function ExpressionListItem(props: ExpressionListItemProps) {
     >
       {/* Line number gutter */}
       <div
-        class="flex-shrink-0 text-right pr-4 pl-4 select-none text-xs leading-6"
+        class="flex-shrink-0 text-right pr-2 select-none text-xs leading-6"
         style={{
-          width: "60px",
+          width: "40px",
           color: props.isCursor ? "#c6c6c6" : "#858585",
-          "background-color": "#1e1e1e",
         }}
       >
         {props.virtualItem.index + 1}
@@ -62,7 +61,7 @@ export default function ExpressionListItem(props: ExpressionListItemProps) {
         class="flex-1 flex items-center h-full px-2"
         style={{
           "padding-left": props.isIndented
-            ? `${props.flatNode.depth * 16 + 8}px`
+            ? `${props.flatNode.depth * 16 + 20}px`
             : "8px",
         }}
       >
