@@ -138,14 +138,13 @@ export default function ExpressionList(props: Props) {
       ref={containerRef!}
       class="w-full h-full overflow-hidden relative"
       style={{
-        "background-color": "#1e1e1e",
         "font-family": "'Consolas', 'Courier New', monospace",
       }}
     >
       <div
         class="h-8 flex items-center px-4 border-b text-xs"
         style={{
-          "background-color": "#2d2d2d",
+          "background-color": "rgba(45, 45, 45, 0.3)",
           "border-color": "#3e3e3e",
           color: "#cccccc",
         }}
@@ -162,7 +161,7 @@ export default function ExpressionList(props: Props) {
           class="w-full h-full overflow-auto"
           style={{
             "scrollbar-width": "thin",
-            "scrollbar-color": "#424242 #1e1e1e",
+            "scrollbar-color": "#424242 transparent",
           }}
         >
           <div
@@ -198,7 +197,7 @@ export default function ExpressionList(props: Props) {
         </div>
 
         <Show when={treeStore.isExpanding}>
-          <div class="absolute inset-0 flex flex-col items-center justify-center bg-[#1e1e1e] z-10">
+          <div class="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm z-10">
             <div class="animate-ping rounded-full h-8 w-8 border-t-2 border-b-2 mb-4" />
             <span class="text-white text-sm">Expanding...</span>
           </div>
