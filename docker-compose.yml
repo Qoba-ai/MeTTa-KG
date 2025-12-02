@@ -3,37 +3,51 @@ services:
     build: .
     ports:
       - "${METTA_KG_PORT}:${METTA_KG_PORT}"
+    depends_on:
+      mork:
+        condition: service_started
+      db:
+        condition: service_healthy
     environment:
-      METTA_KG_DATABASE_URL: ${METTA_KG_DATABASE_URL}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
       METTA_KG_SECRET: ${METTA_KG_SECRET}
       METTA_KG_MORK_URL: ${METTA_KG_MORK_URL}
-      METTA_KG_ORIGIN_URL: ${METTA_KG_ORIGIN_URL} 
+      METTA_KG_ORIGIN_URL: ${METTA_KG_ORIGIN_URL}
       ROCKET_ADDRESS: ${METTA_KG_ADDRESS}
       ROCKET_PORT: ${METTA_KG_PORT}
-  db: 
+  db:
     image: "postgres"
     restart: always
-    ports: 
+    ports:
       - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   adminer:
     image: adminer
     restart: always
     ports:
       - "8080:8080"
+    depends_on:
+      - db
     environment:
       ADMINER_DEFAULT_DB_DRIVER: pgsql
       ADMINER_DEFAULT_DB_HOST: db
       ADMINER_DEFAULT_DB_NAME: ${POSTGRES_DB}
   mork:
-    image: mork_server
-    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile.mork
     ports:
       - "${MORK_SERVER_PORT}:${MORK_SERVER_PORT}"
     environment:
       MORK_SERVER_ADDR: ${MORK_SERVER_ADDR}
       MORK_SERVER_PORT: ${MORK_SERVER_PORT}
-

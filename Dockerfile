@@ -3,8 +3,6 @@ FROM rust:1.86 AS rust-builder
 
 WORKDIR /mettakg
 
-COPY api api
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
     musl-dev \
     g++ \
@@ -20,6 +18,8 @@ ENV OPENSSL_INCLUDE_DIR=/usr/include
 ENV OPENSSL_LIB_DIR=/usr/lib/x86_64-linux-gnu
 
 ENV LIBPQ_STATIC=1
+
+COPY api api
 
 RUN cd api/ && cargo build --release --target x86_64-unknown-linux-musl
 

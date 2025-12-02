@@ -3,7 +3,6 @@ import { createResource, createSignal, For, onMount, Show } from 'solid-js'
 import { A } from '@solidjs/router'
 import { API_URL } from './lib/api'
 import { AiOutlineCopy, AiOutlineGithub } from 'solid-icons/ai'
-import styles from './Tokens.module.scss'
 import toast, { Toaster } from 'solid-toast'
 import { Token } from './lib/types'
 
@@ -403,17 +402,17 @@ const Tokens: Component = () => {
             <header>
                 <h1>MeTTa KG</h1>
                 <nav>
-                    <A href="/" class={styles.OutlineButton}>
+                    <A href="/" >
                         Editor
                     </A>
                     <a href="https://github.com/Qoba-ai/MeTTa-KG">
-                        <AiOutlineGithub class={styles.Icon} size={32} />
+                        <AiOutlineGithub  size={32} />
                     </a>
                 </nav>
             </header>
-            <main class={styles.Main}>
+            <main >
                 <form
-                    class={styles.RootTokenForm}
+                    
                     ref={rootTokenForm!}
                     role="search"
                 >
@@ -422,7 +421,6 @@ const Tokens: Component = () => {
                         id="root-token"
                         ref={rootTokenFormInput!}
                         type="search"
-                        class={styles.TokenInput}
                         placeholder="Token"
                         oninvalid={() =>
                             rootTokenFormInput.setCustomValidity(
@@ -441,7 +439,7 @@ const Tokens: Component = () => {
                     <input type="submit" value={'Submit'} />
                 </form>
                 <div></div>
-                <form class={styles.NewTokenForm} ref={newTokenForm!}>
+                <form  ref={newTokenForm!}>
                     <h2>Create Token</h2>
                     <label>
                         Namespace
@@ -486,15 +484,12 @@ const Tokens: Component = () => {
                             }
                         />
                     </label>
-                    <div class={styles.NewTokenPermissions}>
+                    <div >
                         <fieldset>
                             <legend>
                                 <span>Permissions</span>
                                 <Show when={!newTokenReadEnabled()}>
                                     <span
-                                        class={
-                                            styles.NewTokenNoPermissionsWarningSmall
-                                        }
                                     >
                                         Token has no permissions!
                                     </span>
@@ -593,14 +588,14 @@ const Tokens: Component = () => {
                     </div>
                     <input type="submit" value={'Create'} />
                     <Show when={!newTokenReadEnabled()}>
-                        <span class={styles.NewTokenNoPermissionsWarningLarge}>
+                        <span >
                             Token has no permissions!
                         </span>
                     </Show>
                 </form>
-                <div class={styles.TokenTableWrapper}>
-                    <div class={styles.TokenTableInnerWrapper}>
-                        <table class={styles.TokenTable}>
+                <div >
+                    <div>
+                        <table>
                             <thead>
                                 <tr>
                                     <th tabIndex={0}>
@@ -635,7 +630,7 @@ const Tokens: Component = () => {
                                                 sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span>
                                                 ↓
                                             </span>
                                         </Show>
@@ -646,7 +641,7 @@ const Tokens: Component = () => {
                                                 !sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span>
                                                 ↑
                                             </span>
                                         </Show>
@@ -680,7 +675,7 @@ const Tokens: Component = () => {
                                                 sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span>
                                                 ↓
                                             </span>
                                         </Show>
@@ -691,15 +686,12 @@ const Tokens: Component = () => {
                                                 !sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span >
                                                 ↑
                                             </span>
                                         </Show>
                                         <div ref={namespaceSearch!}>
                                             <input
-                                                class={
-                                                    styles.NamespaceSearchRegexInput
-                                                }
                                                 ref={namespaceSearchInput!}
                                                 placeholder="Search Regex Pattern"
                                                 onchange={(e) =>
@@ -714,9 +706,6 @@ const Tokens: Component = () => {
                                         <span>Description</span>
                                         <div ref={descriptionSearch!}>
                                             <input
-                                                class={
-                                                    styles.DescriptionSearchRegexInput
-                                                }
                                                 ref={descriptionSearchInput!}
                                                 placeholder="Search Regex Pattern"
                                                 onchange={(e) =>
@@ -750,7 +739,7 @@ const Tokens: Component = () => {
                                                 sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span >
                                                 ↓
                                             </span>
                                         </Show>
@@ -761,7 +750,7 @@ const Tokens: Component = () => {
                                                 !sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span>
                                                 ↑
                                             </span>
                                         </Show>
@@ -789,7 +778,7 @@ const Tokens: Component = () => {
                                                 sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span>
                                                 ↓
                                             </span>
                                         </Show>
@@ -800,7 +789,7 @@ const Tokens: Component = () => {
                                                 !sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span >
                                                 ↑
                                             </span>
                                         </Show>
@@ -828,7 +817,7 @@ const Tokens: Component = () => {
                                                 sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span >
                                                 ↓
                                             </span>
                                         </Show>
@@ -839,7 +828,7 @@ const Tokens: Component = () => {
                                                 !sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span >
                                                 ↑
                                             </span>
                                         </Show>
@@ -867,7 +856,7 @@ const Tokens: Component = () => {
                                                 sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span>
                                                 ↓
                                             </span>
                                         </Show>
@@ -878,7 +867,7 @@ const Tokens: Component = () => {
                                                 !sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span>
                                                 ↑
                                             </span>
                                         </Show>
@@ -906,7 +895,7 @@ const Tokens: Component = () => {
                                                 sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span>
                                                 ↓
                                             </span>
                                         </Show>
@@ -917,7 +906,7 @@ const Tokens: Component = () => {
                                                 !sortDirectionDescending()
                                             }
                                         >
-                                            <span class={styles.SortIcon}>
+                                            <span>
                                                 ↑
                                             </span>
                                         </Show>
@@ -967,11 +956,6 @@ const Tokens: Component = () => {
                                                         setCopiedToken(token)
 
                                                         setTimeout(() => {
-                                                            if (codeCell) {
-                                                                codeCell.classList.remove(
-                                                                    'Copied'
-                                                                )
-                                                            }
 
                                                             setCopiedToken(null)
                                                         }, 1000 * 1)
@@ -999,28 +983,15 @@ const Tokens: Component = () => {
                                                 </td>
                                                 <td>
                                                     <div
-                                                        class={
-                                                            styles.CodeCell +
-                                                            ' ' +
-                                                            (copiedToken()
-                                                                ? styles.Copied
-                                                                : '')
-                                                        }
                                                         onclick={(e) => {
                                                             navigator.clipboard.writeText(
                                                                 token.code
-                                                            )
-                                                            e.currentTarget.classList.add(
-                                                                'Copied'
                                                             )
                                                             setCopiedToken(
                                                                 token
                                                             )
 
                                                             setTimeout(() => {
-                                                                e.target.classList.remove(
-                                                                    'Copied'
-                                                                )
                                                                 setCopiedToken(
                                                                     null
                                                                 )
@@ -1032,9 +1003,6 @@ const Tokens: Component = () => {
                                                     >
                                                         <div>
                                                             <AiOutlineCopy
-                                                                class={
-                                                                    styles.CodeCellIcon
-                                                                }
                                                             />
                                                             <Show
                                                                 when={
@@ -1043,9 +1011,6 @@ const Tokens: Component = () => {
                                                                 }
                                                             >
                                                                 <div
-                                                                    class={
-                                                                        styles.CopyTooltip
-                                                                    }
                                                                 >
                                                                     Copied code
                                                                     to
@@ -1054,25 +1019,19 @@ const Tokens: Component = () => {
                                                             </Show>
                                                         </div>
                                                         <div
-                                                            class={
-                                                                styles.CodeCellContent
-                                                            }
+
                                                         >
                                                             {token.code}
                                                         </div>
                                                     </div>
                                                 </td>
                                                 <td
-                                                    class={styles.NamespaceCell}
                                                 >
                                                     {token.namespace}
                                                 </td>
                                                 <td>{token.description}</td>
                                                 <td>
                                                     <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
                                                     >
                                                         {token.permission_read
                                                             ? '✅'
@@ -1081,9 +1040,6 @@ const Tokens: Component = () => {
                                                 </td>
                                                 <td>
                                                     <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
                                                     >
                                                         {token.permission_write
                                                             ? '✅'
@@ -1092,9 +1048,6 @@ const Tokens: Component = () => {
                                                 </td>
                                                 <td>
                                                     <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
                                                     >
                                                         {token.permission_share_read
                                                             ? '✅'
@@ -1103,9 +1056,6 @@ const Tokens: Component = () => {
                                                 </td>
                                                 <td>
                                                     <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
                                                     >
                                                         {token.permission_share_write
                                                             ? '✅'
@@ -1114,9 +1064,6 @@ const Tokens: Component = () => {
                                                 </td>
                                                 <td>
                                                     <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
                                                     >
                                                         {token.permission_share_share
                                                             ? '✅'
@@ -1130,11 +1077,11 @@ const Tokens: Component = () => {
                             </tbody>
                         </table>
                         <Show when={tokens()?.length === 0}>
-                            <div class={styles.TokenTableNoData}>
+                            <div >
                                 <span>No Tokens Available</span>
                             </div>
                         </Show>
-                        <div class={styles.TableButtonBar}>
+                        <div >
                             <button
                                 disabled={selectedTokens().length === 0}
                                 onclick={() => refreshTokensModel.showModal()}
@@ -1156,16 +1103,16 @@ const Tokens: Component = () => {
                     </div>
                 </div>
             </main>
-            <dialog ref={refreshTokensModel!} class={styles.RefreshTokensModal}>
+            <dialog ref={refreshTokensModel!} >
                 <form>
                     <h2>Refresh Tokens?</h2>
                     <p>
                         Selected tokens will no longer give access to the
                         associated namespaces.
                     </p>
-                    <div class={styles.ModalButtonBar}>
+                    <div >
                         <button
-                            class={styles.Button}
+                            
                             onclick={(ev) => {
                                 ev.preventDefault()
                                 handleRefreshTokensButtonClick()
@@ -1176,7 +1123,7 @@ const Tokens: Component = () => {
                         </button>
                         <button
                             type="button"
-                            class={styles.TextButton}
+                            
                             onclick={() => refreshTokensModel.close()}
                         >
                             Cancel
@@ -1184,16 +1131,15 @@ const Tokens: Component = () => {
                     </div>
                 </form>
             </dialog>
-            <dialog ref={deleteTokensModal!} class={styles.deleteTokensModal}>
+            <dialog ref={deleteTokensModal!} >
                 <form>
                     <h2>Delete tokens?</h2>
                     <p>
                         Selected tokens will be deleted permanently. Sub-tokens
                         will be deleted recursively.
                     </p>
-                    <div class={styles.ModalButtonBar}>
+                    <div >
                         <button
-                            class={styles.Button}
                             onclick={(ev) => {
                                 ev.preventDefault()
                                 handleDeleteTokensButtonClick()
@@ -1204,7 +1150,6 @@ const Tokens: Component = () => {
                         </button>
                         <button
                             type="button"
-                            class={styles.TextButton}
                             onclick={() => deleteTokensModal.close()}
                         >
                             Cancel
@@ -1213,7 +1158,7 @@ const Tokens: Component = () => {
                 </form>
             </dialog>
             <Toaster
-                toastOptions={{ className: styles.Toaster }}
+                toastOptions={{ className: "false" }}
                 containerStyle={{ 'margin-top': '60px' }}
             />
         </>
