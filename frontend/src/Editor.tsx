@@ -8,7 +8,7 @@ import { VsRunAll } from 'solid-icons/vs'
 import { createMemo, createSignal, onMount, Show } from 'solid-js'
 import { A } from '@solidjs/router'
 import toast, { Toaster } from 'solid-toast'
-import { BACKEND_URL, TOKEN } from './urls'
+import { API_URL } from './lib/api'
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/panda-syntax-dark.css'
 import {
@@ -41,21 +41,12 @@ import {
     completionKeymap,
 } from '@codemirror/autocomplete'
 import {
-    EditorMode,
-    ImportCSVDirection,
-    ImportFormat,
-    ParserParameters,
+    // EditorMode,
+    // ImportCSVDirection,
+    // ImportFormat,
+    // ParserParameters,
     Token,
-} from './types'
-import {
-    editorTheme,
-    highlightStyle,
-    languageSupport,
-    mettaLinter,
-    toJSON,
-} from './mettaLanguageSupport'
-import { parser } from './parser/parser'
-import { Expression, Symbol, Variable } from './parser/parser.terms'
+} from './lib/types'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.')[1]
@@ -100,7 +91,7 @@ const App: Component = () => {
     const [editorOutput, setEditorOutput] = createSignal('')
     const [editorView, setEditorView] = createSignal<EditorView>()
     const [editorMode, setEditorMode] = createSignal<EditorMode>(
-        EditorMode.DEFAULT
+        "EditorMode.DEFAULT"
     )
 
     const [activeImportFile, setActiveImportFile] = createSignal<File>()
@@ -122,7 +113,7 @@ const App: Component = () => {
 
     // CSV-specific import parameters
     const [importCSVDirection, setImportCSVDirection] =
-        createSignal<ImportCSVDirection>(ImportCSVDirection.CELL_LABELED)
+        createSignal<ImportCSVDirection>("ImportCSVDirection.CELL_LABELED")
     const [importCSVDelimiter, setImportCSVDelimiter] =
         createSignal<string>('\u002C')
 
@@ -136,8 +127,8 @@ const App: Component = () => {
     const editorState = EditorState.create({
         doc: editorContent(),
         extensions: [
-            editorTheme,
-            languageSupport,
+            // editorTheme,
+            // languageSupport,
             highlightActiveLineGutter(),
             history(),
             foldGutter(),
@@ -147,10 +138,10 @@ const App: Component = () => {
             bracketMatching(),
             closeBrackets(),
             highlightActiveLine(),
-            syntaxHighlighting(highlightStyle),
+            syntaxHighlighting("highlightStyle"),
             EditorView.lineWrapping,
             autocompletion(),
-            mettaLinter,
+            // mettaLinter,
             keymap.of([
                 ...closeBracketsKeymap,
                 ...defaultKeymap,
@@ -236,7 +227,7 @@ const App: Component = () => {
 
             importFileModal.close()
         }
-
+        let TOKEN = false;
         if (TOKEN) {
             loadSpace(TOKEN)
             setEditorMode(EditorMode.EDIT)
@@ -351,7 +342,7 @@ const App: Component = () => {
 
         try {
             const resp = await fetch(
-                `${BACKEND_URL}/translations/${fileFormat}?${parameters.toString()}`,
+                `${API_URL}/translations/${fileFormat}?${parameters.toString()}`,
                 {
                     method: 'POST',
                     headers: {},
@@ -368,7 +359,7 @@ const App: Component = () => {
             }
 
             // switch to import mode to allow modification of import parameters
-            setEditorMode(EditorMode.IMPORT)
+            setEditorMode("EditorMode.IMPORT")
 
             // insert translated MeTTa code at cursor location
             view.dispatch(
@@ -462,7 +453,7 @@ const App: Component = () => {
      */
     const loadSpace = async (token: string): Promise<void> => {
         try {
-            const resp = await fetch(`${BACKEND_URL}/token`, {
+            const resp = await fetch(`${API_URL}/token`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -523,7 +514,7 @@ const App: Component = () => {
         const content = editorContent()
 
         await fetch(
-            `${BACKEND_URL}/spaces${token()?.namespace}${selectedNamespace()}`,
+            `${API_URL}/spaces${token()?.namespace}${selectedNamespace()}`,
             {
                 method: 'PUT',
                 headers: {
@@ -539,7 +530,7 @@ const App: Component = () => {
 
     const read = async (token?: Token) => {
         const resp = await fetch(
-            `${BACKEND_URL}/spaces${token?.namespace}${selectedNamespace()}`,
+            `${API_URL}/spaces${token?.namespace}${selectedNamespace()}`,
             {
                 method: 'GET',
                 headers: {
@@ -572,7 +563,7 @@ const App: Component = () => {
     }
 
     const transform = async () => {
-        const resp = await fetch(`${BACKEND_URL}/spaces`, {
+        const resp = await fetch(`${API_URL}/spaces`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -714,7 +705,7 @@ const App: Component = () => {
                     </Show>
                 </div>
                 <Show
-                    when={editorMode() === EditorMode.IMPORT}
+                    when={editorMode() === "EditorMode.IMPORT"}
                     fallback={<div></div>}
                 >
                     <div >

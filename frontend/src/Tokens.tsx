@@ -1,10 +1,10 @@
 import type { Component, JSX, ResourceFetcherInfo } from 'solid-js'
 import { createResource, createSignal, For, onMount, Show } from 'solid-js'
 import { A } from '@solidjs/router'
-import { BACKEND_URL } from './urls'
+import { API_URL } from './lib/api'
 import { AiOutlineCopy, AiOutlineGithub } from 'solid-icons/ai'
 import toast, { Toaster } from 'solid-toast'
-import { Token } from './types'
+import { Token } from './lib/types'
 
 enum SortableColumns {
     TIMESTAMP,
@@ -27,7 +27,7 @@ const fetchTokens = async (
     }
 
     try {
-        const resp = await fetch(`${BACKEND_URL}/tokens`, {
+        const resp = await fetch(`${API_URL}/tokens`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -77,7 +77,7 @@ const createToken = async (
         parent: 0,
     }
 
-    const resp = await fetch(`${BACKEND_URL}/tokens`, {
+    const resp = await fetch(`${API_URL}/tokens`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: root },
         body: JSON.stringify(newToken),
@@ -95,7 +95,7 @@ const refreshCodes = async (
     }
 
     const promises = tokens.map((t) =>
-        fetch(`${BACKEND_URL}/tokens/${t.id}`, {
+        fetch(`${API_URL}/tokens/${t.id}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -115,7 +115,7 @@ const deleteTokens = async (
         return
     }
 
-    await fetch(`${BACKEND_URL}/tokens`, {
+    await fetch(`${API_URL}/tokens`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', Authorization: root },
         body: JSON.stringify(tokens.map((t) => t.id)),
