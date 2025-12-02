@@ -96,7 +96,10 @@ export const executeIntersection = async (
     });
 
     if (ok) {
-      showToast({ title: "Intersection Initiated", description: "Waiting for results..." });
+      showToast({
+        title: "Intersection Initiated",
+        description: "Waiting for results...",
+      });
       startPolling(tgt);
     } else {
       showToast({
@@ -108,7 +111,11 @@ export const executeIntersection = async (
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "An unexpected error occurred.";
-    showToast({ title: "Error", description: errorMessage, variant: "destructive" });
+    showToast({
+      title: "Error",
+      description: errorMessage,
+      variant: "destructive",
+    });
   } finally {
     setIsLoading(false);
   }

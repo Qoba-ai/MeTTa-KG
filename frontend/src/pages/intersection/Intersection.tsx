@@ -42,7 +42,9 @@ const IntersectionPage: Component = () => {
     ]);
   };
   const removePattern = (id: string) => {
-    setState("patterns", (prev) => (prev.length > 2 ? prev.filter((p) => p.id !== id) : prev));
+    setState("patterns", (prev) =>
+      prev.length > 2 ? prev.filter((p) => p.id !== id) : prev
+    );
   };
   const updatePattern = (
     id: string,
@@ -123,7 +125,10 @@ const IntersectionPage: Component = () => {
 
   return (
     <div class="ml-10 mt-8">
-      <CommandCard title="Intersection" description="Compute intersection across source namespaces into a target namespace">
+      <CommandCard
+        title="Intersection"
+        description="Compute intersection across source namespaces into a target namespace"
+      >
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div class="lg:col-span-2 space-y-6">
             <TransformInputComponent
@@ -131,7 +136,7 @@ const IntersectionPage: Component = () => {
               items={state.patterns as Item[]}
               addItem={addPattern}
               removeItem={removePattern}
-              updateItem={updatePattern as any}
+              updateItem={updatePattern}
               accentColor="primary"
               rootToken={!!rootToken()}
               tokenRootNamespace={tokenRootNamespace}
@@ -144,7 +149,7 @@ const IntersectionPage: Component = () => {
               items={state.templates as Item[]}
               addItem={addTemplate}
               removeItem={removeTemplate}
-              updateItem={updateTemplate as any}
+              updateItem={updateTemplate}
               accentColor="primary"
               rootToken={!!rootToken()}
               tokenRootNamespace={tokenRootNamespace}
@@ -157,7 +162,9 @@ const IntersectionPage: Component = () => {
             <Card class="sticky top-4">
               <CardHeader>
                 <CardTitle>S-Expression Preview</CardTitle>
-                <CardDescription>Conceptual transform for intersection</CardDescription>
+                <CardDescription>
+                  Conceptual transform for intersection
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <pre class="text-sm font-mono bg-muted p-3 rounded overflow-auto">
@@ -202,7 +209,11 @@ const IntersectionPage: Component = () => {
                   </Show>
                   <Show
                     when={isLoading()}
-                    fallback={<Show when={isPolling()} fallback={"Run Intersection"}>Waiting for results...</Show>}
+                    fallback={
+                      <Show when={isPolling()} fallback={"Run Intersection"}>
+                        Waiting for results...
+                      </Show>
+                    }
                   >
                     Processing...
                   </Show>

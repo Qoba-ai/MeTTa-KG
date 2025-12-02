@@ -15,29 +15,29 @@ type Token = {
   description: string;
 };
 
-interface Item {
+export interface Item {
   id: string;
   namespace: string[];
 }
 
-interface IntersectionInputProps {
+interface CompositionInputProps {
   type: "sources" | "target";
   items: Item[];
-  addItem?: () => void;
-  removeItem?: (id: string) => void;
-  updateItem: (id: string, ns: string[]) => void;
+  addItem: () => void;
+  removeItem: (id: string) => void;
+  updateItem: (id: string, field: "namespace", value: string[]) => void;
   accentColor: string;
   rootToken: boolean;
   tokenRootNamespace: () => string[];
   getAllTokens: () => Promise<Token[]>;
 }
 
-export function IntersectionInput(props: IntersectionInputProps) {
+export function CompositionInput(props: CompositionInputProps) {
   const title = props.type === "sources" ? "Sources" : "Target";
   const description =
     props.type === "sources"
-      ? "Select two or more source namespaces"
-      : "Select target namespace";
+      ? "Define source namespaces to compose"
+      : "Define the target namespace for composition";
 
   return (
     <Card class={`border-l-4 border-l-${props.accentColor}`}>
@@ -58,40 +58,38 @@ export function IntersectionInput(props: IntersectionInputProps) {
                 <div class="flex-1 flex flex-col gap-2">
                   <NameSpace
                     namespace={item.namespace}
-                    setNamespace={(ns) => props.updateItem(item.id, ns)}
+                    setNamespace={(ns) =>
+                      props.updateItem(item.id, "namespace", ns)
+                    }
                     rootToken={props.rootToken}
                     tokenRootNamespace={props.tokenRootNamespace}
                     getAllTokens={props.getAllTokens}
                   />
                 </div>
-                {props.type === "sources" && props.removeItem && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => props.removeItem!(item.id)}
-                    disabled={props.items.length <= 2}
-                    class="text-destructive hover:text-destructive self-center"
-                  >
-                    <Trash2 class="w-4 h-4" />
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => props.removeItem(item.id)}
+                  disabled={props.items.length === 1}
+                  class="text-destructive hover:text-destructive self-center"
+                >
+                  <Trash2 class="w-4 h-4" />
+                </Button>
               </div>
             )}
           </For>
-          {props.type === "sources" && props.addItem && (
-            <>
-              <hr class="my-4" />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={props.addItem}
-                class="w-full"
-              >
-                <Plus class="w-4 h-4 mr-2" />
-                Add Source
-              </Button>
-            </>
-          )}
+          <hr class="my-4" />
+          {props.type === "sources" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={props.addItem}
+              class="w-full"
+            >
+              <Plus class="w-4 h-4 mr-2" />
+              Add Source
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>

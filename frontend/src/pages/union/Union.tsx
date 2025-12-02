@@ -15,115 +15,120 @@ import { rootToken, tokenRootNamespace } from "~/lib/state";
 import {
   isLoading,
   isPolling,
-  executeComposition,
+  executeUnion,
   stopPolling,
   setOperationInput,
 } from "./lib";
 import { Copy, Check } from "lucide-solid";
 import {
   Item,
-  CompositionInput as CompositionInputComponent,
-} from "./components/CompositionInput";
+  UnionInput as UnionInputComponent,
+} from "./components/UnionInput";
 
 interface AppState {
-  sources: Item[];
-  target: Item[];
+  patterns: Item[];
+  templates: Item[];
   copied: boolean;
 }
 
-const CompositionPage: Component = () => {
+const UnionPage: Component = () => {
   const [state, setState] = createStore({
-    sources: [{ id: createUniqueId(), namespace: ["/"] }],
-    target: [{ id: createUniqueId(), namespace: ["/"] }],
+    patterns: [{ id: createUniqueId(), namespace: [""] }],
+    templates: [{ id: createUniqueId(), namespace: [""] }],
     copied: false,
   });
 
   onCleanup(stopPolling);
 
-  const buildCompositionSExpr = (sources: Item[], target: Item[]) => {
-    const sourceExprs: string[] = [];
-    const targetExprs: string[] = [];
+  const buildUnionSExpr = (patterns: Item[]) => {
+    const patternExprs: string[] = [];
+    const templatesExprs: string[] = [];
 
-    sources.forEach((_, index) => {
-      const letter = String.fromCharCode(97 + index); // a, b, c...
-      sourceExprs.push(`(<source-${(index + 1).toString()}> $${letter})`);
-      targetExprs.push(`$${letter}`);
+    patterns.forEach((_, index) => {
+      // convert name space path to stringsItem
+      const key = `<source-${(index + 1).toString()}> $${index.toString()}`;
+      patternExprs.push(`(${key})`);
+      templatesExprs.push(`$${index}`);
     });
 
-    const targetName = target.length > 0 ? "<target>" : "<target>";
-
-    return `(transform\n (, ${sourceExprs.join(" ")})\n (, (${targetName} ${targetExprs.join(" ")}))\n)`;
+    return `(transform\n (, ${patternExprs.join(" ")})\n (, (<target> ${templatesExprs.join(" ")}))\n)`;
   };
 
-  const buildCompositionSetInput = (state: Store<AppState>) => {
-    const source: string[] = [];
-    const target: string[] = [];
+  const buildUnionSetInput = (state: Store<AppState>) => {
+    const pattern: string[] = [];
+    const template: string[] = [];
 
     const normalizeNamespace = (ns: string[]): string[] => {
       return ns.length > 1 && ns[0] === "/" ? ns.slice(1) : ns;
     };
 
-    state.sources.forEach((s) => {
-      source.push(normalizeNamespace(s.namespace).join("/"));
+    state.patterns.forEach((p) => {
+      pattern.push(normalizeNamespace(p.namespace).join("/"));
     });
 
-    state.target.forEach((t) => {
-      target.push(normalizeNamespace(t.namespace).join("/"));
+    state.templates.forEach((t) => {
+      template.push(normalizeNamespace(t.namespace).join("/"));
     });
     return {
-      source,
-      target,
+      pattern,
+      template,
     };
   };
 
-  const handleComposition = () => {
-    const compositionQueryInput: setOperationInput =
-      buildCompositionSetInput(state);
-    executeComposition(compositionQueryInput, formatedNamespace());
+  const handleUnion = () => {
+    const unionQueryInput: setOperationInput = buildUnionSetInput(state);
+    executeUnion(unionQueryInput, formatedNamespace());
   };
 
-  const addSource = () => {
-    setState("sources", (prev) => [
+  const addPattern = () => {
+    setState("patterns", (prev) => [
       ...prev,
       { id: createUniqueId(), namespace: ["/"] },
     ]);
   };
 
-  const removeSource = (id: string) => {
-    setState("sources", (prev) => prev.filter((s) => s.id !== id));
+  const removePattern = (id: string) => {
+    setState("patterns", (prev) => prev.filter((p) => p.id !== id));
   };
 
-  const updateSource = (id: string, field: "namespace", value: string[]) => {
+  const updatePattern = (id: string, field: "namespace", value: string[]) => {
     setState(
-      "sources",
-      produce((sources) => {
-        const item = sources.find((s) => s.id === id);
+      "patterns",
+      produce((patterns) => {
+        const item = patterns.find((p) => p.id === id);
         if (item) item[field] = value;
       })
     );
   };
 
-  const removeTarget = (_id: string) => {
-    // Don't allow removing the last target
+  const addTemplate = () => {
+    setState("templates", (prev) => [
+      ...prev,
+      { id: createUniqueId(), namespace: ["/"] },
+    ]);
   };
 
-  const updateTarget = (id: string, field: "namespace", value: string[]) => {
+  const removeTemplate = (id: string) => {
+    setState("templates", (prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const updateTemplate = (id: string, field: "namespace", value: string[]) => {
     setState(
-      "target",
-      produce((target) => {
-        const item = target.find((t) => t.id === id);
+      "templates",
+      produce((templates) => {
+        const item = templates.find((t) => t.id === id);
         if (item) item[field] = value;
       })
     );
   };
 
-  const canCompose = () => {
-    return state.target.length === 1;
+  const canUnion = () => {
+    return state.templates.length === 1;
   };
 
   const copyExpression = () => {
     navigator.clipboard.writeText(
-      buildCompositionSExpr(state.sources, state.target)
+      buildUnionSExpr(state.patterns, state.templates)
     );
     setState("copied", true);
     setTimeout(() => setState("copied", false), 2000);
@@ -132,32 +137,32 @@ const CompositionPage: Component = () => {
   return (
     <div class="ml-10 mt-8">
       <CommandCard
-        title="Composition Builder"
-        description="Compose multiple namespaces into a single target namespace"
+        title="S-Expression Builder"
+        description="Create transform expressions with patterns and templates"
       >
         <div class="space-y-6">
           {/* Responsive Layout */}
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Builder - 2/3 */}
             <div class="lg:col-span-2 space-y-6">
-              <CompositionInputComponent
-                type="sources"
-                items={state.sources}
-                addItem={addSource}
-                removeItem={removeSource}
-                updateItem={updateSource}
+              <UnionInputComponent
+                type="patterns"
+                items={state.patterns}
+                addItem={addPattern}
+                removeItem={removePattern}
+                updateItem={updatePattern}
                 accentColor="primary"
                 rootToken={rootToken()}
                 tokenRootNamespace={tokenRootNamespace}
                 getAllTokens={getAllTokens}
               />
 
-              <CompositionInputComponent
-                type="target"
-                items={state.target}
-                addItem={() => {}}
-                removeItem={removeTarget}
-                updateItem={updateTarget}
+              <UnionInputComponent
+                type="templates"
+                items={state.templates}
+                addItem={addTemplate}
+                removeItem={removeTemplate}
+                updateItem={updateTemplate}
                 accentColor="primary"
                 rootToken={rootToken()}
                 tokenRootNamespace={tokenRootNamespace}
@@ -171,12 +176,12 @@ const CompositionPage: Component = () => {
                 <CardHeader>
                   <CardTitle>S-Expression Preview</CardTitle>
                   <CardDescription>
-                    Live output of your composition
+                    Live output of your transform
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <pre class="text-sm font-mono bg-muted p-3 rounded overflow-auto">
-                    {buildCompositionSExpr(state.sources, state.target)}
+                    {buildUnionSExpr(state.patterns, state.templates)}
                   </pre>
                   <Button
                     variant="default"
@@ -192,7 +197,7 @@ const CompositionPage: Component = () => {
                     {state.copied ? "Copied!" : "Copy Expression"}
                   </Button>
                   <div class="mt-4 p-3 bg-muted/50 rounded text-sm text-muted-foreground">
-                    Composition combines sources into target using variables.
+                    Items are independently sized.
                   </div>
                 </CardContent>
               </Card>
@@ -201,8 +206,8 @@ const CompositionPage: Component = () => {
         </div>
 
         <Button
-          onClick={handleComposition}
-          disabled={isLoading() || isPolling() || !canCompose()}
+          onClick={handleUnion}
+          disabled={isLoading() || isPolling() || !canUnion()}
           class="inline-flex items-center justify-center w-[180px] h-10 mt-4"
         >
           <Show when={isLoading() || isPolling()}>
@@ -224,12 +229,12 @@ const CompositionPage: Component = () => {
           <Show
             when={isLoading()}
             fallback={
-              <Show when={isPolling()} fallback={"Run Composition"}>
+              <Show when={isPolling()} fallback={"Run Union"}>
                 Waiting for results...
               </Show>
             }
           >
-            Performing Composition...
+            Performing Union...
           </Show>
         </Button>
       </CommandCard>
@@ -237,4 +242,4 @@ const CompositionPage: Component = () => {
   );
 };
 
-export default CompositionPage;
+export default UnionPage;

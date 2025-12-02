@@ -59,7 +59,8 @@ pub fn rocket() -> Rocket<Build> {
                 routes::spaces::export,
                 routes::spaces::clear,
                 routes::spaces::composition,
-                routes::spaces::intersection
+                routes::spaces::intersection,
+                routes::spaces::union,
             ],
         )
         .attach(cors.clone())

@@ -17,6 +17,7 @@ import Download from "lucide-solid/icons/download";
 import Key from "lucide-solid/icons/key";
 import NotImplemented from "~/components/common/NotImplemented";
 import Trash2 from "lucide-solid/icons/trash-2";
+import UnionPage from "../union/Union";
 
 const sidebarSections = [
   {
@@ -60,6 +61,7 @@ const sidebarSections = [
         label: "Union",
         icon: () => <span class="text-xl">∪</span>,
         to: "/union",
+        component: UnionPage,
       },
       {
         id: "intersection",
