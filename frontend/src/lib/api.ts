@@ -374,8 +374,8 @@ export const exportSpace = async (
   });
 };
 
-export const clearSpace = (path: string) => {
-  return request<boolean>(`/spaces/clear${path}?expr=$x`, {
+export const clearSpace = (expression: string, path: string) => {
+  return request<boolean>(`/spaces/clear${path}?expr=${expression}`, {
     method: "POST",
   });
 };
