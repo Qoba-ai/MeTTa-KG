@@ -15,13 +15,13 @@ type Token = {
   description: string;
 };
 
-interface Item {
+export interface Item {
   id: string;
   namespace: string[];
 }
 
 interface IntersectionInputProps {
-  type: "sources" | "target";
+  type: "patterns" | "templates";
   items: Item[];
   addItem?: () => void;
   removeItem?: (id: string) => void;
@@ -30,14 +30,11 @@ interface IntersectionInputProps {
   rootToken: boolean;
   tokenRootNamespace: () => string[];
   getAllTokens: () => Promise<Token[]>;
+  description: string;
 }
 
 export function IntersectionInput(props: IntersectionInputProps) {
-  const title = props.type === "sources" ? "Sources" : "Target";
-  const description =
-    props.type === "sources"
-      ? "Select two or more source namespaces"
-      : "Select target namespace";
+  const title = props.type === "patterns" ? "Patterns" : "Templates";
 
   return (
     <Card class={`border-l-4 border-l-${props.accentColor}`}>
@@ -48,7 +45,7 @@ export function IntersectionInput(props: IntersectionInputProps) {
           ></div>
           <CardTitle>{title}</CardTitle>
         </div>
-        <CardDescription>{description}</CardDescription>
+        <CardDescription>{props.description}</CardDescription>
       </CardHeader>
       <CardContent>
         <div class="space-y-2">
@@ -64,7 +61,7 @@ export function IntersectionInput(props: IntersectionInputProps) {
                     getAllTokens={props.getAllTokens}
                   />
                 </div>
-                {props.type === "sources" && props.removeItem && (
+                {props.type === "patterns" && props.removeItem && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -78,7 +75,7 @@ export function IntersectionInput(props: IntersectionInputProps) {
               </div>
             )}
           </For>
-          {props.type === "sources" && props.addItem && (
+          {props.type === "patterns" && props.addItem && (
             <>
               <hr class="my-4" />
               <Button
