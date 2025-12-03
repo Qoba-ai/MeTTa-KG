@@ -9,27 +9,22 @@ import {
   CardTitle,
   CardDescription,
 } from "~/components/ui/Card";
-import { TransformInput as TransformInputComponent } from "~/pages/transform/components/TransformInput";
+import {
+  IntersectionInput as IntersectionInputComponent,
+  Item,
+} from "./components/IntersectionInput";
 import { getAllTokens } from "~/lib/api";
-import { rootToken, tokenRootNamespace, namespace } from "~/lib/state";
+import { rootToken, tokenRootNamespace } from "~/lib/state";
 import { Copy, Check } from "lucide-solid";
 import { isLoading, isPolling, executeIntersection, stopPolling } from "./lib";
-
-interface Item {
-  id: string;
-  namespace: string[];
-  value: string;
-}
 
 const IntersectionPage: Component = () => {
   const [state, setState] = createStore({
     patterns: [
-      { id: createUniqueId(), namespace: [...namespace()], value: "" },
-      { id: createUniqueId(), namespace: [...namespace()], value: "" },
+      { id: createUniqueId(), namespace: [""] },
+      { id: createUniqueId(), namespace: [""] },
     ],
-    templates: [
-      { id: createUniqueId(), namespace: [...namespace()], value: "" },
-    ],
+    templates: [{ id: createUniqueId(), namespace: [""] }],
     copied: false,
   });
 
@@ -46,18 +41,13 @@ const IntersectionPage: Component = () => {
       prev.length > 2 ? prev.filter((p) => p.id !== id) : prev
     );
   };
-  const updatePattern = (
-    id: string,
-    field: "namespace" | "value",
-    value: string | string[]
-  ) => {
+  const updatePattern = (id: string, value: string[]) => {
     setState(
       "patterns",
       produce((patterns: Item[]) => {
         const item = patterns.find((p) => p.id === id);
         if (item) {
-          if (field === "namespace") item.namespace = value as string[];
-          else item.value = value as string;
+          item.namespace = value;
         }
       })
     );
@@ -72,18 +62,13 @@ const IntersectionPage: Component = () => {
   const removeTemplate = (id: string) => {
     setState("templates", (prev) => prev.filter((t) => t.id !== id));
   };
-  const updateTemplate = (
-    id: string,
-    field: "namespace" | "value",
-    value: string | string[]
-  ) => {
+  const updateTemplate = (id: string, value: string[]) => {
     setState(
       "templates",
       produce((templates: Item[]) => {
         const item = templates.find((t) => t.id === id);
         if (item) {
-          if (field === "namespace") item.namespace = value as string[];
-          else item.value = value as string;
+          item.namespace = value;
         }
       })
     );
@@ -91,27 +76,29 @@ const IntersectionPage: Component = () => {
 
   const canSubmit = () => {
     // Match Transform behavior: require at least one pattern value and one template value
-    const hasPatternValue = state.patterns.some(
-      (p: Item) => (p.value || "").trim().length > 0
-    );
-    const hasTemplateValue = state.templates.some(
-      (t: Item) => (t.value || "").trim().length > 0
-    );
+    const hasPatternValue = state.patterns.length >= 2;
+    const hasTemplateValue = state.templates.length === 1;
+
     return hasPatternValue && hasTemplateValue;
   };
 
-  const buildTransformPreview = () => {
-    const patterns = state.patterns
-      .map((p: Item) => `(, ${p.value || ""})`)
-      .join(" ");
-    const templates = state.templates
-      .map((t: Item) => `(, ${t.value || ""})`)
-      .join(" ");
-    return `(transform\n    ${patterns}\n    ${templates}\n)`;
+  const buildTransformPreview = (patterns: Item[]) => {
+    const patternExprs: string[] = [];
+    const templatesExprs: string[] = [];
+
+    patterns.forEach((_, index) => {
+      // convert name space path to stringsItem
+      const p_key = `<source-${(index + 1).toString()}> $${index.toString()}`;
+      const t_key = `<target-0> $${index.toString()}`;
+      patternExprs.push(`(${p_key})`);
+      templatesExprs.push(`($${t_key})`);
+    });
+
+    return `(transform\n (, ${patternExprs.join(" ")})\n (, ${templatesExprs.join(" ")})\n)`;
   };
 
   const copyExpression = () => {
-    const expr = buildTransformPreview();
+    const expr = buildTransformPreview(state.patterns);
     navigator.clipboard.writeText(expr);
     setState("copied", true);
     setTimeout(() => setState("copied", false), 2000);
@@ -131,7 +118,7 @@ const IntersectionPage: Component = () => {
       >
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div class="lg:col-span-2 space-y-6">
-            <TransformInputComponent
+            <IntersectionInputComponent
               type="patterns"
               items={state.patterns as Item[]}
               addItem={addPattern}
@@ -144,7 +131,7 @@ const IntersectionPage: Component = () => {
               description="Define patterns to intersect"
             />
 
-            <TransformInputComponent
+            <IntersectionInputComponent
               type="templates"
               items={state.templates as Item[]}
               addItem={addTemplate}
@@ -168,7 +155,7 @@ const IntersectionPage: Component = () => {
               </CardHeader>
               <CardContent>
                 <pre class="text-sm font-mono bg-muted p-3 rounded overflow-auto">
-                  {buildTransformPreview()}
+                  {buildTransformPreview(state.patterns)}
                 </pre>
                 <Button
                   variant="default"
@@ -183,44 +170,41 @@ const IntersectionPage: Component = () => {
                   )}
                   {state.copied ? "Copied!" : "Copy Expression"}
                 </Button>
-                <div class="mt-4 p-3 bg-muted/50 rounded text-sm text-muted-foreground">
-                  Intersection runs server-side using selected namespaces.
-                </div>
-                <Button
-                  class="w-full mt-4"
-                  disabled={!canSubmit() || isLoading() || isPolling()}
-                  onClick={handleIntersection}
-                >
-                  <Show when={isLoading() || isPolling()}>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      class="animate-spin mr-2 h-4 w-4"
-                    >
-                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                    </svg>
-                  </Show>
-                  <Show
-                    when={isLoading()}
-                    fallback={
-                      <Show when={isPolling()} fallback={"Run Intersection"}>
-                        Waiting for results...
-                      </Show>
-                    }
-                  >
-                    Processing...
-                  </Show>
-                </Button>
               </CardContent>
             </Card>
           </div>
+          <Button
+            class="w-full mt-4"
+            disabled={!canSubmit() || isLoading() || isPolling()}
+            onClick={handleIntersection}
+          >
+            <Show when={isLoading() || isPolling()}>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="animate-spin mr-2 h-4 w-4"
+              >
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+            </Show>
+            <Show
+              when={isLoading()}
+              fallback={
+                <Show when={isPolling()} fallback={"Run Intersection"}>
+                  Waiting for results...
+                </Show>
+              }
+            >
+              Processing...
+            </Show>
+          </Button>
         </div>
       </CommandCard>
     </div>

@@ -36,7 +36,7 @@ export const startPolling = (spacePath: string) => {
       });
       stopPolling();
     }
-  }, 3000);
+  }, 1000);
 };
 
 const toPath = (ns: string[]) => {
