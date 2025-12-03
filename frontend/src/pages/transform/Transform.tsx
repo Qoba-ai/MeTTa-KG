@@ -15,12 +15,7 @@ import { rootToken, tokenRootNamespace } from "~/lib/state";
 import { isLoading, isPolling, executeTransform, stopPolling } from "./lib";
 import { Copy, Check } from "lucide-solid";
 import { TransformInput as TransformInputComponent } from "./components/TransformInput";
-
-interface Item {
-  id: string;
-  namespace: string[];
-  value: string;
-}
+import { Item } from "~/lib/types";
 
 const TransformPage: Component = () => {
   const [state, setState] = createStore({
@@ -38,8 +33,7 @@ const TransformPage: Component = () => {
   };
 
   const handleTransform = () => {
-    const sExpr = buildTransformSExpr(state.patterns, state.templates);
-    executeTransform(sExpr, formatedNamespace());
+    executeTransform(state.patterns, state.templates, formatedNamespace());
   };
 
   const addPattern = () => {

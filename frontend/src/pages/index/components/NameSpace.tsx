@@ -131,7 +131,7 @@ export default function NameSpace(props: NameSpaceProps) {
 
   const selectPath = (fullPath: string) => {
     const pathArray = fullPath.split("/").filter((p) => p.length > 0);
-    props.setNamespace(["/", ...pathArray]);
+    props.setNamespace(["", ...pathArray]);
     setIsExploring(false);
   };
 
