@@ -1,0 +1,28 @@
+/* CSS Variables that work with Tailwind dark mode */
+:root {
+  /* Light theme variables */
+  --bg-primary: theme("colors.gray.50");
+  --bg-secondary: theme("colors.white");
+  --border-light: theme("colors.gray.200");
+  --text-primary: theme("colors.gray.800");
+  --text-secondary: theme("colors.gray.600");
+
+  /* Card styling */
+  --card-bg: theme("colors.white");
+  --card-shadow: theme("boxShadow.lg");
+  --card-border: theme("colors.gray.200");
+}
+
+:root.dark {
+  /* Dark theme variables */
+  --bg-primary: theme("colors.black");
+  --bg-secondary: theme("colors.neutral.900");
+  --border-light: theme("colors.neutral.700");
+  --text-primary: theme("colors.white");
+  --text-secondary: theme("colors.neutral.300");
+
+  /* Card styling */
+  --card-bg: theme("colors.neutral.900");
+  --card-shadow: none;
+  --card-border: theme("colors.neutral.700");
+}
