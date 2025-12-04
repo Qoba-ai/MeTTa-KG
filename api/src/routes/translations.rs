@@ -61,12 +61,7 @@ pub async fn create(
 
     let path_with_extension = format!("{path}.{ext}");
 
-    let result = file.persist_to(&path_with_extension).await;
-
-    match result {
-        Ok(_) => (),
-        Err(err) => println!("{err}"),
-    }
+    let _ = file.persist_to(&path_with_extension).await;
 
     let status = match parse_parameters {
         ParserParameters {
@@ -113,7 +108,6 @@ pub async fn create(
             .arg(&path)
             .status(),
         _ => {
-            println!("Parse failed");
             return Err(Status::InternalServerError);
         }
     };

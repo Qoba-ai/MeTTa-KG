@@ -84,7 +84,7 @@ const LoadPage = () => {
           onToggleIndent={handleToggleIndent}
         />
       </div>
-      {/* D3 Tree Canvas */}
+      {/* Expandable list */}
       <div class="absolute inset-0 w-full h-full flex" style="z-index: 0;">
         <Show
           when={subSpace() && subSpace()!.length > 0}

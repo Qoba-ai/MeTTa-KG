@@ -154,9 +154,7 @@ const AppLayout = (
                 </div> */}
         <Header />
 
-        <div class="flex-1 w-full pl-4 pt-2 overflow-y-scroll">
-          {props.children}
-        </div>
+        <div class="flex-1 w-full">{props.children}</div>
       </div>
     </div>
   );

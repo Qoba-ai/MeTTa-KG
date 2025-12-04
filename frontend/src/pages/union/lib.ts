@@ -1,7 +1,6 @@
 import { createSignal } from "solid-js";
 import { union, isPathClear } from "~/lib/api";
 import { showToast } from "~/components/ui/Toast";
-import { refreshSpace } from "../load/lib";
 
 export const [isLoading, setIsLoading] = createSignal(false);
 export const [isPolling, setIsPolling] = createSignal(false);
@@ -16,30 +15,6 @@ export const stopPolling = () => {
   if (pollingIntervalId) clearInterval(pollingIntervalId);
   pollingIntervalId = null;
   setIsPolling(false);
-};
-
-export const startPolling = (spacePath: string) => {
-  setIsPolling(true);
-  pollingIntervalId = setInterval(async () => {
-    try {
-      const isClear = await isPathClear(spacePath);
-      if (isClear) {
-        stopPolling();
-        showToast({
-          title: "Union Completed",
-          description: "successfully completed union operation",
-        });
-        refreshSpace();
-      }
-    } catch {
-      showToast({
-        title: "Polling Error",
-        description: "Failed to fetch union status.",
-        variant: "destructive",
-      });
-      stopPolling();
-    }
-  }, 3000);
 };
 
 export const executeUnion = async (
@@ -77,18 +52,23 @@ export const executeUnion = async (
       return;
     }
 
+    showToast({
+      title: "Unification Initiated",
+      description: "Waiting for results...",
+    });
+
     const success = await union(unionQuery);
 
+    setIsLoading(false);
     if (success) {
       showToast({
-        title: "Unification Initiated",
-        description: "Waiting for results...",
+        title: "Unification Complete",
+        description: "Operation completed successfully!",
       });
-      startPolling(spacePath);
     } else {
       showToast({
-        title: "Transform Failed",
-        description: "Could not initiate the transformation.",
+        title: "Unification Failed",
+        description: "Could not initiate the unification.",
         variant: "destructive",
       });
     }

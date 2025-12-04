@@ -19,7 +19,7 @@ export const handleClear = async (spacePath: string) => {
   setIsLoading(true);
 
   try {
-    const success = await clearSpace(spacePath);
+    const success = await clearSpace(expression(), spacePath);
 
     if (success) {
       showToast({

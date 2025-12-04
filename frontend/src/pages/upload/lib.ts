@@ -9,21 +9,37 @@ type UploadResult =
   | { data: string; status: "success" }
   | { error: string };
 
+export interface FileState {
+  name: string;
+  size: number;
+  type: string;
+  content: ArrayBuffer;
+}
+
 export const [uri, setUri] = createSignal("");
 export const [urlFormat, setUrlFormat] = createSignal("metta");
-export const [selectedFile, setSelectedFile] = createSignal<File | null>(null);
+export const [selectedFile, setSelectedFile] = createSignal<FileState | null>(
+  null
+);
 export const [textContent, setTextContent] = createSignal(`()`);
 export const [textFormat, setTextFormat] = createSignal("metta");
+export const [fileFormat, setFileFormat] = createSignal("metta");
 export const [activeTab, setActiveTab] = createSignal("url");
 export const [isLoading, setIsLoading] = createSignal(false);
 export const [result, setResult] = createSignal<UploadResult>(null);
 
-export const isFileUploadImplemented = false;
+export const isFileUploadImplemented = true;
 
-export const handleFileSelect = (event: Event) => {
+export const handleFileSelect = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (file) {
-    setSelectedFile(file);
+    const buffer = await file.arrayBuffer();
+    setSelectedFile({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      content: buffer,
+    });
   }
 };
 
@@ -71,7 +87,8 @@ export const handleImport = async (spacePath: string) => {
       }
 
       case "file": {
-        if (!selectedFile()) {
+        const fileState = selectedFile();
+        if (!fileState) {
           showToast({
             title: "No File Selected",
             description: "Please select a file.",
@@ -80,13 +97,24 @@ export const handleImport = async (spacePath: string) => {
           return;
         }
         const formData = new FormData();
-        formData.append("file", selectedFile()!);
-        const response = await importData("file", formData, "metta");
+        formData.append(
+          "file",
+          new File([fileState.content], fileState.name, {
+            type: fileState.type,
+          })
+        );
+
+        const response = await importData(
+          "file",
+          formData,
+          fileFormat(),
+          spacePath
+        );
         if (response.status === "success") {
           setResult({ data: response.data, status: "success" });
           showToast({
             title: "File Uploaded",
-            description: `File "${selectedFile()!.name}" uploaded.`,
+            description: `File "${fileState.name}" uploaded.`,
           });
           refreshSpace();
         } else {

@@ -1,130 +1,150 @@
 import {
   For,
   Show,
-  createSignal,
   createMemo,
   createEffect,
   onMount,
+  onCleanup,
   on,
 } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import type { SpaceNode } from "~/lib/space";
 import { formatedNamespace } from "~/lib/state";
-import ExpressionListItem, { type FlatNode } from "./ExpressionListItem";
-import {
-  expandedNodes,
-  childrenMap,
-  cursorLine,
-  setCursorLine,
-  isExpanding,
-  expandAll,
-  collapseToRoot,
-  isExpandable,
-  createFlattenedNodes,
-  toggleNode,
-  expandToFillViewport,
-  handleNamespaceChange,
-} from "./lib";
+import ExpressionListItem from "./ExpressionListItem";
+import { treeStore, type FlatNode } from "./store";
 import { showToast } from "~/components/ui/Toast";
+import { shouldFillViewport, setShouldFillViewport } from "../../lib";
 
-interface ExpressionListProps {
+interface Props {
   data: { nodes: SpaceNode[]; prefix: string[] };
   pattern: string;
   onNodeClick?: (node: SpaceNode) => void;
-  ref?: (api: { expandAll: () => void; collapseToRoot: () => void }) => void;
+  ref?: (api: {
+    expandAll: () => void;
+    collapseToRoot: () => void;
+    expandToFillViewport: () => Promise<void>;
+  }) => void;
   isIndented: boolean;
 }
 
-export default function ExpressionList(props: ExpressionListProps) {
+export default function ExpressionList(props: Props) {
   let scrollRef: HTMLDivElement | undefined;
   let containerRef: HTMLDivElement | undefined;
 
-  const [isFocused, setIsFocused] = createSignal<boolean>(false);
-
-  const flattenedNodes = createMemo<FlatNode[]>(() => {
-    return createFlattenedNodes(props.data);
-  });
-
-  createEffect(
-    on(formatedNamespace, async (current, prev) => {
-      if (prev !== undefined) {
-        await handleNamespaceChange();
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      if (!scrollRef) return;
-
-      if (!props.data?.nodes || props.data.nodes.length === 0) {
-        return;
-      }
-
-      const viewportHeight = scrollRef.clientHeight;
-      const estimatedItemHeight = 24;
-      const targetCount = Math.ceil(viewportHeight / estimatedItemHeight);
-
-      try {
-        await expandToFillViewport(targetCount, props.pattern, () =>
-          flattenedNodes()
-        );
-      } catch (error) {
-        showToast({
-          title: "Expansion Error",
-          description: `Failed to Expand nodes consider reloading the page\n ${error}`,
-          variant: "destructive",
-        });
-      }
-    })
+  const flattenedNodes = createMemo<FlatNode[]>(() =>
+    treeStore.createFlattenedNodes(props.data)
   );
 
-  if (props.ref) {
-    props.ref({ expandAll, collapseToRoot });
-  }
+  const getScrollElement = () => scrollRef ?? null;
 
   const virtualizer = createMemo(() =>
     createVirtualizer({
       get count() {
         return flattenedNodes().length;
       },
-      getScrollElement: () => scrollRef || null,
+      getScrollElement,
       estimateSize: () => 24,
       overscan: 20,
-      getItemKey: (index) => flattenedNodes()[index]?.id ?? index,
+      getItemKey: (i: number) => flattenedNodes()[i]?.id ?? i,
     })
   );
 
-  const handleToggleNode = async (flatNode: FlatNode) => {
-    setCursorLine(flattenedNodes().indexOf(flatNode));
-    await toggleNode(flatNode, props.pattern, props.onNodeClick, scrollRef);
+  const doExpandToFillViewport = async () => {
+    if (!scrollRef || !props.data?.nodes?.length) return;
+
+    treeStore.setExpanding(true);
+    await new Promise((r) => requestAnimationFrame(r));
+
+    const targetCount = Math.ceil(scrollRef.clientHeight / 24);
+
+    try {
+      await treeStore.expandToFillViewport(targetCount, props.pattern, () =>
+        flattenedNodes()
+      );
+    } catch (e) {
+      showToast({
+        title: "Expansion Error",
+        description: `${e}`,
+        variant: "destructive",
+      });
+    } finally {
+      treeStore.setExpanding(false);
+    }
+  };
+
+  createEffect(
+    on(
+      () => [shouldFillViewport(), props.data] as const,
+      async ([should, data]) => {
+        if (should && data?.nodes?.length) {
+          setShouldFillViewport(false);
+          if (treeStore.isExpanding) return;
+          treeStore.setExpanding(true);
+          await new Promise((r) => requestAnimationFrame(r));
+          await doExpandToFillViewport();
+        }
+      }
+    )
+  );
+
+  createEffect(
+    on(formatedNamespace, async (ns) => {
+      if (treeStore.namespace !== ns) {
+        treeStore.reset();
+        treeStore.setNamespace(ns);
+        if (!props.data?.nodes?.length) return;
+        treeStore.setExpanding(true);
+        await new Promise((r) => requestAnimationFrame(r));
+        await doExpandToFillViewport();
+      }
+    })
+  );
+
+  props.ref?.({
+    expandAll: treeStore.expandAll,
+    collapseToRoot: treeStore.collapseToRoot,
+    expandToFillViewport: doExpandToFillViewport,
+  });
+
+  const handleToggle = async (flatNode: FlatNode, e: MouseEvent) => {
+    e.stopPropagation();
+    treeStore.setCursor(flattenedNodes().indexOf(flatNode));
+
+    if (e.ctrlKey || e.metaKey) {
+      await treeStore.expandToLeaf(flatNode, props.pattern);
+    } else {
+      await treeStore.toggleNode(flatNode, props.pattern, props.onNodeClick);
+    }
   };
 
   onMount(async () => {
-    containerRef?.focus();
     if (scrollRef) {
-      const viewportHeight = scrollRef.clientHeight;
-      const estimatedItemHeight = 24;
-      const targetCount = Math.ceil(viewportHeight / estimatedItemHeight);
-      expandToFillViewport(targetCount, props.pattern, () => flattenedNodes());
+      treeStore.setScrollRef(scrollRef);
+      treeStore.restoreScroll();
+
+      if (!treeStore.initialExpansionDone) {
+        await doExpandToFillViewport();
+      }
     }
+  });
+
+  onCleanup(() => {
+    treeStore.saveScroll();
+    treeStore.setScrollRef(null);
   });
 
   return (
     <div
       ref={containerRef!}
-      tabIndex={0}
-      class="w-full h-full overflow-hidden relative focus:outline-none"
+      class="w-full h-full overflow-hidden relative"
       style={{
-        "background-color": "#1e1e1e",
         "font-family": "'Consolas', 'Courier New', monospace",
       }}
-      onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
     >
-      {/* Editor header bar */}
       <div
         class="h-8 flex items-center px-4 border-b text-xs"
         style={{
-          "background-color": "#2d2d2d",
+          "background-color": "rgba(45, 45, 45, 0.3)",
           "border-color": "#3e3e3e",
           color: "#cccccc",
         }}
@@ -132,14 +152,16 @@ export default function ExpressionList(props: ExpressionListProps) {
         <span class="opacity-60">Code Explorer</span>
       </div>
 
-      {/* Main editor area with relative positioning */}
       <div class="relative" style={{ height: "calc(100% - 2rem)" }}>
         <div
-          ref={scrollRef!}
+          ref={(el) => {
+            scrollRef = el;
+            treeStore.setScrollRef(el);
+          }}
           class="w-full h-full overflow-auto"
           style={{
             "scrollbar-width": "thin",
-            "scrollbar-color": "#424242 #1e1e1e",
+            "scrollbar-color": "#424242 transparent",
           }}
         >
           <div
@@ -150,29 +172,23 @@ export default function ExpressionList(props: ExpressionListProps) {
             }}
           >
             <For each={virtualizer().getVirtualItems()}>
-              {(virtualItem) => {
-                const flatNode = flattenedNodes()[virtualItem.index];
-                if (!flatNode) return null;
-
-                const isExpanded = expandedNodes().has(flatNode.id);
-                const canExpand = isExpandable(flatNode.node);
-                const hasChildren = childrenMap().has(flatNode.id);
-                const childCount = hasChildren
-                  ? childrenMap().get(flatNode.id)!.length
-                  : 0;
-                const isLeaf = hasChildren && childCount === 0;
-                const isCursor = cursorLine() === virtualItem.index;
-
+              {(vi) => {
+                const fn = flattenedNodes()[vi.index];
+                if (!fn) return null;
                 return (
                   <ExpressionListItem
-                    virtualItem={virtualItem}
-                    flatNode={flatNode}
-                    isExpanded={isExpanded}
-                    canExpand={canExpand}
-                    isLeaf={isLeaf}
-                    isCursor={isCursor}
+                    virtualItem={vi}
+                    flatNode={fn}
+                    isExpanded={treeStore.expandedNodes.has(fn.id)}
+                    canExpand={treeStore.isExpandable(fn.node)}
+                    isLeaf={
+                      treeStore.childrenMap.has(fn.id) &&
+                      treeStore.childrenMap.get(fn.id)!.length === 0
+                    }
+                    isCursor={treeStore.cursorLine === vi.index}
                     isIndented={props.isIndented}
-                    onClick={() => handleToggleNode(flatNode)}
+                    isExpandingToLeaf={treeStore.expandingNodeId === fn.id}
+                    onClick={(e) => handleToggle(fn, e)}
                   />
                 );
               }}
@@ -180,25 +196,13 @@ export default function ExpressionList(props: ExpressionListProps) {
           </div>
         </div>
 
-        {/* Loading overlay */}
-        <Show when={isExpanding()}>
-          <div class="absolute inset-0 flex flex-col items-center justify-center bg-[#1e1e1e] z-10">
-            <div class="animate-ping rounded-full h-8 w-8 border-t-2 border-b-2 mb-4"></div>
+        <Show when={treeStore.isExpanding}>
+          <div class="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm z-10">
+            <div class="animate-ping rounded-full h-8 w-8 border-t-2 border-b-2 mb-4" />
             <span class="text-white text-sm">Expanding...</span>
           </div>
         </Show>
       </div>
-
-      {/* Cursor indicator when focused */}
-      <Show when={isFocused()}>
-        <div
-          class="absolute left-0 w-0.5 h-6 animate-pulse"
-          style={{
-            top: `${2 + cursorLine() * 24}rem`,
-            "background-color": "#007acc",
-          }}
-        />
-      </Show>
     </div>
   );
 }

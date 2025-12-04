@@ -1,4 +1,3 @@
-use rocket::futures::future::join_all;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::tokio::io::AsyncReadExt;
@@ -6,14 +5,16 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use rocket::response::status::Custom;
+use rocket::serde::json;
 use rocket::{get, post, Data};
 use std::path::PathBuf;
+use tokio::time::{sleep, Duration, Instant};
 
 use crate::model::Token;
 use crate::mork_api::{
     ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, Mm2Cell,
-    MorkApiClient, Namespace, ReadRequest, Request, TransformDetails, TransformRequest,
-    UploadRequest,
+    MorkApiClient, Namespace, ReadRequest, StatusRequest, StatusResponse, TransformDetails,
+    TransformRequest, UploadRequest,
 };
 
 trait SourceTargetPermissions {
@@ -154,7 +155,6 @@ pub async fn upload(
         .read_to_string(&mut body)
         .await
     {
-        eprintln!("Failed to read body: {e}");
         return Err(Custom(
             Status::BadRequest,
             format!("Failed to read body: {e}"),
@@ -220,10 +220,7 @@ pub async fn explore(
         .pattern(explore_input.pattern.clone())
         .token(explore_input.token.clone());
 
-    println!("explore path: {:?}", request.path());
-
     let response = mork_api_client.dispatch(request).await.map(Json);
-    println!("explore response: {response:?}");
     response
 }
 
@@ -246,13 +243,8 @@ pub async fn export(
         .template(export_input.template.clone())
         .format(ExportFormat::Metta);
 
-    println!("Dispatching export request to Mork: {}", request.path());
-
     match mork_api_client.dispatch(request).await {
-        Ok(data) => {
-            println!("Received export response from Mork: {data:?}");
-            Ok(Json(data))
-        }
+        Ok(data) => Ok(Json(data)),
         Err(e) => Err(e),
     }
 }
@@ -342,26 +334,26 @@ pub async fn union(
         return Err(Status::Unauthorized);
     }
 
+    // path to be used for polling
+    let request_path = match operation_input.clone().into_inner().target.first() {
+        Some(value) => value.clone(),
+        None => return Err(Status::BadRequest),
+    };
+
     // create a vector of queries
     let transform_inputs = union_transform(operation_input.into_inner())?;
+    let mork_api_client = MorkApiClient::new();
 
-    let futures = transform_inputs
-        .iter()
-        .map(async |transform_input| {
-            let request = TransformRequest::new().transform_input(transform_input.clone());
-            let mork_api_client = MorkApiClient::new();
+    for transform_input in transform_inputs {
+        let request = TransformRequest::new().transform_input(transform_input);
 
-            mork_api_client.dispatch(request).await
-        })
-        .collect::<Vec<_>>();
+        match mork_api_client.dispatch(request).await {
+            Ok(_) => {}
+            Err(e) => return Err(e),
+        };
 
-    let results = join_all(futures).await;
-
-    // Check if any requests failed
-    for result in results {
-        if let Err(e) = result {
-            Err(e)?
-        }
+        // poll status endpoint
+        poll(PathBuf::from(&request_path), &mork_api_client).await?;
     }
 
     Ok(Json(true))
@@ -370,6 +362,41 @@ pub async fn union(
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////// HELPER FUNCTIONS ////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+async fn poll(path: PathBuf, mork_api_client: &MorkApiClient) -> Result<bool, Status> {
+    let start_time = Instant::now();
+    let timeout_duration = Duration::from_secs(40);
+
+    // Check if space is clear by using status endpoint
+    let check_request = StatusRequest::new()
+        .namespace(path.clone())
+        .pattern("$x".to_string());
+
+    loop {
+        // exit condition stop polling after some second
+        if start_time.elapsed() > timeout_duration {
+            return Err(Status::RequestTimeout);
+        }
+
+        // wait 1 second between each status request
+        sleep(Duration::from_millis(1000)).await;
+
+        // destructure status endpoint json response
+        let status_response: StatusResponse =
+            match mork_api_client.dispatch(check_request.clone()).await {
+                Ok(result) => match json::from_str::<StatusResponse>(&result) {
+                    Ok(c) => c,
+                    Err(_) => return Err(Status::RequestTimeout),
+                },
+                Err(_) => return Err(Status::RequestTimeout),
+            };
+
+        if status_response.status == "pathClear" {
+            break;
+        }
+    }
+    Ok(true)
+}
 
 fn composition_transform(input: SetOperationInput) -> Result<TransformDetails, Status> {
     let mut template = String::new();
@@ -442,15 +469,15 @@ mod tests {
 
         assert_eq!(
             transform_input.patterns[0].build(),
-            "(ns1 (ns1a727d4f9-836a-4e4c-9480 $0))".to_string()
+            "(__root__ (ns1 (__ns1data__ $0)))".to_string()
         );
         assert_eq!(
             transform_input.patterns[1].build(),
-            "(ns2 (ns2a727d4f9-836a-4e4c-9480 $1))".to_string()
+            "(__root__ (ns2 (__ns2data__ $1)))".to_string()
         );
         assert_eq!(
             transform_input.templates[0].build(),
-            "(ns3 (ns3a727d4f9-836a-4e4c-9480 $0 $1 ))".to_string()
+            "(__root__ (ns3 (__ns3data__ $0 $1 )))".to_string()
         );
     }
 
@@ -467,19 +494,19 @@ mod tests {
 
         assert_eq!(
             transform_inputs[0].patterns[0].build(),
-            "(ns1 (ns1a727d4f9-836a-4e4c-9480 $x))".to_string()
+            "(__root__ (ns1 (__ns1data__ $x)))".to_string()
         );
         assert_eq!(
             transform_inputs[1].patterns[0].build(),
-            "(ns2 (ns2a727d4f9-836a-4e4c-9480 $x))".to_string()
+            "(__root__ (ns2 (__ns2data__ $x)))".to_string()
         );
         assert_eq!(
             transform_inputs[0].templates[0].build(),
-            "(ns3 (ns3a727d4f9-836a-4e4c-9480 $x))".to_string()
+            "(__root__ (ns3 (__ns3data__ $x)))".to_string()
         );
         assert_eq!(
             transform_inputs[1].templates[0].build(),
-            "(ns3 (ns3a727d4f9-836a-4e4c-9480 $x))".to_string()
+            "(__root__ (ns3 (__ns3data__ $x)))".to_string()
         );
     }
 }

@@ -121,15 +121,19 @@ impl Namespace {
         Namespace { path: components }
     }
 
-    fn current_name(&self) -> String {
-        self.path
-            .last()
-            .cloned()
-            .unwrap_or_else(|| "root".to_string())
+    fn root_name(&self) -> String {
+        "root".to_string()
+    }
+
+    fn current_name(&self) -> Option<String> {
+        self.path.last().cloned()
     }
 
     fn data_tag(&self) -> String {
-        format!("{}a727d4f9-836a-4e4c-9480", self.current_name())
+        format!(
+            "__{}data__",
+            self.current_name().unwrap_or(self.root_name())
+        )
     }
 
     pub fn with_namespace(&self, value: &str) -> String {
@@ -140,6 +144,9 @@ impl Namespace {
         for name in self.path.iter().rev() {
             result = format!("({name} {result})");
         }
+
+        // add root namespace
+        result = format!("(__{}__ {})", self.root_name(), result);
 
         result
     }
@@ -219,7 +226,6 @@ impl MorkApiClient {
                         .header("Content-Type", "text/plain")
                         .body(body_str.clone());
                 } else {
-                    eprintln!("Upload endpoint called with non-string body type");
                     return Err(Status::InternalServerError);
                 }
             }
@@ -231,15 +237,9 @@ impl MorkApiClient {
         match http_request.send().await {
             Ok(resp) => match resp.text().await {
                 Ok(text) => Ok(text),
-                Err(e) => {
-                    eprintln!("Error reading Mork API response text: {e}");
-                    Err(Status::InternalServerError)
-                }
+                Err(_) => Err(Status::InternalServerError),
             },
-            Err(e) => {
-                eprintln!("Error sending request to Mork API: {e}");
-                Err(Status::InternalServerError)
-            }
+            Err(_) => Err(Status::InternalServerError),
         }
     }
 }
@@ -484,6 +484,48 @@ impl Request for ExploreRequest {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct StatusRequest {
+    pub namespace: Namespace,
+    pattern: String,
+}
+
+impl StatusRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
+    }
+
+    pub fn pattern(mut self, pattern: String) -> Self {
+        self.pattern = pattern;
+        self
+    }
+}
+
+impl Request for StatusRequest {
+    type Body = ();
+
+    fn method(&self) -> Method {
+        Method::GET
+    }
+
+    fn path(&self) -> String {
+        format!(
+            "/status/{}",
+            urlencoding::encode(&self.namespace.with_namespace(&self.pattern))
+        )
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct StatusResponse {
+    pub status: String,
+}
+
 #[derive(Default)]
 pub struct UploadRequest {
     namespace: Namespace,
@@ -657,10 +699,11 @@ impl Request for ClearRequest {
 
 #[cfg(test)]
 mod tests {
-    use crate::mork_api::Namespace;
+    use crate::mork_api::*;
 
+    // ----------------------- Namespace -----------------------
     #[test]
-    fn test_namespace() {
+    fn test_basic_namespace() {
         let ns = Namespace::from_path_string("/parent/child/grandchild");
         assert_eq!(
             ns.path,
@@ -670,15 +713,125 @@ mod tests {
                 "grandchild".to_string()
             ]
         );
-        assert_eq!(ns.current_name(), "grandchild".to_string());
-        assert_eq!(ns.data_tag(), "grandchilda727d4f9-836a-4e4c-9480");
+        assert_eq!(ns.current_name().unwrap(), "grandchild".to_string());
+        assert_eq!(ns.data_tag(), "__grandchilddata__");
+        assert_eq!(
+            ns.with_namespace("$x"),
+            "(__root__ (parent (child (grandchild (__grandchilddata__ $x)))))"
+        );
     }
 
     #[test]
-    fn test_with_namespace() {
-        let ns = Namespace::from_path_string("/parent/child/grandchild");
-        let expected = "(parent (child (grandchild (grandchilda727d4f9-836a-4e4c-9480 $x))))";
+    fn test_empty_namespace() {
+        let ns = Namespace::from_path_string("/");
+        assert_eq!(ns.path, vec![] as Vec<String>);
+        assert_eq!(ns.current_name(), None);
+        assert_eq!(ns.data_tag(), "__rootdata__");
+        assert_eq!(ns.with_namespace("$x"), "(__root__ (__rootdata__ $x))");
 
-        assert_eq!(ns.with_namespace("$x"), expected);
+        let ns = Namespace::from_path_string("");
+        assert_eq!(ns.path, vec![] as Vec<String>);
+        assert_eq!(ns.current_name(), None);
+        assert_eq!(ns.data_tag(), "__rootdata__");
+        assert_eq!(ns.with_namespace("$x"), "(__root__ (__rootdata__ $x))");
+    }
+
+    #[test]
+    fn test_data_tag() {
+        let ns = Namespace::from_path_string("/parent/child/grandchild");
+        assert_eq!(ns.data_tag(), "__grandchilddata__");
+    }
+
+    #[test]
+    fn test_current_name() {
+        let ns = Namespace::from_path_string("/parent/child/grandchild");
+        assert_eq!(ns.current_name().unwrap(), "grandchild".to_string());
+
+        let ns = Namespace::from_path_string("/parent/child");
+        assert_eq!(ns.current_name().unwrap(), "child".to_string());
+
+        let ns = Namespace::from_path_string("/parent");
+        assert_eq!(ns.current_name().unwrap(), "parent".to_string());
+
+        let ns = Namespace::from_path_string("/");
+        assert_eq!(ns.current_name(), None);
+    }
+
+    // ----------------------- Mm2Cell -----------------------
+    #[test]
+    fn test_mm2_cell_default() {
+        let cell = Mm2Cell::default();
+        assert_eq!(cell.value(), "$x".to_string());
+        assert_eq!(cell.namespace().path, vec![] as Vec<String>);
+        assert_eq!(cell.build(), "(__root__ (__rootdata__ $x))");
+    }
+
+    #[test]
+    fn test_mm2_cell_basic() {
+        let cell = Mm2Cell::new_pattern(
+            "$x".to_string(),
+            Namespace::from_path_string("/parent/child"),
+        );
+        assert_eq!(cell.value(), "$x".to_string());
+        assert_eq!(
+            cell.namespace().path,
+            vec!["parent".to_string(), "child".to_string()]
+        );
+        assert_eq!(
+            cell.build(),
+            "(__root__ (parent (child (__childdata__ $x))))"
+        );
+    }
+
+    // ----------------------- TransformRequest -----------------------
+    #[test]
+    fn test_transform_request_multi_with_defaults() {
+        let request = TransformRequest::new();
+        assert_eq!(request.transform_input.patterns.len(), 1);
+        assert_eq!(request.transform_input.templates.len(), 1);
+        assert_eq!(
+            request.multi_patterns(),
+            "(, (__root__ (__rootdata__ $x)))".to_string()
+        );
+        assert_eq!(
+            request.multi_templates(),
+            "(, (__root__ (__rootdata__ $x)))".to_string()
+        );
+    }
+
+    #[test]
+    fn test_transform_request_multi_with_basic_values() {
+        let request = TransformRequest::new().transform_input(
+            TransformDetails::new()
+                .patterns(vec![
+                    Mm2Cell::new_pattern(
+                        "$x".to_string(),
+                        Namespace::from_path_string("/parent/child"),
+                    ),
+                    Mm2Cell::new_pattern(
+                        "$y".to_string(),
+                        Namespace::from_path_string("/parent/child/grandchild"),
+                    ),
+                ])
+                .templates(vec![
+                    Mm2Cell::new_template("$x".to_string(), Namespace::from_path_string("")),
+                    Mm2Cell::new_template(
+                        "$y".to_string(),
+                        Namespace::from_path_string("/parent/child/grandchild"),
+                    ),
+                    Mm2Cell::new_template("$z".to_string(), Namespace::from_path_string("/")),
+                ]),
+        );
+
+        assert_eq!(request.transform_input.patterns.len(), 2);
+        assert_eq!(request.transform_input.templates.len(), 3);
+        assert_eq!(
+            request.multi_patterns(),
+            "(, (__root__ (parent (child (__childdata__ $x)))) (__root__ (parent (child (grandchild (__grandchilddata__ $y))))))".to_string()
+        );
+        assert_eq!(
+            request.    multi_templates(),
+            "(, (__root__ (__rootdata__ $x)) (__root__ (parent (child (grandchild (__grandchilddata__ $y))))) (__root__ (__rootdata__ $z)))".to_string()
+                );
     }
 }

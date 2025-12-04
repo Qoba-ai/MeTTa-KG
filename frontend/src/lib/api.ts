@@ -1,5 +1,11 @@
 import { rootToken } from "./state";
-import { ImportDataResponse, Token, ExploreDetail, Mm2Input } from "./types";
+import {
+  ImportDataResponse,
+  Token,
+  ExploreDetail,
+  Mm2Input,
+  Mm2InputMultiWithNamespace,
+} from "./types";
 import { CSVParserParameters } from "~/types";
 import { quoteFromBytes } from "./utils";
 
@@ -64,25 +70,15 @@ export async function request<T>(
   }
 }
 
-export const transform = (path: string, transformation: Mm2Input) => {
-  const patterns = Array.isArray(transformation.pattern)
-    ? transformation.pattern
-    : [transformation.pattern];
-  const templates = Array.isArray(transformation.template)
-    ? transformation.template
-    : [transformation.template];
-
-  return request<boolean>(`/spaces/transform${path}`, {
+export const transform = (
+  input: Mm2InputMultiWithNamespace
+): Promise<boolean> => {
+  console.log("transform input", input);
+  return request<boolean>("/spaces/transform", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ patterns, templates }),
-  })
-    .then((result) => {
-      return result;
-    })
-    .catch((error) => {
-      throw error;
-    });
+    body: JSON.stringify(input),
+  });
 };
 
 export const union = (unification: Mm2Input) => {
@@ -219,7 +215,8 @@ export async function isPathClear(path: string): Promise<boolean> {
 export async function importData(
   type: string,
   data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */ = null,
-  format: string = "metta"
+  format: string = "metta",
+  path: string
 ): Promise<ImportDataResponse> {
   try {
     switch (type) {
@@ -239,10 +236,37 @@ export async function importData(
       }
 
       case "file":
-        return {
-          status: "error",
-          message: "File upload not implemented yet",
-        };
+        try {
+          const file: File = data.get("file");
+
+          if (!file) {
+            return { status: "error", message: "No file provided" };
+          }
+
+          const text = await file.text();
+          let contentType = "text/plain";
+          if (format === "json") {
+            contentType = "application/json";
+          } else if (format === "csv") {
+            contentType = "text/csv";
+          }
+          const resp = await request<string>(`/spaces/upload${path}`, {
+            method: "POST",
+            headers: { "Content-Type": contentType },
+            body: text,
+          });
+
+          return {
+            status: "success",
+            data: resp,
+            message: "File imported successfully",
+          };
+        } catch (err) {
+          return {
+            status: "error",
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
 
       default:
         return {
@@ -394,8 +418,8 @@ export const exportSpace = async (
   });
 };
 
-export const clearSpace = (path: string) => {
-  return request<boolean>(`/spaces/clear${path}?expr=$x`, {
+export const clearSpace = (expression: string, path: string) => {
+  return request<boolean>(`/spaces/clear${path}?expr=${expression}`, {
     method: "POST",
   });
 };

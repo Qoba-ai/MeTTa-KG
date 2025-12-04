@@ -1,8 +1,7 @@
 import { createSignal } from "solid-js";
 import { transform, isPathClear } from "~/lib/api";
-import { Mm2Input } from "~/lib/types";
+import { Mm2InputMultiWithNamespace, Item } from "~/lib/types";
 import { showToast } from "~/components/ui/Toast";
-import { parseTransformExpression } from "~/lib/utils";
 import { refreshSpace } from "../load/lib";
 
 export const [isLoading, setIsLoading] = createSignal(false);
@@ -40,11 +39,18 @@ export const startPolling = (spacePath: string) => {
   }, 3000);
 };
 
-export const executeTransform = async (sExpr: string, spacePath: string) => {
-  if (!sExpr.trim()) {
+export const executeTransform = async (
+  patterns: Item[],
+  templates: Item[],
+  spacePath: string
+) => {
+  if (
+    !patterns.some((p) => p.value.trim()) ||
+    !templates.some((t) => t.value.trim())
+  ) {
     showToast({
       title: "Error",
-      description: "Please enter a transform expression.",
+      description: "Please enter patterns and templates.",
       variant: "destructive",
     });
     return;
@@ -64,12 +70,19 @@ export const executeTransform = async (sExpr: string, spacePath: string) => {
       return;
     }
 
-    const { patterns, templates } = parseTransformExpression(sExpr);
-    const transformation: Mm2Input = {
-      pattern: patterns,
-      template: templates,
+    const input: Mm2InputMultiWithNamespace = {
+      patterns: patterns.map((p) => ({
+        kind: "pattern" as const,
+        value: p.value,
+        namespace: p.namespace.filter((n) => n !== ""),
+      })),
+      templates: templates.map((t) => ({
+        kind: "template" as const,
+        value: t.value,
+        namespace: t.namespace.filter((n) => n !== ""),
+      })),
     };
-    const success = await transform(spacePath, transformation);
+    const success = await transform(input);
 
     if (success) {
       showToast({
