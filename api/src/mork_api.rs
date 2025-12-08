@@ -484,6 +484,48 @@ impl Request for ExploreRequest {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct StatusRequest {
+    pub namespace: Namespace,
+    pattern: String,
+}
+
+impl StatusRequest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn namespace(mut self, ns: PathBuf) -> Self {
+        self.namespace = Namespace::from(ns);
+        self
+    }
+
+    pub fn pattern(mut self, pattern: String) -> Self {
+        self.pattern = pattern;
+        self
+    }
+}
+
+impl Request for StatusRequest {
+    type Body = ();
+
+    fn method(&self) -> Method {
+        Method::GET
+    }
+
+    fn path(&self) -> String {
+        format!(
+            "/status/{}",
+            urlencoding::encode(&self.namespace.with_namespace(&self.pattern))
+        )
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct StatusResponse {
+    pub status: String,
+}
+
 #[derive(Default)]
 pub struct UploadRequest {
     namespace: Namespace,

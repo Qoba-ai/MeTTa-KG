@@ -81,6 +81,47 @@ export const transform = (
   });
 };
 
+export const union = (unification: Mm2Input) => {
+  const patterns = Array.isArray(unification.pattern)
+    ? unification.pattern
+    : [unification.pattern];
+  const templates = Array.isArray(unification.template)
+    ? unification.template
+    : [unification.template];
+
+  return request<boolean>(`/spaces/union`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source: patterns, target: templates }),
+  })
+    .then((result) => {
+      return result;
+    })
+    .catch((error) => {
+      throw error;
+    });
+};
+
+export const composition = (compositionInput: {
+  source: string[];
+  target: string[];
+}) => {
+  return request<boolean>(`/spaces/composition`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source: compositionInput.source,
+      target: compositionInput.target,
+    }),
+  })
+    .then((result) => {
+      return result;
+    })
+    .catch((error) => {
+      throw error;
+    });
+};
+
 export const readSpace = (path: string) => {
   return request<string>(`/spaces${path}`);
 };
@@ -253,10 +294,13 @@ export const uploadTextToSpace = (
 };
 
 export const importSpace = (path: string, uri: string) => {
-  return request<boolean>(`/spaces/import${path}?uri=${uri}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
+  return request<boolean>(
+    `/spaces/import/${path.replace(/^\/+/, "")}?uri=${encodeURIComponent(uri)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
 };
 
 export const fetchTokens = async (token: string | null): Promise<Token[]> => {

@@ -185,3 +185,29 @@ export function quoteFromBytes(data: Uint8Array): string {
 
   return result;
 }
+
+////////////////
+// Union Page //
+//////////////
+
+export function pathToSExpr(parts: string[], leaf: string = "$x"): string {
+  // 1. Remove leading/trailing slashes and split
+  // const parts = path
+  //   .split("/")
+  //   .map(p => p.trim())
+  //   .filter(p => p.length > 0);
+
+  if (parts.length === 0) return leaf; // e.g. "/" → "$x"
+
+  // this condition is used to not include '' in index 0
+  let edge = 0;
+  if (parts[0] === "/") {
+    edge = 1;
+  }
+  // 2. Build nested s-expression from right to left
+  let expr = leaf;
+  for (let i = parts.length - 1; i >= edge; i--) {
+    expr = `(${parts[i]} ${expr})`;
+  }
+  return expr;
+}
