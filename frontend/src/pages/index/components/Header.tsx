@@ -20,7 +20,7 @@ export default function Header() {
         <NameSpace
           namespace={namespace()}
           setNamespace={setNamespace}
-          rootToken={rootToken()}
+          rootToken={rootToken() ? true : false}
           tokenRootNamespace={tokenRootNamespace}
           getAllTokens={getAllTokens}
         />

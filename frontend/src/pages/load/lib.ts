@@ -1,4 +1,4 @@
-import { createSignal, createResource, createRoot } from "solid-js";
+import { createSignal, createResource } from "solid-js";
 import { formatedNamespace } from "~/lib/state";
 import { ParseError } from "~/types";
 import { exploreSpace } from "~/lib/api";

@@ -13,14 +13,7 @@ import {
   CommandItem,
   CommandList,
 } from "~/components/ui/Command";
-import { getAllTokens } from "~/lib/api";
-import {
-  rootToken,
-  namespace,
-  setNamespace,
-  tokenRootNamespace,
-  addTab,
-} from "~/lib/state";
+import { setNamespace, addTab } from "~/lib/state";
 
 import Folder from "lucide-solid/icons/folder";
 import Home from "lucide-solid/icons/home";
@@ -33,10 +26,6 @@ type TreeNode = {
 };
 
 type NamespaceTreeNode = Map<string, NamespaceTreeNode>;
-
-type NamespaceTreeNode = Map<string, NamespaceTreeNode>;
-
-type TreeMap = Map<string, TreeMap>;
 
 type Token = {
   namespace: string;

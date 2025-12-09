@@ -5,7 +5,6 @@ import {
   setActiveTabId,
   closeTab,
   addTab,
-  type NamespaceTab,
 } from "~/lib/state";
 import X from "lucide-solid/icons/x";
 import Plus from "lucide-solid/icons/plus";
