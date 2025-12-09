@@ -8,3 +8,5 @@ temp
 translations/tests/
 translations/examples/
 translations/metta_queries/
+
+api/target

@@ -1,5 +1,5 @@
 import { Component, Show, onCleanup, createUniqueId } from "solid-js";
-import { createStore, produce } from "solid-js/store";
+import { createStore, produce, Store } from "solid-js/store";
 import { CommandCard } from "~/components/common/CommandCard";
 import { Button } from "~/components/ui/Button";
 import {
@@ -12,34 +12,78 @@ import {
 import { formatedNamespace } from "~/lib/state";
 import { getAllTokens } from "~/lib/api";
 import { rootToken, tokenRootNamespace } from "~/lib/state";
-import { isLoading, isPolling, executeTransform, stopPolling } from "./lib";
+import {
+  isLoading,
+  isPolling,
+  executeUnion,
+  stopPolling,
+  setOperationInput,
+} from "./lib";
 import { Copy, Check } from "lucide-solid";
-import { TransformInput as TransformInputComponent } from "./components/TransformInput";
-import { Item } from "~/lib/types";
+import {
+  Item,
+  UnionInput as UnionInputComponent,
+} from "./components/UnionInput";
 
-const TransformPage: Component = () => {
+interface AppState {
+  patterns: Item[];
+  templates: Item[];
+  copied: boolean;
+}
+
+const UnionPage: Component = () => {
   const [state, setState] = createStore({
-    patterns: [{ id: createUniqueId(), namespace: [""], value: "" }],
-    templates: [{ id: createUniqueId(), namespace: [""], value: "" }],
+    patterns: [{ id: createUniqueId(), namespace: [""] }],
+    templates: [{ id: createUniqueId(), namespace: [""] }],
     copied: false,
   });
 
   onCleanup(stopPolling);
 
-  const buildTransformSExpr = (patterns: Item[], templates: Item[]) => {
-    const patternExprs = patterns.map((p) => `(, ${p.value})`).join(" ");
-    const templateExprs = templates.map((t) => `(, ${t.value})`).join(" ");
-    return `(transform\n    ${patternExprs}\n    ${templateExprs}\n)`;
+  const buildUnionSExpr = (patterns: Item[]) => {
+    const patternExprs: string[] = [];
+    const templatesExprs: string[] = [];
+
+    patterns.forEach((_, index) => {
+      // convert name space path to stringsItem
+      const key = `<source-${(index + 1).toString()}> $${index.toString()}`;
+      patternExprs.push(`(${key})`);
+      templatesExprs.push(`$${index}`);
+    });
+
+    return `(transform\n (, ${patternExprs.join(" ")})\n (, (<target> ${templatesExprs.join(" ")}))\n)`;
   };
 
-  const handleTransform = () => {
-    executeTransform(state.patterns, state.templates, formatedNamespace());
+  const buildUnionSetInput = (state: Store<AppState>) => {
+    const pattern: string[] = [];
+    const template: string[] = [];
+
+    const normalizeNamespace = (ns: string[]): string[] => {
+      return ns.length > 1 && ns[0] === "/" ? ns.slice(1) : ns;
+    };
+
+    state.patterns.forEach((p) => {
+      pattern.push(normalizeNamespace(p.namespace).join("/"));
+    });
+
+    state.templates.forEach((t) => {
+      template.push(normalizeNamespace(t.namespace).join("/"));
+    });
+    return {
+      pattern,
+      template,
+    };
+  };
+
+  const handleUnion = () => {
+    const unionQueryInput: setOperationInput = buildUnionSetInput(state);
+    executeUnion(unionQueryInput, formatedNamespace());
   };
 
   const addPattern = () => {
     setState("patterns", (prev) => [
       ...prev,
-      { id: createUniqueId(), namespace: [""], value: "" },
+      { id: createUniqueId(), namespace: ["/"] },
     ]);
   };
 
@@ -47,11 +91,7 @@ const TransformPage: Component = () => {
     setState("patterns", (prev) => prev.filter((p) => p.id !== id));
   };
 
-  const updatePattern = (
-    id: string,
-    field: "namespace" | "value",
-    value: string | string[]
-  ) => {
+  const updatePattern = (id: string, field: "namespace", value: string[]) => {
     setState(
       "patterns",
       produce((patterns) => {
@@ -64,7 +104,7 @@ const TransformPage: Component = () => {
   const addTemplate = () => {
     setState("templates", (prev) => [
       ...prev,
-      { id: createUniqueId(), namespace: [""], value: "" },
+      { id: createUniqueId(), namespace: ["/"] },
     ]);
   };
 
@@ -72,11 +112,7 @@ const TransformPage: Component = () => {
     setState("templates", (prev) => prev.filter((t) => t.id !== id));
   };
 
-  const updateTemplate = (
-    id: string,
-    field: "namespace" | "value",
-    value: string | string[]
-  ) => {
+  const updateTemplate = (id: string, field: "namespace", value: string[]) => {
     setState(
       "templates",
       produce((templates) => {
@@ -86,16 +122,13 @@ const TransformPage: Component = () => {
     );
   };
 
-  const canTransform = () => {
-    return (
-      state.patterns.some((p) => p.value.trim()) &&
-      state.templates.some((t) => t.value.trim())
-    );
+  const canUnion = () => {
+    return state.templates.length === 1;
   };
 
   const copyExpression = () => {
     navigator.clipboard.writeText(
-      buildTransformSExpr(state.patterns, state.templates)
+      buildUnionSExpr(state.patterns, state.templates)
     );
     setState("copied", true);
     setTimeout(() => setState("copied", false), 2000);
@@ -112,7 +145,7 @@ const TransformPage: Component = () => {
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Builder - 2/3 */}
             <div class="lg:col-span-2 space-y-6">
-              <TransformInputComponent
+              <UnionInputComponent
                 type="patterns"
                 items={state.patterns}
                 addItem={addPattern}
@@ -124,7 +157,7 @@ const TransformPage: Component = () => {
                 getAllTokens={getAllTokens}
               />
 
-              <TransformInputComponent
+              <UnionInputComponent
                 type="templates"
                 items={state.templates}
                 addItem={addTemplate}
@@ -148,7 +181,7 @@ const TransformPage: Component = () => {
                 </CardHeader>
                 <CardContent>
                   <pre class="text-sm font-mono bg-muted p-3 rounded overflow-auto">
-                    {buildTransformSExpr(state.patterns, state.templates)}
+                    {buildUnionSExpr(state.patterns, state.templates)}
                   </pre>
                   <Button
                     variant="default"
@@ -173,8 +206,8 @@ const TransformPage: Component = () => {
         </div>
 
         <Button
-          onClick={handleTransform}
-          disabled={isLoading() || isPolling() || !canTransform()}
+          onClick={handleUnion}
+          disabled={isLoading() || isPolling() || !canUnion()}
           class="inline-flex items-center justify-center w-[180px] h-10 mt-4"
         >
           <Show when={isLoading() || isPolling()}>
@@ -196,12 +229,12 @@ const TransformPage: Component = () => {
           <Show
             when={isLoading()}
             fallback={
-              <Show when={isPolling()} fallback={"Run Transform"}>
+              <Show when={isPolling()} fallback={"Run Union"}>
                 Waiting for results...
               </Show>
             }
           >
-            Transforming...
+            Performing Union...
           </Show>
         </Button>
       </CommandCard>
@@ -209,4 +242,4 @@ const TransformPage: Component = () => {
   );
 };
 
-export default TransformPage;
+export default UnionPage;

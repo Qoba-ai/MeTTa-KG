@@ -3,6 +3,7 @@ import { formatedNamespace } from "~/lib/state";
 import { ParseError } from "~/types";
 import { exploreSpace } from "~/lib/api";
 import { showToast } from "~/components/ui/Toast";
+import { treeStore } from "./components/expandableList/store";
 
 type ExploreResponse = {
   id: string;
@@ -13,15 +14,19 @@ type ExploreResponse = {
 let graphApi: {
   expandAll?: () => void;
   collapseToRoot?: () => void;
+  expandToFillViewport?: () => Promise<void>;
 } = {};
 
 export const [mettaText, setMettaText] = createSignal("$x");
 export const [parseErrors, setParseErrors] = createSignal<ParseError[]>([]);
 export const [isMinimized, setIsMinimized] = createSignal(true);
 export const [pattern, setPattern] = createSignal("$x");
+export const [shouldFillViewport, setShouldFillViewport] = createSignal(false);
+export const [isIndented, setIsIndented] = createSignal(false);
 
-// Wrap the createResource in createRoot to avoid the warning
-export const [subSpace, { refetch: refetchSubSpace }] = createRoot(() =>
+export const handleToggleIndent = () => setIsIndented((p) => !p);
+
+export const [subSpace, { refetch: refetchSubSpace, mutate: mutateSubSpace }] =
   createResource(
     () => ({
       path: formatedNamespace(),
@@ -30,48 +35,52 @@ export const [subSpace, { refetch: refetchSubSpace }] = createRoot(() =>
     }),
     async ({ path, expr, token }) => {
       try {
-        const responseString = await exploreSpace(path, expr, token);
-        const data: ExploreResponse[] = JSON.parse(responseString);
+        const data = JSON.parse(
+          await exploreSpace(path, expr, token)
+        ) as ExploreResponse[];
         showToast({
           title: "Success",
           description: `Loaded ${data.length} nodes.`,
         });
         return data;
       } catch (e) {
-        if (e instanceof Error && e.message === "noRootToken") {
-          showToast({
-            title: "Error",
-            description: "No token found, please add one in the Tokens page",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        showToast({
-          title: "Error",
-          description: "Failed to load space data.",
-          variant: "destructive",
-        });
-        return;
+        const msg =
+          e instanceof Error && e.message === "noRootToken"
+            ? "No token found, please add one in the Tokens page"
+            : "Failed to load space data.";
+        showToast({ title: "Error", description: msg, variant: "destructive" });
+        return [];
       }
     }
-  )
-);
+  );
 
 export const refreshSpace = () => {
-  refetchSubSpace();
+  mutateSubSpace([]);
+  treeStore.reset();
+  return refetchSubSpace();
 };
 
 export const handleTextChange = (text: string) => setMettaText(text);
-export const handlePatternLoad = (newPattern: string) => setPattern(newPattern);
+
+export const handlePatternLoad = (newPattern: string) => {
+  treeStore.reset();
+  setPattern(newPattern);
+  setShouldFillViewport(true);
+};
+
 export const toggleMinimize = () => setIsMinimized(!isMinimized());
-export const handleToggleCard = () => setIsMinimized((prev) => !prev);
-
-// New handlers for expand/collapse
-export const handleExpandAll = () => graphApi.expandAll?.();
-export const handleCollapseToRoot = () => graphApi.collapseToRoot?.();
-
-// Function to register the graph's API
+export const handleToggleCard = () => setIsMinimized((p) => !p);
+export const handleExpandAll = () => {
+  treeStore.expandAll();
+  graphApi.expandAll?.();
+};
+export const handleCollapseToRoot = () => {
+  treeStore.collapseToRoot();
+  graphApi.collapseToRoot?.();
+};
+export const triggerViewportFill = async () => {
+  await graphApi.expandToFillViewport?.();
+};
 export const setupGraphApi = (api: typeof graphApi) => {
   graphApi = api;
 };

@@ -76,7 +76,9 @@ const TextFieldInput = <T extends ValidComponent = "input">(
 };
 
 type TextFieldTextAreaProps<T extends ValidComponent = "textarea"> =
-  TextFieldPrimitive.TextFieldTextAreaProps<T> & { class?: string | undefined };
+  TextFieldPrimitive.TextFieldTextAreaProps<T> & {
+    class?: string | undefined;
+  };
 
 const TextFieldTextArea = <T extends ValidComponent = "textarea">(
   props: PolymorphicProps<T, TextFieldTextAreaProps<T>>

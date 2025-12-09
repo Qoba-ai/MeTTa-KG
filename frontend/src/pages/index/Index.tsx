@@ -3,6 +3,7 @@ import { createSignal, For } from "solid-js";
 import LoadPage from "../load/Load";
 import UploadPage from "../upload/Upload";
 import TransformPage from "../transform/Transform";
+import CompositionPage from "../composition/Composition";
 import ExportPage from "../export/Export";
 import TokensPage from "../tokens/Tokens";
 import ClearPage from "../clear/Clear";
@@ -16,6 +17,7 @@ import Key from "lucide-solid/icons/key";
 import NotImplemented from "~/components/common/NotImplemented";
 import Trash2 from "lucide-solid/icons/trash-2";
 import CommandPalette from "~/components/common/CommandPalette";
+import UnionPage from "../union/Union";
 
 export const sidebarSections = [
   {
@@ -48,10 +50,18 @@ export const sidebarSections = [
         component: TransformPage,
       },
       {
+        id: "composition",
+        label: "Composition",
+        icon: () => <span class="text-xl">∪</span>,
+        to: "/composition",
+        component: CompositionPage,
+      },
+      {
         id: "union",
         label: "Union",
         icon: () => <span class="text-xl">∪</span>,
         to: "/union",
+        component: UnionPage,
       },
       {
         id: "intersection",

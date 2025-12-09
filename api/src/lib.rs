@@ -1,15 +1,16 @@
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use rocket::http::Method;
+use rocket::routes;
+use rocket::{Build, Rocket};
+use rocket_cors::AllowedOrigins;
+
 pub mod db;
 pub mod model;
 pub mod mork_api;
 pub mod routes;
 pub mod schema;
 
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
-use rocket::http::Method;
-use rocket::{routes, Build, Rocket};
-use rocket_cors::AllowedOrigins;
 
 pub fn rocket() -> Rocket<Build> {
     // TODO: move hardcoded allowed origins to database,
@@ -51,15 +52,16 @@ pub fn rocket() -> Rocket<Build> {
                 routes::tokens::delete,
                 routes::tokens::delete_batch,
                 routes::spaces::read,
-                routes::spaces::upload,
                 routes::spaces::import,
                 routes::spaces::transform,
+                routes::spaces::upload,
                 routes::spaces::explore,
                 routes::spaces::export,
                 routes::spaces::clear,
+                routes::spaces::composition,
+                routes::spaces::union,
             ],
         )
-        // .mount("/public", FileServer::from("static"))
         .attach(cors.clone())
         .manage(cors)
 }

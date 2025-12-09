@@ -1,11 +1,13 @@
+use api::mork_api::Mm2Cell;
 use api::rocket;
+use api::routes::spaces::Mm2InputMultiWithNamespace;
 use httpmock::prelude::*;
 use rocket::http::{Header, Status};
 use rocket::local::asynchronous::Client;
 use serial_test::serial;
 
-use crate::integrations::common;
-use api::routes::spaces::Mm2InputMulti;
+#[path = "common.rs"]
+mod common;
 
 #[tokio::test]
 #[serial]
@@ -32,13 +34,19 @@ async fn test_transform_success() {
         .await
         .expect("valid rocket instance");
 
-    let mm2_input = Mm2InputMulti {
-        patterns: vec!["$x".to_string()],
-        templates: vec!["($x)".to_string()],
+    let mm2_input = Mm2InputMultiWithNamespace {
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/test/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/test/space"),
+        )],
     };
 
     let response = client
-        .post("/spaces/transform/test/space")
+        .post("/spaces/transform")
         .header(Header::new("authorization", token.code.clone()))
         .json(&mm2_input)
         .dispatch()
@@ -67,14 +75,20 @@ async fn test_non_existent_namespace() {
         .await
         .expect("valid rocket instance");
 
-    let mm2_input = Mm2InputMulti {
-        patterns: vec!["$x".to_string()],
-        templates: vec!["($x)".to_string()],
+    let mm2_input = Mm2InputMultiWithNamespace {
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/other/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/other/space"),
+        )],
     };
 
     // Path does not start with /test/
     let response = client
-        .post("/spaces/transform/other/space")
+        .post("/spaces/transform")
         .header(Header::new("authorization", token.code.clone()))
         .json(&mm2_input)
         .dispatch()
@@ -106,13 +120,19 @@ async fn test_existing_empty_namespace() {
         .await
         .expect("valid rocket instance");
 
-    let mm2_input = Mm2InputMulti {
-        patterns: vec!["$x".to_string()],
-        templates: vec!["($x)".to_string()],
+    let mm2_input = Mm2InputMultiWithNamespace {
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/test/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/test/space"),
+        )],
     };
 
     let response = client
-        .post("/spaces/transform/test/space")
+        .post("/spaces/transform")
         .header(Header::new("authorization", token.code.clone()))
         .json(&mm2_input)
         .dispatch()
@@ -147,25 +167,42 @@ async fn test_different_namespaces() {
         .await
         .expect("valid rocket instance");
 
-    let mm2_input = Mm2InputMulti {
-        patterns: vec!["$x".to_string()],
-        templates: vec!["($x)".to_string()],
+    let mm2_input1 = Mm2InputMultiWithNamespace {
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/ns1/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/ns1/space"),
+        )],
+    };
+
+    let mm2_input2 = Mm2InputMultiWithNamespace {
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/ns2/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/ns2/space"),
+        )],
     };
 
     // Transform in ns1
     let response1 = client
-        .post("/spaces/transform/ns1/space")
+        .post("/spaces/transform")
         .header(Header::new("authorization", token1.code.clone()))
-        .json(&mm2_input)
+        .json(&mm2_input1)
         .dispatch()
         .await;
     assert_eq!(response1.status(), Status::Ok);
 
     // Transform in ns2
     let response2 = client
-        .post("/spaces/transform/ns2/space")
+        .post("/spaces/transform")
         .header(Header::new("authorization", token2.code.clone()))
-        .json(&mm2_input)
+        .json(&mm2_input2)
         .dispatch()
         .await;
     assert_eq!(response2.status(), Status::Ok);
@@ -189,14 +226,20 @@ async fn test_namespace_mismatch() {
         .await
         .expect("valid rocket instance");
 
-    let mm2_input = Mm2InputMulti {
-        patterns: vec!["$x".to_string()],
-        templates: vec!["($x)".to_string()],
+    let mm2_input = Mm2InputMultiWithNamespace {
+        patterns: vec![Mm2Cell::new_pattern(
+            "$x".to_string(),
+            api::mork_api::Namespace::from_path_string("/other/space"),
+        )],
+        templates: vec![Mm2Cell::new_template(
+            "($x)".to_string(),
+            api::mork_api::Namespace::from_path_string("/other/space"),
+        )],
     };
 
     // Path does not start with /test/
     let response = client
-        .post("/spaces/transform/other/space")
+        .post("/spaces/transform")
         .header(Header::new("authorization", token.code.clone()))
         .json(&mm2_input)
         .dispatch()

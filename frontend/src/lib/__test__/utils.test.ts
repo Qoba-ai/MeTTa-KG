@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { parseTransformExpression, quoteFromBytes, cn } from "../utils";
+import {
+  parseTransformExpression,
+  quoteFromBytes,
+  cn,
+  pathToSExpr,
+} from "../utils";
 
 describe("Utility Functions Tests", () => {
   describe("cn (className utility)", () => {
@@ -266,6 +271,57 @@ describe("Utility Functions Tests", () => {
       const result = quoteFromBytes(input);
 
       expect(result).toBe("%01%02%03%04");
+    });
+  });
+
+  describe("pathToSExpr", () => {
+    it("should return leaf for empty path or just root", () => {
+      expect(pathToSExpr([])).toBe("$x");
+      expect(pathToSExpr(["/"])).toBe("$x");
+    });
+
+    it("should handle single segment after root", () => {
+      expect(pathToSExpr(["/", "home"])).toBe("(home $x)");
+      expect(pathToSExpr(["/", "admin"])).toBe("(admin $x)");
+    });
+
+    it("should build nested s-expression for multi-level paths", () => {
+      expect(pathToSExpr(["/", "users", "profile"])).toBe(
+        "(users (profile $x))"
+      );
+      expect(pathToSExpr(["/", "a", "b", "c"])).toBe("(a (b (c $x)))");
+    });
+
+    it("should work without leading slash (treat as relative)", () => {
+      expect(pathToSExpr(["home"])).toBe("(home $x)");
+      expect(pathToSExpr(["users", "profile"])).toBe("(profile (users $x))");
+    });
+
+    it("should use custom leaf when provided", () => {
+      expect(pathToSExpr(["/", "data", "user"], "$value")).toBe(
+        "(data (user $value))"
+      );
+      expect(pathToSExpr([], "$result")).toBe("$result");
+    });
+
+    it("should preserve special characters in segment names", () => {
+      expect(pathToSExpr(["/", "user-123", "profile-pic"])).toBe(
+        "(user-123 (profile-pic $x))"
+      );
+      expect(pathToSExpr(["/", "my_space", "data.v2"])).toBe(
+        "(my_space (data.v2 $x))"
+      );
+    });
+
+    it("should handle very deep nesting correctly", () => {
+      const deepPath = ["/", "a", "b", "c", "d", "e"];
+      expect(pathToSExpr(deepPath)).toBe("(a (b (c (d (e $x)))))");
+    });
+
+    it("should treat path with only '/' as root → leaf", () => {
+      expect(pathToSExpr(["/"])).toBe("$x");
+      expect(pathToSExpr(["/", ""])).toBe("( $x)");
+      expect(pathToSExpr(["", "/", ""])).toBe("( (/ ( $x)))");
     });
   });
 });

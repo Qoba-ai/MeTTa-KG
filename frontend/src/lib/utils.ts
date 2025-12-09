@@ -5,10 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/////////////////////
-// Transform Page //
-///////////////////
-
 export interface SExpr {
   type: "atom" | "list";
   value?: string;
@@ -87,7 +83,7 @@ function parseTokens(tokens: string[]): SExpr | null {
   return parseNext();
 }
 
-function parseSExpression(input: string): SExpr {
+export function parseSExpression(input: string): SExpr {
   const tokens = tokenize(input);
   const result = parseTokens(tokens);
   if (!result) {
@@ -130,7 +126,7 @@ function parseCommaList(expr: SExpr): string[] {
   return expr.children.slice(1).map((child) => serializeSExpr(child));
 }
 
-function serializeSExpr(expr: SExpr): string {
+export function serializeSExpr(expr: SExpr): string {
   if (expr.type === "atom") {
     return expr.value!;
   }
@@ -188,4 +184,30 @@ export function quoteFromBytes(data: Uint8Array): string {
   }
 
   return result;
+}
+
+////////////////
+// Union Page //
+//////////////
+
+export function pathToSExpr(parts: string[], leaf: string = "$x"): string {
+  // 1. Remove leading/trailing slashes and split
+  // const parts = path
+  //   .split("/")
+  //   .map(p => p.trim())
+  //   .filter(p => p.length > 0);
+
+  if (parts.length === 0) return leaf; // e.g. "/" → "$x"
+
+  // this condition is used to not include '' in index 0
+  let edge = 0;
+  if (parts[0] === "/") {
+    edge = 1;
+  }
+  // 2. Build nested s-expression from right to left
+  let expr = leaf;
+  for (let i = parts.length - 1; i >= edge; i--) {
+    expr = `(${parts[i]} ${expr})`;
+  }
+  return expr;
 }

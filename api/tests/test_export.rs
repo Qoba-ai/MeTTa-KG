@@ -1,15 +1,18 @@
 use api::rocket;
+use api::routes::spaces::Mm2Input;
 use httpmock::prelude::*;
 use httpmock::Regex;
 use rocket::http::{Header, Status};
 use rocket::local::asynchronous::Client;
 use serial_test::serial;
 
-use crate::integrations::common;
+#[path = "common.rs"]
+mod common;
+// use crate::common;
 
 #[tokio::test]
 #[serial]
-async fn test_import_success() {
+async fn test_export_success() {
     if !common::is_database_running() {
         eprintln!("Warning: Database not running, skipping test");
         return;
@@ -19,29 +22,32 @@ async fn test_import_success() {
 
     let token = common::create_test_token("/test/", true, true);
 
-    // Mock import request
+    // Mock export request
     server.mock(|when, then| {
         when.method(GET)
-            .path_matches(Regex::new(r"/import/.*").unwrap());
-        then.status(200).body("Import successful");
+            .path_matches(Regex::new(r"/export/.*").unwrap());
+        then.status(200).body("(export data)");
     });
 
     let client = Client::tracked(rocket())
         .await
         .expect("valid rocket instance");
 
+    let export_input = Mm2Input {
+        pattern: "$x".to_string(),
+        template: "($x)".to_string(),
+    };
+
     let response = client
-        .post(format!(
-            "/spaces/import/test/space?uri={}",
-            urlencoding::encode("http://example.com/data")
-        ))
+        .post("/spaces/export/test/space")
         .header(Header::new("authorization", token.code.clone()))
+        .json(&export_input)
         .dispatch()
         .await;
 
     assert_eq!(response.status(), Status::Ok);
     let body = response.into_string().await.expect("response body");
-    assert_eq!(body, "true");
+    assert_eq!(body, "\"(export data)\"");
 
     common::teardown_database();
 }
@@ -62,13 +68,16 @@ async fn test_non_existent_namespace() {
         .await
         .expect("valid rocket instance");
 
+    let export_input = Mm2Input {
+        pattern: "$x".to_string(),
+        template: "($x)".to_string(),
+    };
+
     // Path does not start with /test/
     let response = client
-        .post(format!(
-            "/spaces/import/other/space?uri={}",
-            urlencoding::encode("http://example.com/data")
-        ))
+        .post("/spaces/export/other/space")
         .header(Header::new("authorization", token.code.clone()))
+        .json(&export_input)
         .dispatch()
         .await;
 
@@ -89,29 +98,32 @@ async fn test_existing_empty_namespace() {
 
     let token = common::create_test_token("/test/", true, true);
 
-    // Mock import request
+    // Mock export request
     server.mock(|when, then| {
         when.method(GET)
-            .path_matches(Regex::new(r"/import/.*").unwrap());
-        then.status(200).body("Import successful");
+            .path_matches(Regex::new(r"/export/.*").unwrap());
+        then.status(200).body("(export data)");
     });
 
     let client = Client::tracked(rocket())
         .await
         .expect("valid rocket instance");
 
+    let export_input = Mm2Input {
+        pattern: "$x".to_string(),
+        template: "($x)".to_string(),
+    };
+
     let response = client
-        .post(format!(
-            "/spaces/import/test/space?uri={}",
-            urlencoding::encode("http://example.com/data")
-        ))
+        .post("/spaces/export/test/space")
         .header(Header::new("authorization", token.code.clone()))
+        .json(&export_input)
         .dispatch()
         .await;
 
     assert_eq!(response.status(), Status::Ok);
     let body = response.into_string().await.expect("response body");
-    assert_eq!(body, "true");
+    assert_eq!(body, "\"(export data)\"");
 
     common::teardown_database();
 }
@@ -128,29 +140,32 @@ async fn test_non_empty_namespace() {
 
     let token = common::create_test_token("/test/", true, true);
 
-    // Mock import request
+    // Mock export request
     server.mock(|when, then| {
         when.method(GET)
-            .path_matches(Regex::new(r"/import/.*").unwrap());
-        then.status(200).body("Import successful");
+            .path_matches(Regex::new(r"/export/.*").unwrap());
+        then.status(200).body("(export data)");
     });
 
     let client = Client::tracked(rocket())
         .await
         .expect("valid rocket instance");
 
+    let export_input = Mm2Input {
+        pattern: "$x".to_string(),
+        template: "($x)".to_string(),
+    };
+
     let response = client
-        .post(format!(
-            "/spaces/import/test/space?uri={}",
-            urlencoding::encode("http://example.com/data")
-        ))
+        .post("/spaces/export/test/space")
         .header(Header::new("authorization", token.code.clone()))
+        .json(&export_input)
         .dispatch()
         .await;
 
     assert_eq!(response.status(), Status::Ok);
     let body = response.into_string().await.expect("response body");
-    assert_eq!(body, "true");
+    assert_eq!(body, "\"(export data)\"");
 
     common::teardown_database();
 }
@@ -170,32 +185,33 @@ async fn test_different_namespaces() {
 
     server.mock(|when, then| {
         when.method(GET)
-            .path_matches(Regex::new(r"/import/.*").unwrap());
-        then.status(200).body("Import successful");
+            .path_matches(Regex::new(r"/export/.*").unwrap());
+        then.status(200).body("(export data)");
     });
 
     let client = Client::tracked(rocket())
         .await
         .expect("valid rocket instance");
 
-    // Import to ns1
+    let export_input = Mm2Input {
+        pattern: "$x".to_string(),
+        template: "($x)".to_string(),
+    };
+
+    // Export from ns1
     let response1 = client
-        .post(format!(
-            "/spaces/import/ns1/space?uri={}",
-            urlencoding::encode("http://example.com/data")
-        ))
+        .post("/spaces/export/ns1/space")
         .header(Header::new("authorization", token1.code.clone()))
+        .json(&export_input)
         .dispatch()
         .await;
     assert_eq!(response1.status(), Status::Ok);
 
-    // Import to ns2
+    // Export from ns2
     let response2 = client
-        .post(format!(
-            "/spaces/import/ns2/space?uri={}",
-            urlencoding::encode("http://example.com/data")
-        ))
+        .post("/spaces/export/ns2/space")
         .header(Header::new("authorization", token2.code.clone()))
+        .json(&export_input)
         .dispatch()
         .await;
     assert_eq!(response2.status(), Status::Ok);
@@ -219,13 +235,16 @@ async fn test_namespace_mismatch() {
         .await
         .expect("valid rocket instance");
 
+    let export_input = Mm2Input {
+        pattern: "$x".to_string(),
+        template: "($x)".to_string(),
+    };
+
     // Path does not start with /test/
     let response = client
-        .post(format!(
-            "/spaces/import/other/space?uri={}",
-            urlencoding::encode("http://example.com/data")
-        ))
+        .post("/spaces/export/other/space")
         .header(Header::new("authorization", token.code.clone()))
+        .json(&export_input)
         .dispatch()
         .await;
 

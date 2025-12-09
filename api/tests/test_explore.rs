@@ -6,7 +6,9 @@ use rocket::http::{Header, Status};
 use rocket::local::asynchronous::Client;
 use serial_test::serial;
 
-use crate::integrations::common;
+#[path = "common.rs"]
+mod common;
+// use crate::common;
 
 #[tokio::test]
 #[serial]
