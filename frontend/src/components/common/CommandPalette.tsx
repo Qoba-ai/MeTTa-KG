@@ -92,7 +92,7 @@ const highlight = (text: string, query: string) => {
   const parts = text.split(new RegExp(`(${escapeRegExp(query)})`, "ig"));
   return (
     <>
-      {parts.map((part, i: number) =>
+      {parts.map((part) =>
         part.toLowerCase() === query.toLowerCase() ? (
           <mark
             class="bg-primary/20 text-primary font-semibold rounded px-0.5"
