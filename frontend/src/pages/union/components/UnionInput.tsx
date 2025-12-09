@@ -7,7 +7,8 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/Card";
-import { Plus, Trash2 } from "lucide-solid";
+import Plus from "lucide-solid/icons/plus";
+import Trash2 from "lucide-solid/icons/trash-2";
 import NameSpace from "~/pages/index/components/NameSpace";
 
 type Token = {
