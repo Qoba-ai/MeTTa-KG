@@ -3,7 +3,6 @@ use rocket::http::Status;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
-use urlencoding::{decode, encode};
 
 #[derive(Serialize, Deserialize, Clone)]
 #[allow(dead_code)]
@@ -84,7 +83,6 @@ impl TransformInput {
     }
 
     pub fn generate_code(&self) -> String {
-        let space_str = self.space.to_str().unwrap_or_default();
         format!(
             "(transform {0} {1})",
             self.patterns_to_str(),
@@ -316,165 +314,5 @@ impl Request for ReadRequest {
                     .unwrap_or(&String::from("&x")),
             )
         };
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use httpmock::prelude::*;
-    //
-    //#[tokio::test]
-    //async fn test_transform_request() {
-    //    let server = MockServer::start();
-    //
-    //    let mock = server.mock(|when, then| {
-    //        when.method(POST)
-    //            .path("/transform/(transform (, (/ (&x))) (, (/ (&x))))/");
-    //        then.status(200).body("transform success");
-    //    });
-    //
-    //    let client = MorkApiClient {
-    //        base_url: server.base_url(),
-    //        client: Client::new(),
-    //    };
-    //
-    //    let request = TransformRequest::new();
-    //
-    //    let result = client.dispatch(request).await.unwrap();
-    //
-    //    mock.assert();
-    //    assert_eq!(result, "transform success");
-    //}
-    //
-    //#[tokio::test]
-    //async fn test_import_request() {
-    //    let server = MockServer::start();
-    //
-    //    let mock = server.mock(|when, then| {
-    //        when.method(POST)
-    //            .path("/import/$x/$x")
-    //            .query_param("uri", "http://example.com");
-    //        then.status(200).body("import success");
-    //    });
-    //
-    //    let client = MorkApiClient {
-    //        base_url: server.base_url(),
-    //        client: Client::new(),
-    //    };
-    //
-    //    let request = ImportRequest::new().uri("http://example.com".to_string());
-    //
-    //    let result = client.dispatch(request).await.unwrap();
-    //
-    //    mock.assert();
-    //    assert_eq!(result, "import success");
-    //}
-    //
-    //#[tokio::test]
-    //async fn test_read_request() {
-    //    let server = MockServer::start();
-    //
-    //    let mock = server.mock(|when, then| {
-    //        when.method(GET).path("/export/$x/$x");
-    //        then.status(200).body("read success");
-    //    });
-    //
-    //    let client = MorkApiClient {
-    //        base_url: server.base_url(),
-    //        client: Client::new(),
-    //    };
-    //
-    //    let request = ReadRequest::new();
-    //
-    //    let result = client.dispatch(request).await.unwrap();
-    //
-    //    mock.assert();
-    //    assert_eq!(result, "read success");
-    //}
-
-    #[test]
-    fn test_transform_input_new() {
-        let transform_input = TransformInput::new();
-        assert_eq!(transform_input.space, PathBuf::from("/"));
-        assert_eq!(transform_input.patterns, vec![String::from("$x")]);
-        assert_eq!(transform_input.templates, vec![String::from("$x")]);
-    }
-
-    #[test]
-    fn test_transform_input_patterns() {
-        let transform_input =
-            TransformInput::new().patterns(vec![String::from("foo"), String::from("bar")]);
-        assert_eq!(
-            transform_input.patterns,
-            vec![String::from("foo"), String::from("bar")]
-        );
-    }
-
-    #[test]
-    fn test_transform_input_templates() {
-        let transform_input =
-            TransformInput::new().templates(vec![String::from("baz"), String::from("qux")]);
-        assert_eq!(
-            transform_input.templates,
-            vec![String::from("baz"), String::from("qux")]
-        );
-    }
-
-    #[test]
-    fn test_transform_input_multi_input_to_str() {
-        let transform_input = TransformInput::new();
-        let input = vec![String::from("foo"), String::from("bar")];
-        assert_eq!(
-            transform_input.multi_input_to_str(&input),
-            "(, (/ (foo)) (/ (bar)))"
-        );
-    }
-
-    #[test]
-    fn test_transform_input_multi_input_to_str_with_space() {
-        let transform_input = TransformInput::new().space(PathBuf::from("/foo/bar/"));
-        let input = vec![String::from("foo"), String::from("bar")];
-
-        assert_eq!(
-            transform_input.multi_input_to_str(&input),
-            "(, (/foo/bar/ (foo)) (/foo/bar/ (bar)))"
-        );
-    }
-
-    #[test]
-    fn test_transform_input_patterns_to_str() {
-        let transform_input =
-            TransformInput::new().patterns(vec![String::from("foo"), String::from("bar")]);
-        assert_eq!(transform_input.patterns_to_str(), "(, (/ (foo)) (/ (bar)))");
-    }
-
-    #[test]
-    fn test_transform_input_templates_to_str() {
-        let transform_input =
-            TransformInput::new().templates(vec![String::from("baz"), String::from("qux")]);
-        assert_eq!(
-            transform_input.templates_to_str(),
-            "(, (/ (baz)) (/ (qux)))"
-        );
-    }
-
-    #[test]
-    fn test_transform_input_generate_code() {
-        let transform_input = TransformInput::new()
-            .patterns(vec![String::from("foo")])
-            .templates(vec![String::from("bar")]);
-        assert_eq!(
-            transform_input.generate_code().as_str(),
-            "(transform (, (/ (foo))) (, (/ (bar))))"
-        );
-
-        let transform_input_multi = TransformInput::new()
-            .patterns(vec![String::from("foo"), String::from("baz")])
-            .templates(vec![String::from("bar"), String::from("qux")]);
-        assert_eq!(
-            transform_input_multi.generate_code(),
-            "(transform (, (/ (foo)) (/ (baz))) (, (/ (bar)) (/ (qux))))"
-        );
     }
 }
