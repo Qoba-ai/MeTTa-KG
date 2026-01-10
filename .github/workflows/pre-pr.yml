@@ -32,8 +32,8 @@ jobs:
       #   run: cd frontend && pnpm test
 
       - name: Lint backend
-        run: cd backend && cargo clippy -- -D warnings
+        run: cd api && cargo clippy -- -D warnings
       - name: Format backend
-        run: cd backend && cargo fmt -- --check
+        run: cd api && cargo fmt -- --check
       - name: Test backend
-        run: cd backend && cargo test --all
+        run: cd api && cargo test --all
