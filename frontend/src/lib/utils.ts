@@ -5,10 +5,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/////////////////////
-// Transform Page //
-///////////////////
-
 export interface SExpr {
   type: "atom" | "list";
   value?: string;
@@ -87,7 +83,7 @@ function parseTokens(tokens: string[]): SExpr | null {
   return parseNext();
 }
 
-function parseSExpression(input: string): SExpr {
+export function parseSExpression(input: string): SExpr {
   const tokens = tokenize(input);
   const result = parseTokens(tokens);
   if (!result) {
@@ -130,7 +126,7 @@ function parseCommaList(expr: SExpr): string[] {
   return expr.children.slice(1).map((child) => serializeSExpr(child));
 }
 
-function serializeSExpr(expr: SExpr): string {
+export function serializeSExpr(expr: SExpr): string {
   if (expr.type === "atom") {
     return expr.value!;
   }
