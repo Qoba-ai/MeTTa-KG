@@ -13,7 +13,8 @@ import { formatedNamespace } from "~/lib/state";
 import { getAllTokens } from "~/lib/api";
 import { rootToken, tokenRootNamespace } from "~/lib/state";
 import { isLoading, isPolling, executeTransform, stopPolling } from "./lib";
-import { Copy, Check } from "lucide-solid";
+import Copy from "lucide-solid/icons/copy";
+import Check from "lucide-solid/icons/check";
 import { TransformInput as TransformInputComponent } from "./components/TransformInput";
 import { Item } from "~/lib/types";
 
@@ -119,7 +120,7 @@ const TransformPage: Component = () => {
                 removeItem={removePattern}
                 updateItem={updatePattern}
                 accentColor="primary"
-                rootToken={rootToken()}
+                rootToken={rootToken() ? true : false}
                 tokenRootNamespace={tokenRootNamespace}
                 getAllTokens={getAllTokens}
               />
@@ -131,7 +132,7 @@ const TransformPage: Component = () => {
                 removeItem={removeTemplate}
                 updateItem={updateTemplate}
                 accentColor="primary"
-                rootToken={rootToken()}
+                rootToken={rootToken() ? true : false}
                 tokenRootNamespace={tokenRootNamespace}
                 getAllTokens={getAllTokens}
               />
