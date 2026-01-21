@@ -13,7 +13,7 @@ import {
   CommandItem,
   CommandList,
 } from "~/components/ui/Command";
-import { setNamespace, addTab } from "~/lib/state";
+import { addTab } from "~/lib/state";
 
 import Folder from "lucide-solid/icons/folder";
 import Home from "lucide-solid/icons/home";
@@ -57,7 +57,7 @@ export default function NameSpace(props: NameSpaceProps) {
 
     const newNamespace = props.namespace.slice(0, targetIndex + 1);
 
-    setNamespace(newNamespace);
+    props.setNamespace(newNamespace);
 
     setContextMenu(null);
   };
@@ -150,7 +150,7 @@ export default function NameSpace(props: NameSpaceProps) {
     if (modifierKeyPressed()) {
       addTab(["", ...pathArray]);
     } else {
-      setNamespace(["", ...pathArray]);
+      props.setNamespace(["", ...pathArray]);
     }
     setIsExploring(false);
     setModifierKeyPressed(false);
