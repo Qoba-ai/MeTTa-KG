@@ -24,18 +24,21 @@ pub struct CSVParserParameters {
 #[derive(FromForm, Clone)]
 pub struct NTParserParameters {
     // TODO: figure out how to deal with this normally empty struct
+    #[allow(dead_code)]
     pub dummy: String,
 }
 
 #[derive(FromForm, Clone)]
 pub struct N3ParserParameters {
     // TODO: figure out how to deal with this normally empty struct
+    #[allow(dead_code)]
     pub dummy: String,
 }
 
 #[derive(FromForm, Clone)]
 pub struct JSONLDParserParameters {
     // TODO: figure out how to deal with this normally empty struct
+    #[allow(dead_code)]
     pub dummy: String,
 }
 

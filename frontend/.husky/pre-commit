@@ -1,12 +1,12 @@
-# # frontend
-# cd ./frontend
-# pnpm prettier:check
-# pnpm lint
-#
-#
-# # rust api
-# cd ../api
-#
-# cargo fmt --all -- --check
-# cargo clippy --all-targets --all-features -- -D warnings
-# cargo test --all
+# frontend
+cd ./frontend
+pnpm prettier:check
+pnpm lint
+
+
+# rust api
+cd ../api
+
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all
