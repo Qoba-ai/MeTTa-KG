@@ -19,7 +19,8 @@ import {
   stopPolling,
   setOperationInput,
 } from "./lib";
-import { Copy, Check } from "lucide-solid";
+import Copy from "lucide-solid/icons/copy";
+import Check from "lucide-solid/icons/check";
 import {
   Item,
   CompositionInput as CompositionInputComponent,
@@ -147,7 +148,7 @@ const CompositionPage: Component = () => {
                 removeItem={removeSource}
                 updateItem={updateSource}
                 accentColor="primary"
-                rootToken={rootToken()}
+                rootToken={rootToken() ? true : false}
                 tokenRootNamespace={tokenRootNamespace}
                 getAllTokens={getAllTokens}
               />
@@ -159,7 +160,7 @@ const CompositionPage: Component = () => {
                 removeItem={removeTarget}
                 updateItem={updateTarget}
                 accentColor="primary"
-                rootToken={rootToken()}
+                rootToken={rootToken() ? true : false}
                 tokenRootNamespace={tokenRootNamespace}
                 getAllTokens={getAllTokens}
               />

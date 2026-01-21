@@ -17,9 +17,10 @@ import Download from "lucide-solid/icons/download";
 import Key from "lucide-solid/icons/key";
 import NotImplemented from "~/components/common/NotImplemented";
 import Trash2 from "lucide-solid/icons/trash-2";
+import CommandPalette from "~/components/common/CommandPalette";
 import UnionPage from "../union/Union";
 
-const sidebarSections = [
+export const sidebarSections = [
   {
     title: "Inspection and Visualization",
     items: [
@@ -136,17 +137,19 @@ const AppLayout = (
   const [activeTab, setActiveTab] = createSignal("explore");
 
   return (
-    <div class="w-full h-screen flex ">
-      <div class="flex h-full">
-        <Sidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          sidebarSections={sidebarSections}
-        />
-      </div>
+    <>
+      <CommandPalette />
+      <div class="w-full h-screen flex ">
+        <div class="flex h-full">
+          <Sidebar
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            sidebarSections={sidebarSections}
+          />
+        </div>
 
-      <div class="w-full h-full flex flex-col">
-        {/* <div class="flex items-center justify-between w-full h-14 shadow-lg shadow-[hsla(var(--secondary-foreground)/0.05)]">
+        <div class="w-full h-full flex flex-col">
+          {/* <div class="flex items-center justify-between w-full h-14 shadow-lg shadow-[hsla(var(--secondary-foreground)/0.05)]">
                     <div class="flex items-center">
                         <span class={`text-3xl font-bold text-[hsla(var(--secondary-foreground)/0.7)] ml-10`}>MeTTa-KG</span>
                         <div class="ml-24">
@@ -154,11 +157,14 @@ const AppLayout = (
                         </div>
                     </div>
                 </div> */}
-        <Header />
+          <Header />
 
-        <div class="flex-1 w-full">{props.children}</div>
+          <div class="flex-1 w-full pl-4 pt-2 overflow-y-scroll">
+            {props.children}
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 

@@ -32,7 +32,8 @@ export enum CSVParseDirection {
 
 export async function request<T>(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  authOverride?: string | null
 ): Promise<T> {
   const auth = rootToken();
 
@@ -42,13 +43,16 @@ export async function request<T>(
 
   const headers = {
     ...options.headers,
-    Authorization: auth,
+    Authorization: authOverride || auth,
   };
 
   const finalUrl = new URL(url, API_URL);
   const response = await fetch(finalUrl, { ...options, headers });
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("Unauthorized");
+    }
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
       const errorData = await response.json();
@@ -73,7 +77,6 @@ export async function request<T>(
 export const transform = (
   input: Mm2InputMultiWithNamespace
 ): Promise<boolean> => {
-  console.log("transform input", input);
   return request<boolean>("/spaces/transform", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -337,14 +340,18 @@ export const createToken = async (
     parent: 0,
   };
 
-  return request<Token>("/tokens", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: root,
+  return request<Token>(
+    "/tokens",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: root,
+      },
+      body: JSON.stringify(newToken),
     },
-    body: JSON.stringify(newToken),
-  });
+    root
+  );
 };
 
 export const refreshCodes = async (

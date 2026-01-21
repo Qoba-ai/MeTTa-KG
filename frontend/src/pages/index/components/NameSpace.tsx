@@ -13,6 +13,7 @@ import {
   CommandItem,
   CommandList,
 } from "~/components/ui/Command";
+import { setNamespace, addTab } from "~/lib/state";
 
 import Folder from "lucide-solid/icons/folder";
 import Home from "lucide-solid/icons/home";
@@ -24,7 +25,7 @@ type TreeNode = {
   description: string;
 };
 
-type TreeMap = Map<string, TreeMap>;
+type NamespaceTreeNode = Map<string, NamespaceTreeNode>;
 
 type Token = {
   namespace: string;
@@ -43,13 +44,24 @@ export default function NameSpace(props: NameSpaceProps) {
   const [isExploring, setIsExploring] = createSignal(false);
   const [availablePaths, setAvailablePaths] = createSignal<TreeNode[]>([]);
   const [isLoading, setIsLoading] = createSignal(false);
+  const [contextMenu, setContextMenu] = createSignal<{
+    x: number;
+    y: number;
+    path: string;
+  } | null>(null);
+  const [modifierKeyPressed, setModifierKeyPressed] = createSignal(false);
 
   const navigateTo = (index: number) => {
     const minIndex = props.tokenRootNamespace().length - 1;
     const targetIndex = Math.max(index, minIndex);
-    const newNs = props.namespace.slice(0, targetIndex + 1);
-    props.setNamespace(newNs);
+
+    const newNamespace = props.namespace.slice(0, targetIndex + 1);
+
+    setNamespace(newNamespace);
+
+    setContextMenu(null);
   };
+
   const discoverPaths = async () => {
     if (!props.rootToken) return;
 
@@ -70,7 +82,7 @@ export default function NameSpace(props: NameSpaceProps) {
         allTokens.map((t) => [normalizePath(t.namespace), t.description])
       );
 
-      const treeRoot: TreeMap = new Map();
+      const treeRoot = new Map<string, NamespaceTreeNode>();
       const descendantPaths = new Set<string>();
       for (const t of allTokens) {
         if (
@@ -89,14 +101,18 @@ export default function NameSpace(props: NameSpaceProps) {
         const parts = relativePath.split("/").filter((p) => p.length > 0);
         parts.forEach((part) => {
           if (!currentNode.has(part)) {
-            currentNode.set(part, new Map());
+            currentNode.set(part, new Map<string, NamespaceTreeNode>());
           }
           currentNode = currentNode.get(part)!;
         });
       });
 
       const flattenedTree: TreeNode[] = [];
-      const flatten = (node: TreeMap, path: string[], parentPrefix: string) => {
+      const flatten = (
+        node: NamespaceTreeNode,
+        path: string[],
+        parentPrefix: string
+      ) => {
         const childrenArray = Array.from(node.entries());
         childrenArray.forEach(([name, children], index) => {
           const isLast = index === childrenArray.length - 1;
@@ -108,7 +124,6 @@ export default function NameSpace(props: NameSpaceProps) {
             name,
             fullPath,
             linePrefix: parentPrefix + connector,
-            // Look up the description using the same normalization
             description: descriptionMap.get(normalizePath(fullPath)) || "",
           });
 
@@ -131,9 +146,28 @@ export default function NameSpace(props: NameSpaceProps) {
 
   const selectPath = (fullPath: string) => {
     const pathArray = fullPath.split("/").filter((p) => p.length > 0);
-    props.setNamespace(["", ...pathArray]);
+
+    if (modifierKeyPressed()) {
+      addTab(["", ...pathArray]);
+    } else {
+      setNamespace(["", ...pathArray]);
+    }
     setIsExploring(false);
+    setModifierKeyPressed(false);
   };
+
+  const handleRightClick = (e: MouseEvent, fullPath: string) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, path: fullPath });
+  };
+
+  const openInNewTab = (fullPath: string) => {
+    const pathArray = fullPath.split("/").filter((p) => p.length > 0);
+    addTab(["", ...pathArray]);
+    setContextMenu(null);
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
 
   return (
     <>
@@ -189,6 +223,10 @@ export default function NameSpace(props: NameSpaceProps) {
                   <CommandItem
                     class="flex justify-between items-center w-full"
                     onSelect={() => selectPath(item.fullPath)}
+                    onMouseDown={(e: MouseEvent) => {
+                      setModifierKeyPressed(e.ctrlKey || e.metaKey);
+                    }}
+                    onContextMenu={(e) => handleRightClick(e, item.fullPath)}
                   >
                     <div class="flex items-center font-mono text-sm whitespace-pre">
                       <span class="text-muted-foreground">
@@ -211,6 +249,28 @@ export default function NameSpace(props: NameSpaceProps) {
             </Show>
           </CommandList>
         </CommandDialog>
+
+        {/* Context Menu */}
+        <Show when={contextMenu()}>
+          {(menu) => (
+            <div
+              class="fixed bg-neutral-800 border border-neutral-700 rounded-md shadow-lg z-50 py-1"
+              style={{ left: `${menu().x}px`, top: `${menu().y}px` }}
+            >
+              <button
+                class="block w-full px-4 py-2 text-left text-sm text-neutral-300 hover:bg-neutral-700 hover:text-white"
+                onClick={() => openInNewTab(menu().path)}
+              >
+                Open in New Tab
+              </button>
+            </div>
+          )}
+        </Show>
+
+        {/* Click outside to close context menu */}
+        <Show when={contextMenu()}>
+          <div class="fixed inset-0 z-40" onClick={closeContextMenu} />
+        </Show>
       </div>
     </>
   );

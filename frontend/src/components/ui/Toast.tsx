@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onCleanup } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import X from "lucide-solid/icons/x";
 
@@ -13,6 +13,7 @@ interface ToastOptions {
 
 interface ToastData extends ToastOptions {
   id: number;
+  timerId?: number;
 }
 
 let toastId = 0;
@@ -20,14 +21,21 @@ const [toasts, setToasts] = createSignal<ToastData[]>([]);
 
 export function showToast(options: ToastOptions) {
   const id = ++toastId;
-  setToasts((prev) => [...prev, { ...options, id }]);
-  const duration = options.duration ?? 5000; // Increased default duration
-  const timer = setTimeout(() => removeToast(id), duration);
-  onCleanup(() => clearTimeout(timer));
+  const duration = options.duration ?? 5000;
+
+  const timerId = setTimeout(() => removeToast(id), duration);
+
+  setToasts((prev) => [...prev, { ...options, id, timerId }]);
 }
 
 export function removeToast(id: number) {
-  setToasts((prev) => prev.filter((t) => t.id !== id));
+  setToasts((prev) => {
+    const toastToRemove = prev.find((t) => t.id === id);
+    if (toastToRemove?.timerId) {
+      clearTimeout(toastToRemove.timerId);
+    }
+    return prev.filter((t) => t.id !== id);
+  });
 }
 
 export function ToastViewport() {
