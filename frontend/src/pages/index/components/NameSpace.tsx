@@ -49,6 +49,7 @@ export default function NameSpace(props: NameSpaceProps) {
     y: number;
     path: string;
   } | null>(null);
+  const [modifierKeyPressed, setModifierKeyPressed] = createSignal(false);
 
   const navigateTo = (index: number) => {
     const minIndex = props.tokenRootNamespace().length - 1;
@@ -145,8 +146,16 @@ export default function NameSpace(props: NameSpaceProps) {
 
   const selectPath = (fullPath: string) => {
     const pathArray = fullPath.split("/").filter((p) => p.length > 0);
-    addTab(["", ...pathArray]);
+
+    if (modifierKeyPressed()) {
+      console.log("CTRL pressed");
+      addTab(["", ...pathArray]);
+    } else {
+      console.log("CTRL not pressed");
+      setNamespace(["", ...pathArray]);
+    }
     setIsExploring(false);
+    setModifierKeyPressed(false);
   };
 
   const handleRightClick = (e: MouseEvent, fullPath: string) => {
@@ -216,6 +225,9 @@ export default function NameSpace(props: NameSpaceProps) {
                   <CommandItem
                     class="flex justify-between items-center w-full"
                     onSelect={() => selectPath(item.fullPath)}
+                    onMouseDown={(e: MouseEvent) => {
+                      setModifierKeyPressed(e.ctrlKey || e.metaKey);
+                    }}
                     onContextMenu={(e) => handleRightClick(e, item.fullPath)}
                   >
                     <div class="flex items-center font-mono text-sm whitespace-pre">
