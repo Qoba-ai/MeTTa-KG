@@ -25,27 +25,26 @@ const NamespaceTabs: Component<NamespaceTabsProps> = (props) => {
   };
 
   return (
-    <div
-      class={`flex items-center bg-neutral-900 border-b border-neutral-700 ${props.class || ""}`}
-    >
+    <div class={`flex items-center bg-neutral-900 ${props.class || ""}`}>
       {/* Container with fixed width constraints */}
-      <div class="flex-1 w-0 overflow-hidden relative">
-        <div class="flex items-center overflow-x-auto scrollbar-hide hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-600/50 hover:scrollbar-thumb-neutral-500/70">
+      <div class="flex-1 w-0 overflow-hidden relative h-full">
+        <div class="flex items-center overflow-x-auto scrollbar-hide hover:scrollbar-thin scrollbar-track-transparent scrollbar-thumb-neutral-600/50 hover:scrollbar-thumb-neutral-500/70 h-full">
           <For each={tabs()}>
             {(tab) => (
               <button
                 onClick={() => setActiveTabId(tab.id)}
                 class={`
-                  flex items-center gap-2 px-4 py-2 text-sm whitespace-nowrap border-r border-neutral-700
-                  transition-colors min-w-0 max-w-[200px] group flex-shrink-0
+                  flex items-center gap-2 px-6 py-2 text-sm
+                  transition-colors min-w-[150px] max-w-[250px] group flex-shrink-0 h-full
+                  border-r border-neutral-700
                   ${
                     activeTabId() === tab.id
-                      ? "bg-neutral-800 text-white border-b-2 border-primary"
+                      ? "bg-neutral-800 text-white border-t border-t-primary/70"
                       : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50"
                   }
                 `}
               >
-                <span class="truncate">{tab.label}</span>
+                <span class="flex-1 text-center truncate">{tab.label}</span>
                 {tabs().length > 1 && (
                   <X
                     class="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400 flex-shrink-0"
@@ -77,36 +76,6 @@ const NamespaceTabs: Component<NamespaceTabsProps> = (props) => {
         >
           <Plus class="w-4 h-4" />
         </button>
-
-        {/* Links Section */}
-        <div class="flex items-center gap-4 px-6 flex-shrink-0">
-          <a
-            href="https://github.com/trueagi-io/MORK"
-            class="uppercase text-neutral-400 hover:text-primary hover:underline text-sm"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            MORK
-          </a>
-          <span class="text-primary">·</span>
-          <a
-            href="https://github.com/trueagi-io/MORK/wiki"
-            class="uppercase text-neutral-400 hover:text-primary hover:underline text-sm"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            DOCS
-          </a>
-          <span class="text-primary">·</span>
-          <a
-            href="https://chat.singularitynet.io/chat/channels/mork"
-            class="uppercase text-neutral-400 hover:text-primary hover:underline text-sm"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            COMMUNITY
-          </a>
-        </div>
       </div>
     </div>
   );
