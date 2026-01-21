@@ -74,7 +74,6 @@ export async function request<T>(
 export const transform = (
   input: Mm2InputMultiWithNamespace
 ): Promise<boolean> => {
-  console.log("transform input", input);
   return request<boolean>("/spaces/transform", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

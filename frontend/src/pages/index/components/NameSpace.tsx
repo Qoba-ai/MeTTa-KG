@@ -148,10 +148,8 @@ export default function NameSpace(props: NameSpaceProps) {
     const pathArray = fullPath.split("/").filter((p) => p.length > 0);
 
     if (modifierKeyPressed()) {
-      console.log("CTRL pressed");
       addTab(["", ...pathArray]);
     } else {
-      console.log("CTRL not pressed");
       setNamespace(["", ...pathArray]);
     }
     setIsExploring(false);
