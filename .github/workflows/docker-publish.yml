@@ -16,8 +16,8 @@ on:
 env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
-  # github.repository as <account>/<repo>
-  IMAGE_NAME: ${{ github.repository }}
+  # Override to publish under qoba-ai organization
+  IMAGE_NAME: qoba-ai/metta-kg
 
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
       # Extract metadata (tags, labels) for Docker - API
       # https://github.com/docker/metadata-action

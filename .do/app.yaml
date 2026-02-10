@@ -4,7 +4,7 @@ services:
     # Use pre-built image from GitHub Container Registry
     image:
       registry_type: GHCR
-      repository: surafelfikru/metta-kg-api
+      repository: qoba-ai/metta-kg-api
       tag: main
       
     # HTTP configuration
@@ -68,7 +68,7 @@ services:
     # Use pre-built image from GitHub Container Registry
     image:
       registry_type: GHCR
-      repository: surafelfikru/metta-kg-mork
+      repository: qoba-ai/metta-kg-mork
       tag: main
       
     # HTTP configuration
