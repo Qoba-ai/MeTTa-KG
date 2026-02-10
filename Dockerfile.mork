@@ -8,8 +8,11 @@ WORKDIR /app
 
 RUN git checkout server
 
-# Clone the PathMap dependency to the absolute path expected by the manifest
-RUN git clone --branch master https://github.com/Adam-Vandervorst/PathMap.git /PathMap
+# Clone the PathMap dependency to the absolute path expected by the manifest  
+# Use master but go back before the breaking graft() API change
+RUN git clone --branch master https://github.com/Adam-Vandervorst/PathMap.git /PathMap && \
+    cd /PathMap && \
+    git checkout HEAD~10
 
 # Use nightly Rust which satisfies all MSRV requirements
 RUN cargo build --release -p mork-server --bin mork-server
