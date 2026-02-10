@@ -1,4 +1,4 @@
-FROM rust:1.88-bookworm
+FROM rust:1.86-bookworm
 
 RUN apt-get update && apt-get install -y git cmake
 
@@ -10,6 +10,9 @@ RUN git checkout server
 
 # Clone the PathMap dependency to the absolute path expected by the manifest
 RUN git clone --branch master https://github.com/Adam-Vandervorst/PathMap.git /PathMap
+
+# Pin problematic dependencies to versions compatible with Rust 1.86
+RUN cargo update -p fast-slice-utils --precise 0.1.0 || true
 
 RUN cargo build --release -p mork-server --bin mork-server
 
