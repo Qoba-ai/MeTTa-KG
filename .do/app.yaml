@@ -1,0 +1,88 @@
+name: metta-kg
+services:
+  - name: api
+    # Use pre-built image from GitHub Container Registry
+    image:
+      registry_type: GHCR
+      repository: qoba-ai/metta-kg-api
+      tag: main
+      
+    # HTTP configuration
+    http_port: 8000
+
+    # Environment variables
+    envs:
+      - key: POSTGRES_USER
+        scope: RUN_TIME
+        value: metta-kg-api
+      - key: POSTGRES_PASSWORD
+        scope: RUN_TIME
+        type: SECRET
+      - key: POSTGRES_DB
+        scope: RUN_TIME
+        value: metta-kg
+      - key: POSTGRES_HOST
+        scope: RUN_TIME
+        value: db-postgresql-fra1-09856-do-user-17508861-0.m.db.ondigitalocean.com
+      - key: POSTGRES_PORT
+        scope: RUN_TIME
+        value: "25060"
+      - key: METTA_KG_DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: METTA_KG_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: METTA_KG_MORK_URL
+        scope: RUN_TIME
+        value: http://mork:8001
+      - key: METTA_KG_ORIGIN_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+      - key: METTA_KG_ADDRESS
+        scope: RUN_TIME
+        value: "0.0.0.0"
+      - key: METTA_KG_PORT
+        scope: RUN_TIME
+        value: "8000"
+
+    # TODO: Health check
+    # health_check:
+    #   http_path: /health
+    #   initial_delay_seconds: 30
+    #   period_seconds: 10
+    #   timeout_seconds: 5
+    #   success_threshold: 1
+    #   failure_threshold: 3
+
+    # Instance configuration
+    instance_count: 1
+    instance_size_slug: basic-xxs
+
+    # Public routing - API is accessible at /api
+    routes:
+      - path: /api
+        preserve_path_prefix: false
+
+  - name: mork
+    # Use pre-built image from GitHub Container Registry
+    image:
+      registry_type: GHCR
+      repository: qoba-ai/metta-kg-mork
+      tag: main
+      
+    # HTTP configuration
+    http_port: 8001
+
+    # Environment variables
+    envs:
+      - key: MORK_SERVER_ADDR
+        scope: RUN_TIME
+        value: "0.0.0.0"
+      - key: MORK_SERVER_PORT
+        scope: RUN_TIME
+        value: "8001"
+
+    # Instance configuration
+    instance_count: 1
+    instance_size_slug: basic-xs
