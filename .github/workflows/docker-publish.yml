@@ -74,21 +74,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-mork
 
-      - name: Use PathMap SSH key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.PATHMAP_DEPLOY }}
-
       # Build and push API Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
-      - name: Debug SSH Agent
-        run: ssh-add -l
-        
       - name: Build and push API Docker image
         id: build-and-push-api
-        env: 
-          CARGO_NET_GIT_FETCH_WITH_CLI: true
-          DOCKER_BUILDKIT: 1
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
           context: .
@@ -98,8 +87,6 @@ jobs:
           labels: ${{ steps.meta-api.outputs.labels }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
-          ssh: |
-            default=${{ env.SSH_AUTH_SOCK }}
             
       - name: Build and push Mork Docker image
         id: build-and-push-mork
