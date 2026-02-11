@@ -2,14 +2,12 @@ FROM rustlang/rust:nightly-bookworm
 
 RUN apt-get update && apt-get install -y git cmake
 
-RUN git clone https://github.com/trueagi-io/MORK.git /app
+RUN git clone --branch fix/server-graft-api-update https://github.com/icog-labs-dev/MORK.git /app
 
 WORKDIR /app
 
-RUN git checkout server
-
 # Clone the PathMap dependency to the absolute path expected by the manifest
-RUN git clone --branch master https://github.com/Adam-Vandervorst/PathMap.git /PathMap
+RUN git clone --branch stable https://github.com/Adam-Vandervorst/PathMap.git /PathMap
 
 RUN cargo build --release -p mork-server --bin mork-server
 
