@@ -8,7 +8,7 @@ services:
     image:
       registry: surafelfikru
       registry_type: GHCR
-      registry_credentials: ${GHCR_TOKEN}
+      registry_credentials: surafelfikru:${GHCR_TOKEN}
       repository: metta-kg-api
       tag: latest
 
@@ -74,7 +74,7 @@ services:
     image:
       registry: surafelfikru
       registry_type: GHCR
-      registry_credentials: ${GHCR_TOKEN}
+      registry_credentials: surafelfikru:${GHCR_TOKEN}
       repository: metta-kg-mork
       tag: latest
 
