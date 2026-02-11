@@ -6,8 +6,10 @@ services:
   - name: api
     # Use pre-built image from GitHub Container Registry
     image:
+      registry: surafelfikru
       registry_type: GHCR
-      repository: surafelfikru/metta-kg-api
+      registry_credentials: ${GHCR_TOKEN}
+      repository: metta-kg-api
       tag: latest
 
     # HTTP configuration
@@ -70,8 +72,10 @@ services:
   - name: mork
     # Use pre-built image from GitHub Container Registry
     image:
+      registry: surafelfikru
       registry_type: GHCR
-      repository: surafelfikru/metta-kg-mork
+      registry_credentials: ${GHCR_TOKEN}
+      repository: metta-kg-mork
       tag: latest
 
     # HTTP configuration
