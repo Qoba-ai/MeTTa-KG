@@ -35,20 +35,10 @@
 # ============================================================================
 
 name: metta-kg
+region: fra1
 alerts:
   - rule: DEPLOYMENT_FAILED
   - rule: DOMAIN_FAILED
-
-# Ingress configuration - defines public routing
-# Only the API service is publicly accessible
-ingress:
-  rules:
-    - component:
-        name: api
-      match:
-        path:
-          prefix: /
-
 services:
   - name: api
     # Use pre-built image from GitHub Container Registry
@@ -87,7 +77,7 @@ services:
         value: "require" # Keep as 'require' for DigitalOcean managed databases
 
       # Service Configuration - INTERNAL
-      # This should generally stay as-is for internal service communication
+      # Internal service discovery: http://<service-name>:<internal-port>
       - key: METTA_KG_MORK_URL
         scope: RUN_TIME
         value: http://mork:8001
@@ -96,7 +86,7 @@ services:
       # REQUIRED: Update to match your frontend deployment URL
       - key: METTA_KG_FRONTEND_URL
         scope: RUN_TIME
-        value: "https://metta-kg.vercel.app" # CHANGE ME: Your Vercel frontend URL
+        value: "https://metta-kg-ruby.vercel.app" # CHANGE ME: Your Vercel frontend URL
 
     # Health check
     health_check:
@@ -120,9 +110,10 @@ services:
       repository: metta-kg-mork
       tag: latest
 
-    # HTTP configuration
-    # Mork is an internal service only, but needs http_port for service discovery
-    http_port: 8001
+    # Internal-only service: uses internal_ports (no public ingress route)
+    # Other components reach Mork via http://mork:8001
+    internal_ports:
+      - 8001
 
     # Environment variables
     envs:
