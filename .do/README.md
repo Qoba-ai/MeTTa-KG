@@ -7,7 +7,8 @@ Quick guide for deploying MeTTa-KG to DigitalOcean App Platform.
 - DigitalOcean account
 - GitHub repository with container images published to GHCR
 - DigitalOcean managed PostgreSQL database
-- `doctl` CLI (optional, for command-line deployment)
+- `doctl` CLI (for automated deployment)
+- `uv` Python package manager (for automated deployment script)
 
 ## Architecture
 
@@ -17,6 +18,125 @@ Quick guide for deploying MeTTa-KG to DigitalOcean App Platform.
 - **Frontend**: SolidJS app (deployed separately on Vercel)
 
 ## Quick Start
+
+### Option A: Automated Deployment (Recommended)
+
+Use the `deploy.py` script for one-command deployment.
+
+#### 1. Setup Prerequisites
+
+**Install doctl CLI**:
+
+```bash
+# macOS
+brew install doctl
+
+# Linux
+wget https://github.com/digitalocean/doctl/releases/download/v1.108.0/doctl-1.108.0-linux-amd64.tar.gz
+tar xf doctl-1.108.0-linux-amd64.tar.gz
+sudo mv doctl /usr/local/bin
+
+# Windows
+winget install DigitalOcean.doctl
+```
+
+**Authenticate doctl**:
+
+```bash
+doctl auth init
+# Paste your DigitalOcean API token from:
+# https://cloud.digitalocean.com/account/api/tokens
+```
+
+**Install uv** (Python package manager):
+
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+#### 2. Get Your App ID
+
+```bash
+doctl apps list
+# Copy the ID for your metta-kg app
+```
+
+Or from the Dashboard URL: `https://cloud.digitalocean.com/apps/{APP_ID}`
+
+#### 3. Deploy
+
+**Basic deployment** (set password in Dashboard later):
+
+```bash
+uv run .do/deploy.py deploy --app-id <APP_ID> --github-owner <YOUR_USERNAME>
+```
+
+**With password** (automatically sets as encrypted secret):
+
+```bash
+uv run .do/deploy.py deploy \
+  --app-id <APP_ID> \
+  --github-owner arist76 \
+  --postgres-password <PASSWORD>
+```
+
+**With custom database and frontend**:
+
+```bash
+uv run .do/deploy.py deploy \
+  --app-id <APP_ID> \
+  --github-owner arist76 \
+  --postgres-host db-postgresql-fra1-xxxxx.db.ondigitalocean.com \
+  --postgres-port 25060 \
+  --postgres-password <PASSWORD> \
+  --frontend-url https://metta-kg.vercel.app
+```
+
+**Using environment variables**:
+
+```bash
+export DO_APP_ID="your-app-id"
+export GITHUB_OWNER="arist76"
+export POSTGRES_HOST="db-postgresql-fra1-xxxxx.db.ondigitalocean.com"
+export FRONTEND_URL="https://metta-kg.vercel.app"
+
+uv run .do/deploy.py deploy
+# Password can be set in Dashboard or via --postgres-password flag
+```
+
+**Dry run** (preview without deploying):
+
+```bash
+uv run .do/deploy.py deploy --app-id <APP_ID> --github-owner <OWNER> --dry-run
+```
+
+**Validate template**:
+
+```bash
+uv run .do/deploy.py validate
+```
+
+**Note**: If you don't provide `--postgres-password`, you'll need to set it manually in the DigitalOcean Dashboard (Settings → Environment Variables → POSTGRES_PASSWORD).
+
+#### 4. Monitor Deployment
+
+```bash
+# View deployment status
+doctl apps describe <APP_ID>
+
+# View logs
+doctl apps logs <APP_ID>
+```
+
+Or visit: `https://cloud.digitalocean.com/apps/<APP_ID>`
+
+---
+
+### Option B: Manual Deployment
 
 ### 1. Build & Publish Container Images
 

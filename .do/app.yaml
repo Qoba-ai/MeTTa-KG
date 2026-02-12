@@ -100,10 +100,9 @@ services:
     instance_count: 1
     instance_size_slug: basic-xxs
 
-    # Public routing - API is accessible at /api
+    # Public routing - API is accessible at root path
     routes:
-      - path: /api
-        preserve_path_prefix: false
+      - path: /
 
   - name: mork
     # Use pre-built image from GitHub Container Registry
