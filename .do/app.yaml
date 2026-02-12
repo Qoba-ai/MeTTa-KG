@@ -31,6 +31,9 @@ services:
       - key: POSTGRES_PORT
         scope: RUN_TIME
         value: "25060"
+      - key: POSTGRES_SSLMODE
+        scope: RUN_TIME
+        value: "require"
       - key: METTA_KG_DATABASE_URL
         scope: RUN_TIME
         type: SECRET
