@@ -16,8 +16,8 @@ on:
 env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
-  # Explicitly use surafelfikru namespace for container images
-  IMAGE_NAME: surafelfikru/metta-kg
+  # Dynamically use the repository owner's namespace (works across all forks)
+  IMAGE_NAME: ${{ github.repository_owner }}/metta-kg
 
 
 jobs:
@@ -56,8 +56,8 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: surafelfikru
-          password: ${{ secrets.GHCR_TOKEN_SURAFELFIKRU }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # Extract metadata (tags, labels) for Docker - API
       # https://github.com/docker/metadata-action

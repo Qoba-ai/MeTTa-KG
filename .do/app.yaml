@@ -1,3 +1,39 @@
+# ============================================================================
+# MeTTa-KG DigitalOcean App Platform Configuration Template
+# ============================================================================
+#
+# IMPORTANT: This is a template file with placeholders that must be replaced
+# before deployment.
+#
+# REQUIRED CHANGES:
+# 1. Container Registry:
+#    - Replace: ${GITHUB_REGISTRY_OWNER}
+#    - With: Your GitHub username/org (e.g., surafelfikru, qoba-ai, arist76)
+#
+# 2. Database Configuration:
+#    - Update all POSTGRES_* values for your specific database instance
+#    - Get values from: DigitalOcean Dashboard → Databases → Connection Details
+#    - Set POSTGRES_PASSWORD as a SECRET in DigitalOcean Dashboard
+#
+# 3. Frontend URL:
+#    - Update METTA_KG_FRONTEND_URL to your Vercel deployment URL
+#
+# DEPLOYMENT OPTIONS:
+#   Option 1 - Manual:
+#     1. Copy this file: cp .do/app.yaml .do/app.my-env.yaml
+#     2. Replace placeholders in the copy
+#     3. Deploy: doctl apps update APP_ID --spec .do/app.my-env.yaml
+#
+#   Option 2 - Using envsubst:
+#     export GITHUB_REGISTRY_OWNER=your-username
+#     doctl apps update APP_ID --spec <(envsubst < .do/app.yaml)
+#
+#   Option 3 - DigitalOcean Dashboard:
+#     Upload this file and edit values directly in the UI
+#
+# See .do/README.md for detailed deployment instructions.
+# ============================================================================
+
 name: metta-kg
 alerts:
   - rule: DEPLOYMENT_FAILED
@@ -5,8 +41,9 @@ alerts:
 services:
   - name: api
     # Use pre-built image from GitHub Container Registry
+    # REQUIRED: Replace ${GITHUB_REGISTRY_OWNER} with your GitHub username/org
     image:
-      registry: surafelfikru
+      registry: ${GITHUB_REGISTRY_OWNER} # CHANGE ME: e.g., surafelfikru, qoba-ai, arist76
       registry_type: GHCR
       repository: metta-kg-api
       tag: latest
@@ -16,30 +53,39 @@ services:
 
     # Environment variables
     envs:
+      # Database Configuration - ENVIRONMENT SPECIFIC
+      # REQUIRED: Update these values for your deployment environment
+      # Get these from: DigitalOcean Dashboard → Databases → Your Database → Connection Details
       - key: POSTGRES_USER
         scope: RUN_TIME
-        value: doadmin
+        value: doadmin # CHANGE ME: Your database username
       - key: POSTGRES_PASSWORD
         scope: RUN_TIME
-        type: SECRET
+        type: SECRET # REQUIRED: Set this secret in DigitalOcean Dashboard
       - key: POSTGRES_DB
         scope: RUN_TIME
-        value: metta-kg
+        value: metta-kg # CHANGE ME: Your database name
       - key: POSTGRES_HOST
         scope: RUN_TIME
-        value: db-postgresql-fra1-09856-do-user-17508861-0.m.db.ondigitalocean.com
+        value: db-postgresql-fra1-09856-do-user-17508861-0.m.db.ondigitalocean.com # CHANGE ME: Your database host
       - key: POSTGRES_PORT
         scope: RUN_TIME
-        value: "25060"
+        value: "25060" # CHANGE ME: Your database port (usually 25060 for DO managed DBs)
       - key: POSTGRES_SSLMODE
         scope: RUN_TIME
-        value: "require"
+        value: "require" # Keep as 'require' for DigitalOcean managed databases
+
+      # Service Configuration - INTERNAL
+      # This should generally stay as-is for internal service communication
       - key: METTA_KG_MORK_URL
         scope: RUN_TIME
         value: http://mork:8001
+
+      # Frontend Configuration - ENVIRONMENT SPECIFIC
+      # REQUIRED: Update to match your frontend deployment URL
       - key: METTA_KG_FRONTEND_URL
         scope: RUN_TIME
-        value: "https://metta-kg.vercel.app"
+        value: "https://metta-kg.vercel.app" # CHANGE ME: Your Vercel frontend URL
 
     # Health check
     health_check:
@@ -61,8 +107,9 @@ services:
 
   - name: mork
     # Use pre-built image from GitHub Container Registry
+    # REQUIRED: Replace ${GITHUB_REGISTRY_OWNER} with your GitHub username/org
     image:
-      registry: surafelfikru
+      registry: ${GITHUB_REGISTRY_OWNER} # CHANGE ME: e.g., surafelfikru, qoba-ai, arist76
       registry_type: GHCR
       repository: metta-kg-mork
       tag: latest

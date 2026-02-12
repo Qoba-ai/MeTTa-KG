@@ -24,3 +24,7 @@ temp/
 
 venv/
 __pycache__/
+
+# DigitalOcean environment-specific configurations
+.do/app.*.yaml
+!.do/app.yaml
