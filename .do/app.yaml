@@ -41,14 +41,14 @@ services:
         scope: RUN_TIME
         value: "https://metta-kg.vercel.app"
 
-    # TODO: Health check
-    # health_check:
-    #   http_path: /health
-    #   initial_delay_seconds: 30
-    #   period_seconds: 10
-    #   timeout_seconds: 5
-    #   success_threshold: 1
-    #   failure_threshold: 3
+    # Health check
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 30
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
 
     # Instance configuration
     instance_count: 1

@@ -45,6 +45,7 @@ pub fn rocket() -> Rocket<Build> {
         .mount(
             "/",
             routes![
+                routes::health::health,
                 routes::translations::create_from_csv,
                 routes::translations::create_from_nt,
                 routes::translations::create_from_jsonld,
