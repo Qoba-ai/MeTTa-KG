@@ -115,7 +115,9 @@ services:
       tag: latest
 
     # HTTP configuration
-    http_port: 8001
+    # http_port: 8001
+    internal_ports:
+      - 8001
 
     # Environment variables
     envs:
