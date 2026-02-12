@@ -114,9 +114,8 @@ services:
       tag: latest
 
     # HTTP configuration
-    # http_port: 8001
-    internal_ports:
-      - 8001
+    # Mork is an internal service only, but needs http_port for service discovery
+    http_port: 8001
 
     # Environment variables
     envs:
