@@ -38,6 +38,17 @@ name: metta-kg
 alerts:
   - rule: DEPLOYMENT_FAILED
   - rule: DOMAIN_FAILED
+
+# Ingress configuration - defines public routing
+# Only the API service is publicly accessible
+ingress:
+  rules:
+    - component:
+        name: api
+      match:
+        path:
+          prefix: /
+
 services:
   - name: api
     # Use pre-built image from GitHub Container Registry
@@ -99,10 +110,6 @@ services:
     # Instance configuration
     instance_count: 1
     instance_size_slug: basic-xxs
-
-    # Public routing - API is accessible at root path
-    routes:
-      - path: /
 
   - name: mork
     # Use pre-built image from GitHub Container Registry
