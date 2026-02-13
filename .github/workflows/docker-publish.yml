@@ -6,8 +6,6 @@ name: Docker
 # documentation.
 
 on:
-  schedule:
-    - cron: '42 4 * * *'
   push:
     branches: [ "main" ]
     # Publish semver tags as releases.
@@ -18,8 +16,8 @@ on:
 env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
-  # github.repository as <account>/<repo>
-  IMAGE_NAME: ${{ github.repository }}
+  # Dynamically use the repository owner's namespace (works across all forks)
+  IMAGE_NAME: ${{ github.repository_owner }}/metta-kg
 
 
 jobs:
@@ -61,49 +59,65 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Extract metadata (tags, labels) for Docker
+      # Extract metadata (tags, labels) for Docker - API
       # https://github.com/docker/metadata-action
-      - name: Extract Docker metadata
-        id: meta
+      - name: Extract Docker metadata for API
+        id: meta-api
         uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
-      - name: Use PathMap SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api
+          
+      # Extract metadata (tags, labels) for Docker - Mork
+      - name: Extract Docker metadata for Mork
+        id: meta-mork
+        uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
         with:
-          ssh-private-key: ${{ secrets.PATHMAP_DEPLOY }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-mork
 
-      # Build and push Docker image with Buildx (don't push on PR)
+      # Build and push API Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
-      - name: Debug SSH Agent
-        run: ssh-add -l
-      - name: Build and push Docker image
-        id: build-and-push
-        env: 
-          CARGO_NET_GIT_FETCH_WITH_CLI: true
-          DOCKER_BUILDKIT: 1
+      - name: Build and push API Docker image
+        id: build-and-push-api
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
           context: .
+          file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          ssh: |
-            default=${{ env.SSH_AUTH_SOCK }}
-      # Sign the resulting Docker image digest except on PRs.
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+            
+      - name: Build and push Mork Docker image
+        id: build-and-push-mork
+        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
+        with:
+          context: .
+          file: ./Dockerfile.mork
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-mork.outputs.tags }}
+          labels: ${{ steps.meta-mork.outputs.labels }}
+          cache-from: type=gha,scope=mork
+          cache-to: type=gha,mode=max,scope=mork
+          
+      # Sign the published API Docker image digest except on PRs.
       # This will only write to the public Rekor transparency log when the Docker
       # repository is public to avoid leaking data.  If you would like to publish
       # transparency data even for private images, pass --force to cosign below.
       # https://github.com/sigstore/cosign
-      - name: Sign the published Docker image
+      - name: Sign the published API Docker image
         if: ${{ github.event_name != 'pull_request' }}
         env:
           # https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
-          TAGS: ${{ steps.meta.outputs.tags }}
-          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+          TAGS: ${{ steps.meta-api.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push-api.outputs.digest }}
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+        
+      - name: Sign the published Mork Docker image
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          TAGS: ${{ steps.meta-mork.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push-mork.outputs.digest }}
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}

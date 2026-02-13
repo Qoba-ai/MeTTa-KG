@@ -2,7 +2,7 @@ services:
   api:
     build: .
     ports:
-      - "${METTA_KG_PORT}:${METTA_KG_PORT}"
+      - "8000:8000"
     depends_on:
       mork:
         condition: service_started
@@ -12,11 +12,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      METTA_KG_SECRET: ${METTA_KG_SECRET}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE}
       METTA_KG_MORK_URL: ${METTA_KG_MORK_URL}
-      METTA_KG_ORIGIN_URL: ${METTA_KG_ORIGIN_URL}
-      ROCKET_ADDRESS: ${METTA_KG_ADDRESS}
-      ROCKET_PORT: ${METTA_KG_PORT}
+      METTA_KG_FRONTEND_URL: ${METTA_KG_FRONTEND_URL}
   db:
     image: "postgres"
     restart: always

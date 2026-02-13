@@ -52,4 +52,6 @@ COPY Rocket.toml .
 
 RUN mkdir -p static temp
 
+EXPOSE 8000
+
 ENTRYPOINT ["api"]
