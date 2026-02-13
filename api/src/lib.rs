@@ -1,10 +1,11 @@
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use rocket::http::Method;
-use rocket::routes;
+use rocket::{catchers, routes};
 use rocket::{Build, Rocket};
-use rocket_cors::AllowedOrigins;
+use rocket_cors::{AllowedHeaders, AllowedOrigins};
 use std::env;
 
+pub mod catchers;
 pub mod db;
 pub mod model;
 pub mod mork_api;
@@ -32,16 +33,28 @@ pub fn rocket() -> Rocket<Build> {
 
     let cors = rocket_cors::CorsOptions {
         allowed_origins,
-        allowed_methods: vec![Method::Get, Method::Post, Method::Delete]
+        allowed_methods: vec![Method::Get, Method::Post, Method::Delete, Method::Options]
             .into_iter()
             .map(From::from)
             .collect(),
+        allowed_headers: AllowedHeaders::some(&["Authorization", "Content-Type", "Accept"]),
+        allow_credentials: true,
         ..Default::default()
     }
     .to_cors()
     .unwrap();
 
     rocket::build()
+        .register(
+            "/",
+            catchers![
+                catchers::bad_request,
+                catchers::unauthorized,
+                catchers::not_found,
+                catchers::request_timeout,
+                catchers::internal_error,
+            ],
+        )
         .mount(
             "/",
             routes![

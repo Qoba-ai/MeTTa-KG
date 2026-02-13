@@ -129,17 +129,25 @@ impl MorkApiClient {
     }
 
     pub async fn dispatch<R: Request>(&self, request: R) -> Result<String, Status> {
-        let url = format!("{}{}", self.base_url, request.path());
-        let mut http_request = self.client.request(request.method(), &url);
+        let path = request.path();
+        let method = request.method();
+        let url = format!("{}{}", self.base_url, path);
 
-        if request.path().starts_with("/upload/") || request.path() == "/transform" {
+        eprintln!("Mork dispatch: {} {}", method, url);
+
+        let mut http_request = self.client.request(method, &url);
+
+        if path.starts_with("/upload/") || path == "/transform" {
             if let Some(body) = request.body() {
                 if let Some(body_str) = (&body as &dyn Any).downcast_ref::<String>() {
                     http_request = http_request
                         .header("Content-Type", "text/plain")
                         .body(body_str.clone());
                 } else {
-                    eprintln!("Upload endpoint called with non-string body type");
+                    eprintln!(
+                        "Mork dispatch error: failed to downcast body to String for {}",
+                        url
+                    );
                     return Err(Status::InternalServerError);
                 }
             }
@@ -149,15 +157,26 @@ impl MorkApiClient {
 
         http_request = http_request.timeout(request.timeout());
         match http_request.send().await {
-            Ok(resp) => match resp.text().await {
-                Ok(text) => Ok(text),
-                Err(e) => {
-                    eprintln!("Error reading Mork API response text: {e}");
-                    Err(Status::InternalServerError)
+            Ok(resp) => {
+                let status = resp.status();
+                match resp.text().await {
+                    Ok(text) => {
+                        if !status.is_success() {
+                            eprintln!(
+                                "Mork returned non-success status {} for {}: {}",
+                                status, url, text
+                            );
+                        }
+                        Ok(text)
+                    }
+                    Err(e) => {
+                        eprintln!("Mork response body read error for {}: {}", url, e);
+                        Err(Status::InternalServerError)
+                    }
                 }
-            },
+            }
             Err(e) => {
-                eprintln!("Error sending request to Mork API: {e}");
+                eprintln!("Mork connection error for {}: {}", url, e);
                 Err(Status::InternalServerError)
             }
         }
@@ -247,6 +266,7 @@ impl Request for TransformRequest {
 }
 
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct ImportRequest {
     namespace: Namespace,
     transform_input: TransformDetails,
