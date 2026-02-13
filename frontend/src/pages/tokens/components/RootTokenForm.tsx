@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, createEffect } from "solid-js";
 import type { Component } from "solid-js";
 import { Button } from "~/components/ui/Button";
 import {
@@ -16,7 +16,12 @@ interface RootTokenFormProps {
 
 export const RootTokenForm: Component<RootTokenFormProps> = (props) => {
   const [showToken, setShowToken] = createSignal(false);
+  const [inputValue, setInputValue] = createSignal(props.initialToken ?? "");
   let inputRef: HTMLInputElement | undefined;
+
+  createEffect(() => {
+    setInputValue(props.initialToken ?? "");
+  });
 
   const handleSubmit = (e: Event) => {
     e.preventDefault();
@@ -37,7 +42,8 @@ export const RootTokenForm: Component<RootTokenFormProps> = (props) => {
               id="root-token-input"
               type={showToken() ? "text" : "password"}
               placeholder="Enter your root token to manage other tokens"
-              value={props.initialToken ?? ""}
+              value={inputValue()}
+              onInput={(e) => setInputValue(e.currentTarget.value)}
             />
             <button
               type="button"

@@ -49,6 +49,9 @@ export async function request<T>(
   const response = await fetch(finalUrl, { ...options, headers });
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("Unauthorized");
+    }
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
       const errorData = await response.json();
