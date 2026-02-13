@@ -19,6 +19,8 @@ import {
   setTextContent,
   textFormat,
   setTextFormat,
+  fileFormat,
+  setFileFormat,
   activeTab,
   setActiveTab,
   isLoading,
@@ -75,6 +77,8 @@ export const UploadPage: Component = () => {
                 isLoading={isLoading()}
                 isFileUploadImplemented={isFileUploadImplemented}
                 formatFileSize={formatFileSize}
+                format={fileFormat()}
+                onFormatChange={setFileFormat}
               />
             </TabsContent>
 

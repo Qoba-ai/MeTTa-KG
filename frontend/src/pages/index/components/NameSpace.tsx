@@ -13,13 +13,6 @@ import {
   CommandItem,
   CommandList,
 } from "~/components/ui/Command";
-import { getAllTokens } from "~/lib/api";
-import {
-  rootToken,
-  namespace,
-  setNamespace,
-  tokenRootNamespace,
-} from "~/lib/state";
 
 import Folder from "lucide-solid/icons/folder";
 import Home from "lucide-solid/icons/home";
@@ -31,26 +24,44 @@ type TreeNode = {
   description: string;
 };
 
-export default function NameSpace() {
+type TreeMap = Map<string, TreeMap>;
+
+type Token = {
+  namespace: string;
+  description: string;
+};
+
+interface NameSpaceProps {
+  namespace: string[];
+  setNamespace: (ns: string[]) => void;
+  rootToken: boolean;
+  tokenRootNamespace: () => string[];
+  getAllTokens: () => Promise<Token[]>;
+}
+
+export default function NameSpace(props: NameSpaceProps) {
   const [isExploring, setIsExploring] = createSignal(false);
   const [availablePaths, setAvailablePaths] = createSignal<TreeNode[]>([]);
   const [isLoading, setIsLoading] = createSignal(false);
 
   const navigateTo = (index: number) => {
-    const minIndex = tokenRootNamespace().length - 1;
+    const minIndex = props.tokenRootNamespace().length - 1;
     const targetIndex = Math.max(index, minIndex);
-    setNamespace((ns) => ns.slice(0, targetIndex + 1));
+    const newNs = props.namespace.slice(0, targetIndex + 1);
+    props.setNamespace(newNs);
   };
   const discoverPaths = async () => {
-    if (!rootToken()) return;
+    if (!props.rootToken) return;
 
     setIsExploring(true);
     setIsLoading(true);
 
     try {
-      const allTokens = await getAllTokens();
+      const allTokens = await props.getAllTokens();
       const currentPath =
-        namespace().length <= 1 ? "/" : "/" + namespace().slice(1).join("/");
+        props.namespace.length <= 1
+          ? "/"
+          : "/" + props.namespace.slice(1).join("/");
 
       const normalizePath = (p: string) =>
         p.length > 1 && p.endsWith("/") ? p.slice(0, -1) : p;
@@ -59,10 +70,7 @@ export default function NameSpace() {
         allTokens.map((t) => [normalizePath(t.namespace), t.description])
       );
 
-      const treeRoot = new Map<
-        string,
-        any /* eslint-disable-line @typescript-eslint/no-explicit-any */
-      >();
+      const treeRoot: TreeMap = new Map();
       const descendantPaths = new Set<string>();
       for (const t of allTokens) {
         if (
@@ -81,27 +89,14 @@ export default function NameSpace() {
         const parts = relativePath.split("/").filter((p) => p.length > 0);
         parts.forEach((part) => {
           if (!currentNode.has(part)) {
-            currentNode.set(
-              part,
-              new Map<
-                string,
-                any /* eslint-disable-line @typescript-eslint/no-explicit-any */
-              >()
-            );
+            currentNode.set(part, new Map());
           }
           currentNode = currentNode.get(part)!;
         });
       });
 
       const flattenedTree: TreeNode[] = [];
-      const flatten = (
-        node: Map<
-          string,
-          any /* eslint-disable-line @typescript-eslint/no-explicit-any */
-        >,
-        path: string[],
-        parentPrefix: string
-      ) => {
+      const flatten = (node: TreeMap, path: string[], parentPrefix: string) => {
         const childrenArray = Array.from(node.entries());
         childrenArray.forEach(([name, children], index) => {
           const isLast = index === childrenArray.length - 1;
@@ -122,7 +117,7 @@ export default function NameSpace() {
         });
       };
 
-      const basePath = namespace().slice(1);
+      const basePath = props.namespace.slice(1);
       flatten(treeRoot, basePath, "");
 
       setAvailablePaths(flattenedTree);
@@ -136,17 +131,17 @@ export default function NameSpace() {
 
   const selectPath = (fullPath: string) => {
     const pathArray = fullPath.split("/").filter((p) => p.length > 0);
-    setNamespace(["", ...pathArray]);
+    props.setNamespace(["", ...pathArray]);
     setIsExploring(false);
   };
 
   return (
     <>
       <div>
-        <Show when={rootToken()}>
+        <Show when={props.rootToken}>
           <Breadcrumb>
             <BreadcrumbList class="flex items-center">
-              <For each={namespace()}>
+              <For each={props.namespace}>
                 {(ns, index) => (
                   <>
                     <BreadcrumbItem>

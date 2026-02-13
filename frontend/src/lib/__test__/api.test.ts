@@ -12,7 +12,8 @@ import {
   refreshCodes,
   createToken,
 } from "../api";
-import type { Mm2Input } from "../types";
+import { setRootToken } from "../state";
+import type { Mm2Input, Mm2InputMultiWithNamespace } from "../types";
 
 // Mock the global fetch function
 const mockFetch = vi.fn();
@@ -41,10 +42,17 @@ describe("API Tests: Transform Page", () => {
   beforeEach(() => {
     // Mock the environment variable
     vi.stubEnv("VITE_BACKEND_URL", "http://localhost:8000");
-    vi.stubGlobal("localStorage", {
-      getItem: vi.fn(() => "200003ee-c651-4069-8b7f-2ad9fb46c3ab"),
+    const localStorageMock = {
+      getItem: vi.fn((key: string) => {
+        if (key === "rootToken") return "200003ee-c651-4069-8b7f-2ad9fb46c3ab";
+        return null;
+      }),
       setItem: vi.fn(),
-    });
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    vi.stubGlobal("localStorage", localStorageMock);
+    setRootToken("200003ee-c651-4069-8b7f-2ad9fb46c3ab");
   });
 
   afterEach(() => {
@@ -55,33 +63,26 @@ describe("API Tests: Transform Page", () => {
 
   describe("transform", () => {
     const mockPath = "/path/";
-    const mockTransformation: Mm2Input = {
-      pattern: ["(A $x)"],
-      template: ["(B $x)"],
+    const mockTransformation: Mm2InputMultiWithNamespace = {
+      patterns: [{ kind: "pattern", value: "(A $x)", namespace: ["path"] }],
+      templates: [{ kind: "template", value: "(B $x)", namespace: ["path"] }],
     };
 
     it("should send a POST request with the correct transformation data", async () => {
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
-      await transform(mockPath, mockTransformation);
+      await transform(mockTransformation);
 
       expect(mockFetch).toHaveBeenCalledOnce();
       const [url, options] = mockFetch.mock.calls[0];
 
-      expect(url.toString()).toBe(
-        buildExpectedUrl("/spaces/transform/", mockPath) + "/"
-      );
+      expect(url.toString()).toBe("http://localhost:8000/spaces/transform");
       expect(options?.method).toBe("POST");
       expect(options?.headers).toHaveProperty(
         "Content-Type",
         "application/json"
       );
-      expect(options?.body).toBe(
-        JSON.stringify({
-          patterns: mockTransformation.pattern,
-          templates: mockTransformation.template,
-        })
-      );
+      expect(options?.body).toBe(JSON.stringify(mockTransformation));
     });
 
     it("should return true on a successful transformation", async () => {
@@ -137,13 +138,19 @@ describe("API Tests: Transform Page", () => {
     });
 
     it("should handle multiple patterns and templates", async () => {
-      const multiTransformation: Mm2Input = {
-        pattern: ["(A $x)", "(B $y)"],
-        template: ["(C $x)", "(D $y)"],
+      const multiTransformation: Mm2InputMultiWithNamespace = {
+        patterns: [
+          { kind: "pattern", value: "(A $x)", namespace: ["path"] },
+          { kind: "pattern", value: "(B $y)", namespace: ["path"] },
+        ],
+        templates: [
+          { kind: "template", value: "(C $x)", namespace: ["path"] },
+          { kind: "template", value: "(D $y)", namespace: ["path"] },
+        ],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
-      const result = await transform(mockPath, multiTransformation);
+      const result = await transform(multiTransformation);
 
       expect(result).toBe(true);
       const [, options] = mockFetch.mock.calls[0];
@@ -153,78 +160,97 @@ describe("API Tests: Transform Page", () => {
     });
 
     it("should handle complex nested patterns", async () => {
-      const complexTransformation: Mm2Input = {
-        pattern: ["(parent $x $y)", "(grandparent $x $z)"],
-        template: ["(ancestor $x $y)", "(ancestor $x $z)"],
+      const complexTransformation: Mm2InputMultiWithNamespace = {
+        patterns: [
+          { kind: "pattern", value: "(parent $x $y)", namespace: ["path"] },
+          {
+            kind: "pattern",
+            value: "(grandparent $x $z)",
+            namespace: ["path"],
+          },
+        ],
+        templates: [
+          { kind: "template", value: "(ancestor $x $y)", namespace: ["path"] },
+          { kind: "template", value: "(ancestor $x $z)", namespace: ["path"] },
+        ],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
-      await transform(mockPath, complexTransformation);
+      await transform(complexTransformation);
 
       const [, options] = mockFetch.mock.calls[0];
       const body = JSON.parse(options?.body as string);
-      expect(body.patterns[0]).toBe("(parent $x $y)");
-      expect(body.templates[0]).toBe("(ancestor $x $y)");
+      expect(body.patterns[0].value).toBe("(parent $x $y)");
+      expect(body.templates[0].value).toBe("(ancestor $x $y)");
     });
 
     it("should handle empty patterns array", async () => {
-      const emptyTransformation: Mm2Input = {
-        pattern: [],
-        template: [],
+      const emptyTransformation: Mm2InputMultiWithNamespace = {
+        patterns: [],
+        templates: [],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
-      const result = await transform(mockPath, emptyTransformation);
+      const result = await transform(emptyTransformation);
 
       expect(result).toBe(true);
     });
 
     it("should handle special characters in patterns", async () => {
-      const specialTransformation: Mm2Input = {
-        pattern: ["(test $x)"],
-        template: ["(result $x)"],
+      const specialTransformation: Mm2InputMultiWithNamespace = {
+        patterns: [
+          { kind: "pattern", value: "(test $x)", namespace: ["path"] },
+        ],
+        templates: [
+          { kind: "template", value: "(result $x)", namespace: ["path"] },
+        ],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
-      await transform(mockPath, specialTransformation);
+      await transform(specialTransformation);
 
       const [url] = mockFetch.mock.calls[0];
-      expect(url.toString()).toContain("/spaces");
+      expect(url.toString()).toBe("http://localhost:8000/spaces/transform");
     });
 
     it("should handle different namespace paths", async () => {
-      const mockPath = "/user/data/test/";
-      const namespacedTransformation: Mm2Input = {
-        pattern: ["$x"],
-        template: ["$x"],
+      const namespacedTransformation: Mm2InputMultiWithNamespace = {
+        patterns: [
+          { kind: "pattern", value: "$x", namespace: ["user", "data", "test"] },
+        ],
+        templates: [
+          {
+            kind: "template",
+            value: "$x",
+            namespace: ["user", "data", "test"],
+          },
+        ],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
-      await transform(mockPath, namespacedTransformation);
+      await transform(namespacedTransformation);
 
       const [url] = mockFetch.mock.calls[0];
-      expect(url.toString()).toBe(
-        "http://localhost:8000/spaces/transform/user/data/test/"
-      );
+      expect(url.toString()).toBe("http://localhost:8000/spaces/transform");
     });
 
     it("should handle root namespace", async () => {
-      const rootTransformation: Mm2Input = {
-        pattern: ["$x"],
-        template: ["$x"],
+      const rootTransformation: Mm2InputMultiWithNamespace = {
+        patterns: [{ kind: "pattern", value: "$x", namespace: [""] }],
+        templates: [{ kind: "template", value: "$x", namespace: [""] }],
       };
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
-      await transform("/", rootTransformation);
+      await transform(rootTransformation);
 
       const [url] = mockFetch.mock.calls[0];
-      expect(url.toString()).toBe("http://localhost:8000/spaces/transform/");
+      expect(url.toString()).toBe("http://localhost:8000/spaces/transform");
     });
 
     it("should include authorization header in request", async () => {
       mockFetch.mockResolvedValue(mockSuccessResponse(true));
 
-      await transform(mockPath, mockTransformation);
+      await transform(mockTransformation);
 
       const [, options] = mockFetch.mock.calls[0];
       expect(options?.headers).toHaveProperty("Authorization");
@@ -238,7 +264,7 @@ describe("API Tests: Transform Page", () => {
         })
       );
 
-      await expect(transform(mockPath, mockTransformation)).rejects.toThrow(
+      await expect(transform(mockTransformation)).rejects.toThrow(
         "not valid json"
       );
     });
@@ -276,7 +302,10 @@ describe("API Tests: Upload Page", () => {
         buildExpectedUrl("/spaces/upload/", mockPath) + "/"
       );
       expect(options?.method).toBe("POST");
-      expect(options?.headers).toHaveProperty("Content-Type", "text/plain");
+      expect(options?.headers).toHaveProperty(
+        "Content-Type",
+        "application/json"
+      );
       expect(options?.body).toBe(mockData);
     });
 

@@ -58,22 +58,18 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
     // permission"
 
     if !token.permission_share_write && new_token.permission_write {
-        println!("User tried to create write token without share_write permission");
         return Err(Status::BadRequest);
     }
 
     if !token.permission_share_read && new_token.permission_read {
-        println!("User tried to create read token without share_read permission");
         return Err(Status::BadRequest);
     }
 
     if !new_token.namespace.starts_with(&token.namespace) {
-        println!("User tried to create token for invalid namespace");
         return Err(Status::BadRequest);
     }
 
     if !new_token.namespace.ends_with("/") {
-        println!("User tried to create token for invalid namespace (missing trailing '/')");
         return Err(Status::BadRequest);
     }
 
@@ -81,7 +77,6 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
         Regex::new(r"^/(([a-zA-Z0-9])+([a-zA-Z0-9]|\-|_)*([a-zA-Z0-9])/)*$").unwrap();
 
     if !namespace_regex.is_match(&new_token.namespace) {
-        println!("User tried to create token for invalid namespace (invalid characters)");
         return Err(Status::BadRequest);
     }
 
