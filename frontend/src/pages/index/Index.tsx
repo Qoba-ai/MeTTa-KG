@@ -4,6 +4,7 @@ import LoadPage from "../load/Load";
 import UploadPage from "../upload/Upload";
 import TransformPage from "../transform/Transform";
 import CompositionPage from "../composition/Composition";
+import IntersectionPage from "../intersection/Intersection";
 import ExportPage from "../export/Export";
 import TokensPage from "../tokens/Tokens";
 import ClearPage from "../clear/Clear";
@@ -68,6 +69,7 @@ export const sidebarSections = [
         label: "Intersection",
         icon: () => <span class="text-xl">∩</span>,
         to: "/intersection",
+        component: IntersectionPage,
       },
       {
         id: "difference",

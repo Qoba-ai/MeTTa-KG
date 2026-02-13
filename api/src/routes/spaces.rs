@@ -325,6 +325,37 @@ pub async fn composition(
     }
 }
 
+/// Performs an intersection operation on provided namespaces. `token` must have `permission_write`
+/// on the target namespace and `permission_read` on all source namespaces.
+/// Intersection is implemented as a positive join on a shared variable across all sources.
+/// # Intersection Transformation (conceptual)
+/// ```lisp
+/// (transform
+///     (, (namespace1 $x) (namespace2 $x) ...)  ; all sources share the same variable $x
+///     (, (target $x))
+/// )
+/// ```
+#[post("/spaces/intersection", data = "<operation_input>")]
+pub async fn intersection(
+    token: Token,
+    operation_input: Json<SetOperationInput>,
+) -> Result<Json<bool>, Status> {
+    // check `permission read` for all sources
+    if !operation_input.source_target_permissions(token) {
+        return Err(Status::Unauthorized);
+    }
+
+    let transform_input = intersection_transform(operation_input.into_inner())?;
+
+    let request = TransformRequest::new().transform_input(transform_input);
+    let mork_api_client = MorkApiClient::new();
+
+    match mork_api_client.dispatch(request).await {
+        Ok(_) => Ok(Json(true)),
+        Err(e) => Err(e),
+    }
+}
+
 #[post("/spaces/union", data = "<operation_input>")]
 pub async fn union(
     token: Token,
@@ -426,6 +457,31 @@ fn composition_transform(input: SetOperationInput) -> Result<TransformDetails, S
     Ok(transform_input)
 }
 
+fn intersection_transform(input: SetOperationInput) -> Result<TransformDetails, Status> {
+    // Require at least 2 sources and exactly 1 target
+    if input.source.len() < 2 || input.target.len() != 1 {
+        return Err(Status::BadRequest);
+    }
+
+    let patterns = input
+        .source
+        .iter()
+        .map(|source_ns| {
+            Mm2Cell::new_pattern("$x".to_string(), Namespace::from(PathBuf::from(source_ns)))
+        })
+        .collect::<Vec<Mm2Cell>>();
+
+    let transform_input =
+        TransformDetails::new()
+            .patterns(patterns)
+            .templates(vec![Mm2Cell::new_template(
+                "$x".to_string(),
+                Namespace::from(PathBuf::from(input.target.first().cloned().unwrap())),
+            )]);
+
+    Ok(transform_input)
+}
+
 fn union_transform(input: SetOperationInput) -> Result<Vec<TransformDetails>, Status> {
     // Exceed the maximum number of source namespaces for composition, 26
     // and
@@ -506,6 +562,32 @@ mod tests {
         );
         assert_eq!(
             transform_inputs[1].templates[0].build(),
+            "(__root__ (ns3 (__ns3data__ $x)))".to_string()
+        );
+    }
+
+    #[test]
+    fn test_intersection_transform() {
+        let input = SetOperationInput {
+            source: vec!["ns1".to_string(), "ns2".to_string()],
+            target: vec!["ns3".to_string()],
+        };
+
+        let transform_input = intersection_transform(input).unwrap();
+
+        assert_eq!(transform_input.patterns.len(), 2);
+        assert_eq!(transform_input.templates.len(), 1);
+
+        assert_eq!(
+            transform_input.patterns[0].build(),
+            "(__root__ (ns1 (__ns1data__ $x)))".to_string()
+        );
+        assert_eq!(
+            transform_input.patterns[1].build(),
+            "(__root__ (ns2 (__ns2data__ $x)))".to_string()
+        );
+        assert_eq!(
+            transform_input.templates[0].build(),
             "(__root__ (ns3 (__ns3data__ $x)))".to_string()
         );
     }
