@@ -10,8 +10,8 @@ use std::path::PathBuf;
 
 use crate::model::Token;
 use crate::mork_api::{
-    ClearRequest, ExploreRequest, ExportFormat, ExportRequest, ImportRequest, MorkApiClient,
-    ReadRequest, Request, TransformDetails, TransformRequest, UploadRequest,
+    ClearRequest, ExploreRequest, ExportFormat, ExportRequest, MorkApiClient, ReadRequest,
+    Request as MorkRequest, TransformDetails, TransformRequest, UploadRequest,
 };
 
 /// The input for a transformation operation.
@@ -122,24 +122,89 @@ pub async fn upload(
     }
 }
 
-/// Imports data from `<uri>` into the `<path..>` space. Exectes mm2 on the imported data.
+/// Imports data from `<uri>` into the `<path..>` space.
+///
+/// The API fetches the URL content itself and forwards it to Mork via the
+/// upload endpoint. This avoids requiring Mork to have outbound internet
+/// access and provides better error reporting to the caller.
 #[post("/spaces/import/<path..>?<uri>")]
-pub async fn import(token: Token, path: PathBuf, uri: String) -> Result<Json<bool>, Status> {
+pub async fn import(
+    token: Token,
+    path: PathBuf,
+    uri: String,
+) -> Result<Json<bool>, Custom<String>> {
     if !path.starts_with(token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
-        return Err(Status::Unauthorized);
+        return Err(Custom(Status::Unauthorized, "Unauthorized".to_string()));
     }
 
     // validate uri
     if Url::parse(&uri).is_err() {
-        return Err(Status::BadRequest);
+        return Err(Custom(Status::BadRequest, format!("Invalid URI: {}", uri)));
     }
 
+    // Fetch the content from the URL
+    let http_client = reqwest::Client::new();
+    let fetch_response = http_client
+        .get(&uri)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!("Failed to fetch URL {}: {}", uri, e);
+            Custom(Status::BadGateway, format!("Failed to fetch URL: {}", e))
+        })?;
+
+    if !fetch_response.status().is_success() {
+        let status = fetch_response.status();
+        eprintln!("URL {} returned non-success status: {}", uri, status);
+        return Err(Custom(
+            Status::BadGateway,
+            format!(
+                "Remote URL returned status {}: {}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown")
+            ),
+        ));
+    }
+
+    let content = fetch_response.text().await.map_err(|e| {
+        eprintln!("Failed to read response body from {}: {}", uri, e);
+        Custom(
+            Status::BadGateway,
+            format!("Failed to read response body: {}", e),
+        )
+    })?;
+
+    if content.trim().is_empty() {
+        return Err(Custom(
+            Status::UnprocessableEntity,
+            "Remote URL returned empty content".to_string(),
+        ));
+    }
+
+    eprintln!(
+        "Successfully fetched {} bytes from {}, uploading to Mork",
+        content.len(),
+        uri
+    );
+
+    // Upload the fetched content to Mork via the upload endpoint
     let mork_api_client = MorkApiClient::new();
-    let request = ImportRequest::new().namespace(path).uri(uri);
+    let request = UploadRequest::new()
+        .namespace(path)
+        .pattern("$x".to_string())
+        .template("$x".to_string())
+        .data(content);
 
     match mork_api_client.dispatch(request).await {
         Ok(_) => Ok(Json(true)),
-        Err(e) => Err(e),
+        Err(e) => {
+            eprintln!("Failed to upload fetched content to Mork: {}", e);
+            Err(Custom(
+                Status::InternalServerError,
+                format!("Failed to upload content to knowledge graph: {}", e),
+            ))
+        }
     }
 }
 

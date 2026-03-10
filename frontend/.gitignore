@@ -1,3 +1,7 @@
 node_modules
 dist
+
+# Environment files (keep .env.example tracked)
 .env
+.env.local
+.env.*.local
