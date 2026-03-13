@@ -109,7 +109,7 @@ import { Header } from './components/Header'
 import { ConfirmModal } from './components/ConfirmModal'
 import { LoadSpaceModal } from './components/LoadSpaceModal'
 import { ImportModal } from './components/ImportModal'
-import { TransformModal } from './components/TransformModal'
+import { TransformModal, SpaceConfig } from './components/TransformModal'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.').pop()?.toLowerCase()
@@ -200,10 +200,7 @@ const App: Component = () => {
     const [importCSVDelimiter, setImportCSVDelimiter] = createSignal<string>('\u002C')
 
     // Transform State
-    const [transformInputSpaces, setTransformInputSpaces] = createSignal<string>('/')
-    const [transformOutputSpaces, setTransformOutputSpaces] = createSignal<string>('/')
-    const [transformPattern, setTransformPattern] = createSignal<string>('')
-    const [transformTemplate, setTransformTemplate] = createSignal<string>('')
+    const [transformConfigs, setTransformConfigs] = createSignal<SpaceConfig[]>([])
 
     // Confirmation State
     const [confirmData, setConfirmData] = createSignal({
@@ -578,20 +575,17 @@ const App: Component = () => {
         }
     }
 
-    const transform = async () => {
-        const inputSpace = transformInputSpaces()
-        const outputSpace = transformOutputSpaces()
-        const pattern = transformPattern()
-        const template = transformTemplate()
-        if (!inputSpace || !outputSpace || !pattern || !template) {
-            notify.error('Please fill in all transformation fields')
-            return
-        }
+    const transform = async (configs: SpaceConfig[]) => {
+        const input_spaces = configs.filter(c => c.type === 'input').map(c => c.path.substring(1))
+        const output_spaces = configs.filter(c => c.type === 'output').map(c => c.path.substring(1))
+        const patterns = configs.filter(c => c.type === 'input').map(c => c.patternOrTemplate)
+        const templates = configs.filter(c => c.type === 'output').map(c => c.patternOrTemplate)
+
         try {
             const resp = await fetch(`${BACKEND_URL}/spaces`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
-                body: JSON.stringify({ input_space: inputSpace, output_space: outputSpace, pattern, template }),
+                body: JSON.stringify({ input_spaces, output_spaces, patterns, templates }),
             })
             if (resp.ok) {
                 notify.success('Transformation successfully dispatched')
@@ -795,7 +789,15 @@ const App: Component = () => {
                                     <VsSave size={20} />
                                     <span>Export File</span>
                                 </button>
-                                <button onclick={() => transformModal.showModal()}>
+                                <button onclick={() => {
+                                    if (transformConfigs().length === 0) {
+                                        setTransformConfigs([
+                                            { path: '/', type: 'input', patternOrTemplate: '' },
+                                            { path: '/', type: 'output', patternOrTemplate: '' }
+                                        ]);
+                                    }
+                                    transformModal.showModal();
+                                }}>
                                     <VsReplace size={20} />
                                     <span>Transform</span>
                                 </button>
@@ -874,6 +876,14 @@ const App: Component = () => {
                             onDelete={deleteSubspace}
                             rootPath={activePanel()?.namespace || '/'}
                             onOpenSubspace={(path) => addPanel(path)}
+                            onConfigureTransform={(paths) => {
+                                setTransformConfigs(paths.map((p, i) => ({
+                                    path: p,
+                                    type: i === 0 ? 'input' : 'output',
+                                    patternOrTemplate: ''
+                                })));
+                                transformModal.showModal();
+                            }}
                         />
                     </Show>
                 </div>
@@ -904,17 +914,11 @@ const App: Component = () => {
 
             <TransformModal 
                 ref={transformModal!}
-                inputSpace={transformInputSpaces}
-                setInputSpace={setTransformInputSpaces}
-                outputSpace={transformOutputSpaces}
-                setOutputSpace={setTransformOutputSpaces}
-                pattern={transformPattern}
-                setPattern={setTransformPattern}
-                template={transformTemplate}
-                setTemplate={setTransformTemplate}
-                fetchExploreResults={fetchExploreResults}
+                configs={transformConfigs}
+                setConfigs={setTransformConfigs}
                 onTransform={transform}
                 onCancel={() => transformModal.close()}
+                fetchExploreResults={fetchExploreResults}
             />
 
             <ConfirmModal 

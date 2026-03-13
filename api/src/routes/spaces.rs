@@ -1,5 +1,5 @@
 use core::str;
-use rocket::serde::json::Json;
+use rocket::serde::json::{Json, serde_json};
 use rocket::{http::Status, put};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -15,10 +15,10 @@ use crate::{model::Token, routes::path_to_metta_sexpr};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Transformation {
-    input_space: PathBuf,
-    output_space: PathBuf,
-    pattern: String,
-    template: String,
+    input_spaces: Vec<PathBuf>,
+    output_spaces: Vec<PathBuf>,
+    patterns: Vec<String>,
+    templates: Vec<String>,
 }
 
 #[put("/spaces", data = "<transformation>")]
@@ -28,38 +28,50 @@ pub async fn transform(
 ) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace);
 
-    let input_space_path = transformation.input_space.clone();
-    let output_space_path = transformation.output_space.clone();
-    let pattern = transformation.pattern.clone();
-    let template = transformation.template.clone();
-
-    if !input_space_path.starts_with(&token_namespace)
-        || !output_space_path.starts_with(&token_namespace)
-        || !token.permission_read
-        || !token.permission_write
-    {
+    if !token.permission_read || !token.permission_write {
         return Err(Status::Unauthorized);
+    }
+
+    if transformation.input_spaces.len() != transformation.patterns.len() ||
+       transformation.output_spaces.len() != transformation.templates.len() {
+        return Err(Status::BadRequest);
+    }
+
+    for path in &transformation.input_spaces {
+        if !path.starts_with(&token_namespace) {
+            return Err(Status::Unauthorized);
+        }
+    }
+    for path in &transformation.output_spaces {
+        if !path.starts_with(&token_namespace) {
+            return Err(Status::Unauthorized);
+        }
     }
 
     let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
     let mork_base = mork_url.trim_end_matches('/');
 
-    // Convert paths to sexpr structure
-    let input_path_sexpr = path_to_metta_sexpr(&input_space_path);
-    let output_path_sexpr = path_to_metta_sexpr(&output_space_path);
+    let mut effective_patterns = Vec::new();
+    for (path, pattern) in transformation.input_spaces.iter().zip(transformation.patterns.iter()) {
+        let path_sexpr = path_to_metta_sexpr(path);
+        effective_patterns.push(path_sexpr.replace("$x", pattern));
+    }
 
-    // Nest the user's pattern and template within the path structures.
-    // path_to_metta_sexpr returns something like (level (1 $x)), 
-    // so we replace $x with the user's expression.
-    let effective_pattern = input_path_sexpr.replace("$x", &pattern);
-    let effective_template = output_path_sexpr.replace("$x", &template);
+    let mut effective_templates = Vec::new();
+    for (path, template) in transformation.output_spaces.iter().zip(transformation.templates.iter()) {
+        let path_sexpr = path_to_metta_sexpr(path);
+        effective_templates.push(path_sexpr.replace("$x", template));
+    }
 
-    // In MORK, transform body is:
-    // (transform (, (pattern0 ...) ) (, (template0 ...) ) )
+    // MORK multi-transform body:
+    // (transform (, (p1) (p2) ...) (, (t1) (t2) ...) )
     let transform_body = format!(
         "(transform (, {}) (, {}) )",
-        effective_pattern, effective_template
+        effective_patterns.join(" "),
+        effective_templates.join(" ")
     );
+
+    println!("Sending MORK transform: {}", transform_body);
 
     let mork_transform_url = format!("{}/transform", mork_base);
 
@@ -70,25 +82,20 @@ pub async fn transform(
         .send()
         .await;
 
-    let data = match resp {
-        Ok(resp) => resp.text().await,
+    match resp {
+        Ok(resp) => {
+            let status = resp.status();
+            let data = resp.text().await.unwrap_or_default();
+            println!("MORK transform response ({}): {}", status, data);
+            if status.is_success() {
+                Ok(Json(true))
+            } else {
+                Err(Status::InternalServerError)
+            }
+        }
         Err(e) => {
             eprintln!("Error sending MORK transform request: {}", e);
-            return Err(Status::InternalServerError);
-        }
-    };
-
-    match data {
-        Ok(data) => {
-            println!("MORK transform request response text: {}", data);
-            Ok(Json(true))
-        }
-        Err(e) => {
-            eprintln!(
-                "Error converting MORK transform request response to textual string: {}",
-                e
-            );
-            return Err(Status::InternalServerError);
+            Err(Status::InternalServerError)
         }
     }
 }
@@ -361,7 +368,12 @@ pub async fn copy(token: Token, src_path: PathBuf, dst_path: String) -> Result<J
     }
 }
 
-#[get("/explore/<path..>?<focus_token>")]
+#[get("/explore?<focus_token>")]
+pub async fn explore_root(token: Token, focus_token: Option<String>) -> Result<Json<String>, Status> {
+    explore(token, PathBuf::new(), focus_token).await
+}
+
+#[rocket::get("/explore/<path..>?<focus_token>")]
 pub async fn explore(
     token: Token,
     path: PathBuf,
@@ -456,7 +468,7 @@ pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, Status> {
             
             // Poll up to 10 times with 100ms delay
             for _ in 0..10 {
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                rocket::tokio::time::sleep(rocket::tokio::time::Duration::from_millis(100)).await;
                 let status_resp = reqwest::get(&mork_status_url).await;
                 if let Ok(status_resp) = status_resp {
                     if let Ok(status_text) = status_resp.text().await {
