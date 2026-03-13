@@ -1,6 +1,7 @@
 import { Component, createSignal, For, Show, onCleanup } from "solid-js";
 import styles from "./Editor.module.scss";
 import { VsFolder } from "solid-icons/vs";
+import { handleAutoClose } from "./utils/editorUtils";
 
 interface NamespaceSelectorProps {
   value: string;
@@ -41,6 +42,7 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
   };
 
   const handleKeyDown = async (e: KeyboardEvent) => {
+    handleAutoClose(e);
     if (!isExploring() && e.key === "ArrowDown") {
       e.preventDefault();
       handleFocus();

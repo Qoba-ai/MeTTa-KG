@@ -1,6 +1,7 @@
 import { Component } from "solid-js";
 import styles from "../Editor.module.scss";
 import { NamespaceSelector } from "../NamespaceSelector";
+import { handleAutoClose } from "../utils/editorUtils";
 
 interface TransformModalProps {
   ref: HTMLDialogElement | ((el: HTMLDialogElement) => void);
@@ -56,6 +57,7 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
               value={props.pattern()}
               placeholder="(pattern $x)"
               onInput={(ev) => props.setPattern(ev.target.value)}
+              onKeyDown={handleAutoClose}
               required
             />
           </div>
@@ -66,6 +68,7 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
               value={props.template()}
               placeholder="(template $x)"
               onInput={(ev) => props.setTemplate(ev.target.value)}
+              onKeyDown={handleAutoClose}
               required
             />
           </div>

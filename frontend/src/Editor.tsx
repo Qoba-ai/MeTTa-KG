@@ -18,7 +18,7 @@ import {
     VsClose,
     VsAdd
 } from 'solid-icons/vs'
-import { createMemo, createSignal, onMount, Show, For, createEffect, batch } from 'solid-js'
+import { createMemo, createSignal, onMount, Show, For, createEffect, batch, on, untrack } from 'solid-js'
 import styles from './Editor.module.scss'
 import { A } from '@solidjs/router'
 import { Toaster } from 'solid-toast'
@@ -261,7 +261,9 @@ const App: Component = () => {
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged) {
                         const content = update.state.doc.toString()
-                        setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, content } : p))
+                        untrack(() => {
+                            setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, content } : p))
+                        })
                     }
                 }),
                 EditorView.domEventHandlers({
@@ -279,38 +281,43 @@ const App: Component = () => {
     }
 
     createEffect(() => {
-        const p = activePanel()
+        const panelsList = panels()
+        const activeId = activePanelId()
+        const p = panelsList.find(item => item.id === activeId)
         if (p && p.view) {
             p.view.dispatch({ effects: setOriginalContentEffect.of(p.originalContent) })
         }
     })
 
-    createEffect(() => {
-        const isDark = currentTheme() === 'dark'
+    createEffect(on(currentTheme, (theme) => {
+        const isDark = theme === 'dark'
         panels().forEach(p => {
             if (p.view) {
                 p.view.dispatch({ effects: themeCompartment.reconfigure(getEditorTheme(isDark)) })
             }
         })
-    })
+    }, { defer: true }))
 
     // Handle swapping views when active panel changes
-    createEffect(() => {
-        const p = activePanel()
-        if (p && mettaInput) {
-            // Clear existing editor
+    createEffect(on(activePanelId, (id) => {
+        if (mettaInput) {
             mettaInput.innerHTML = ''
-            if (!p.view) {
-                const view = new EditorView({ 
-                    state: createEditorState(p.content), 
-                    parent: mettaInput 
-                })
-                setPanels(prev => prev.map(item => item.id === p.id ? { ...item, view } : item))
-            } else {
-                mettaInput.appendChild(p.view.dom)
+            if (!id) return;
+            const p = untrack(panels).find(item => item.id === id)
+            if (p) {
+                if (!p.view) {
+                    const view = new EditorView({ 
+                        state: createEditorState(p.content), 
+                        parent: mettaInput 
+                    })
+                    setPanels(prev => prev.map(item => item.id === p.id ? { ...item, view } : item))
+                } else {
+                    mettaInput.appendChild(p.view.dom)
+                }
             }
         }
-    })
+    }))
+
 
     let isMounted = false
     onMount(() => {

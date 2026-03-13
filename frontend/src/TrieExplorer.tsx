@@ -35,113 +35,34 @@ const parseSExprs = (tokens: string[]): any[] => {
   return exprs;
 };
 
-const addToTrie = (root: TrieNode, expr: any) => {
-  if (!Array.isArray(expr)) return;
-  
-  const isBinary = expr.length === 2;
-  const first = expr[0];
-  const second = expr[1];
-
-  let current = root;
-  
-  // Handle first element
-  const firstName = Array.isArray(first) ? "[nested]" : String(first);
-  if (!current.children[firstName]) {
-    current.children[firstName] = { children: {}, isDeletable: false };
-  }
-  if (isBinary) {
-    current.children[firstName].isDeletable = true;
-  }
-  
-  // Recursively handle elements
-  if (Array.isArray(first)) {
-    addToTrie(root, first); // This might not be perfectly correct for flattening, but we follow the flat trie logic
-  }
-  
-  // The current UI flattens everything. (A (B C)) becomes A -> B -> C.
-  // Let's implement that flattening while tracking deletability.
-  
-  const parts: string[] = [];
-  const flatten = (e: any) => {
-    if (Array.isArray(e)) {
-      e.forEach(flatten);
+const addToTrie = (node: TrieNode, expr: any) => {
+  if (Array.isArray(expr)) {
+    if (expr.length === 2) {
+      const [left, right] = expr;
+      const key = (Array.isArray(left) ? JSON.stringify(left) : String(left)).replace(/^"|"$/g, "");
+      if (!node.children[key]) {
+        node.children[key] = { children: {}, isDeletable: true };
+      }
+      addToTrie(node.children[key], right);
     } else {
-      parts.push(String(e));
+      for (const item of expr) {
+        if (Array.isArray(item)) {
+          addToTrie(node, item);
+        } else {
+          const key = String(item).replace(/^"|"$/g, "");
+          if (!node.children[key]) {
+            node.children[key] = { children: {}, isDeletable: false };
+          }
+        }
+      }
     }
-  };
-  flatten(expr);
-
-  current = root;
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (!current.children[part]) {
-      current.children[part] = { children: {}, isDeletable: false };
+  } else {
+    const key = String(expr).replace(/^"|"$/g, "");
+    if (!node.children[key]) {
+      node.children[key] = { children: {}, isDeletable: false };
     }
-    // If this part is the first element of a binary expression, mark it as deletable
-    // Note: this is tricky with flattening. 
-    // In (A (B C)), A is binary-left. B is also binary-left (inside the nested expr).
-    // So both A and B should be deletable.
-    current = current.children[part];
   }
 };
-
-// Re-implementing addToTrie to correctly handle nested binary-lefts in a flat trie
-const processExpr = (root: TrieNode, expr: any) => {
-    if (!Array.isArray(expr)) return;
-    
-    const isBinary = expr.length === 2;
-    const first = expr[0];
-    
-    if (typeof first === 'string') {
-        if (!root.children[first]) {
-            root.children[first] = { children: {}, isDeletable: false };
-        }
-        if (isBinary) {
-            root.children[first].isDeletable = true;
-        }
-        
-        // If binary, the children of 'first' come from the second element
-        if (isBinary) {
-            populateChildren(root.children[first], expr[1]);
-        } else {
-            // If not binary, we still add other elements as children but they won't be "deletable" from here
-            for (let i = 1; i < expr.length; i++) {
-                populateChildren(root.children[first], expr[i]);
-            }
-        }
-    } else if (Array.isArray(first)) {
-        processExpr(root, first);
-        for (let i = 1; i < expr.length; i++) {
-            processExpr(root, expr[i]);
-        }
-    }
-};
-
-const populateChildren = (node: TrieNode, expr: any) => {
-    if (typeof expr === 'string') {
-        if (!node.children[expr]) {
-            node.children[expr] = { children: {}, isDeletable: false };
-        }
-    } else if (Array.isArray(expr)) {
-        const isBinary = expr.length === 2;
-        const first = expr[0];
-        if (typeof first === 'string') {
-            if (!node.children[first]) {
-                node.children[first] = { children: {}, isDeletable: false };
-            }
-            if (isBinary) node.children[first].isDeletable = true;
-            if (isBinary) {
-                populateChildren(node.children[first], expr[1]);
-            } else {
-                for (let i = 1; i < expr.length; i++) {
-                    populateChildren(node.children[first], expr[i]);
-                }
-            }
-        } else {
-            expr.forEach(child => populateChildren(node, child));
-        }
-    }
-}
 
 export const buildTrie = (content: string): TrieNode => {
   const root: TrieNode = { children: {}, isDeletable: false };
@@ -149,7 +70,7 @@ export const buildTrie = (content: string): TrieNode => {
   const exprs = parseSExprs(tokens);
 
   for (const expr of exprs) {
-    processExpr(root, expr);
+    addToTrie(root, expr);
   }
   return root;
 };

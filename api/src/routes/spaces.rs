@@ -361,12 +361,7 @@ pub async fn copy(token: Token, src_path: PathBuf, dst_path: String) -> Result<J
     }
 }
 
-#[get("/explore?<focus_token>")]
-pub async fn explore_root(token: Token, focus_token: Option<String>) -> Result<Json<String>, Status> {
-    explore(token, PathBuf::new(), focus_token).await
-}
-
-#[rocket::get("/explore/<path..>?<focus_token>")]
+#[get("/explore/<path..>?<focus_token>")]
 pub async fn explore(
     token: Token,
     path: PathBuf,
@@ -428,6 +423,64 @@ pub async fn explore(
                 e
             );
             return Err(Status::InternalServerError);
+        }
+    }
+}
+
+#[get("/count")]
+pub async fn count_root(token: Token) -> Result<Json<usize>, Status> {
+    count(token, PathBuf::new()).await
+}
+
+#[get("/count/<path..>")]
+pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, Status> {
+    let token_namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace);
+
+    if !path.starts_with(&token_namespace) || !token.permission_read {
+        return Err(Status::Unauthorized);
+    }
+
+    let path_serialized = path_to_metta_sexpr(&path);
+
+    let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
+    let mork_base = mork_url.trim_end_matches('/');
+    
+    let mork_count_url = format!("{}/count/{}", mork_base, urlencoding::encode(&path_serialized));
+    println!("Requesting MORK count: {}", mork_count_url);
+
+    let resp = reqwest::get(mork_count_url).await;
+    match resp {
+        Ok(resp) if resp.status().is_success() => {
+            // Success, now poll for status
+            let mork_status_url = format!("{}/status/{}", mork_base, urlencoding::encode(&path_serialized));
+            
+            // Poll up to 10 times with 100ms delay
+            for _ in 0..10 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                let status_resp = reqwest::get(&mork_status_url).await;
+                if let Ok(status_resp) = status_resp {
+                    if let Ok(status_text) = status_resp.text().await {
+                        // MORK status returns JSON like {"status": "countResult", "count": 123}
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&status_text) {
+                            if json["status"] == "countResult" {
+                                if let Some(count) = json["count"].as_u64() {
+                                    return Ok(Json(count as usize));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            eprintln!("MORK count timed out or returned unexpected status");
+            Err(Status::InternalServerError)
+        }
+        Ok(resp) => {
+            eprintln!("MORK count returned error status: {}", resp.status());
+            Err(Status::InternalServerError)
+        }
+        Err(e) => {
+            eprintln!("Error sending MORK count request: {}", e);
+            Err(Status::InternalServerError)
         }
     }
 }
