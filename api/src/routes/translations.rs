@@ -54,6 +54,11 @@ pub async fn create(
 ) -> Result<String, Status> {
     let id = Uuid::new_v4();
 
+    if let Err(e) = fs::create_dir_all("temp") {
+        eprintln!("Failed to create temp directory: {}", e);
+        return Err(Status::InternalServerError);
+    }
+
     let path = format!("temp/translations-{}", id);
 
     let path_with_extension = format!("{}.{}", path, ext);
@@ -62,7 +67,10 @@ pub async fn create(
 
     match result {
         Ok(_) => (),
-        Err(err) => println!("{}", err),
+        Err(err) => {
+            eprintln!("Failed to persist file: {}", err);
+            return Err(Status::InternalServerError);
+        }
     }
 
     let status = match parse_parameters {
@@ -75,7 +83,7 @@ pub async fn create(
             let direction = (parameters.direction as u8).to_string();
             let delimiter = parameters.delimiter;
 
-            Command::new("./venv/bin/python")
+            Command::new("python3")
                 .arg("translations/src/csv_to_metta_run.py")
                 .arg(&path)
                 .arg(&direction)
@@ -87,7 +95,7 @@ pub async fn create(
             nt_parameters: Some(_parameters),
             jsonld_parameters: None,
             n3_parameters: None,
-        } => Command::new("./venv/bin/python")
+        } => Command::new("python3")
             .arg("translations/src/nt_to_metta_run.py")
             .arg(&path)
             .status(),
@@ -96,7 +104,7 @@ pub async fn create(
             nt_parameters: None,
             jsonld_parameters: Some(_parameters),
             n3_parameters: None,
-        } => Command::new("./venv/bin/python")
+        } => Command::new("python3")
             .arg("translations/src/jsonld_to_metta_run.py")
             .arg(&path)
             .status(),
@@ -105,20 +113,24 @@ pub async fn create(
             nt_parameters: None,
             jsonld_parameters: None,
             n3_parameters: Some(_parameters),
-        } => Command::new("./venv/bin/python")
+        } => Command::new("python3")
             .arg("translations/src/n3_to_metta_run.py")
             .arg(&path)
             .status(),
         _ => {
-            println!("Parse failed");
+            eprintln!("Invalid parser parameters combination");
             return Err(Status::InternalServerError);
         }
     };
 
-    // TODO: better error handling
     match status {
-        Ok(_) => (),
-        Err(_) => {
+        Ok(s) if s.success() => (),
+        Ok(s) => {
+            eprintln!("Python translation script failed with status: {}", s);
+            return Err(Status::InternalServerError);
+        }
+        Err(e) => {
+            eprintln!("Failed to execute python translation script: {}", e);
             return Err(Status::InternalServerError);
         }
     };
@@ -126,8 +138,16 @@ pub async fn create(
     let contents = fs::read_to_string(format!("{}-output.metta", path));
 
     match contents {
-        Ok(contents) => Ok(contents),
-        Err(_) => Err(Status::InternalServerError),
+        Ok(contents) => {
+            // Clean up files
+            let _ = fs::remove_file(&path_with_extension);
+            let _ = fs::remove_file(format!("{}-output.metta", path));
+            Ok(contents)
+        }
+        Err(e) => {
+            eprintln!("Failed to read translation output: {}", e);
+            Err(Status::InternalServerError)
+        }
     }
 }
 
@@ -136,6 +156,7 @@ pub async fn create_from_csv(
     file: TempFile<'_>,
     parse_parameters: CSVParserParameters,
 ) -> Result<Json<String>, Status> {
+    println!("Received CSV translation request: direction={:?}, delimiter='{}'", parse_parameters.direction as u8, parse_parameters.delimiter);
     create(
         "csv",
         file,
@@ -155,6 +176,7 @@ pub async fn create_from_nt(
     file: TempFile<'_>,
     parse_parameters: NTParserParameters,
 ) -> Result<Json<String>, Status> {
+    println!("Received NT translation request");
     create(
         "nt",
         file,
@@ -174,6 +196,7 @@ pub async fn create_from_jsonld(
     file: TempFile<'_>,
     parse_parameters: JSONLDParserParameters,
 ) -> Result<Json<String>, Status> {
+    println!("Received JSONLD translation request");
     create(
         "jsonld",
         file,
@@ -193,6 +216,7 @@ pub async fn create_from_n3(
     file: TempFile<'_>,
     parse_parameters: N3ParserParameters,
 ) -> Result<Json<String>, Status> {
+    println!("Received N3 translation request");
     create(
         "n3",
         file,

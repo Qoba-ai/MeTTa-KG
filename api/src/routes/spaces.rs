@@ -1,11 +1,7 @@
-use chrono::format;
 use core::str;
-use diesel::{ExpressionMethods, RunQueryDsl};
-use rocket::{http::Status, put};
 use rocket::serde::json::Json;
+use rocket::{http::Status, put};
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -15,7 +11,7 @@ use rocket::{get, post};
 use std::path::PathBuf;
 use urlencoding::encode;
 
-use crate::{db::establish_connection, model::Token, routes::path_to_metta_sexpr};
+use crate::{model::Token, routes::path_to_metta_sexpr};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Transformation {
@@ -30,7 +26,7 @@ pub async fn transform(
     token: Token,
     transformation: Json<Transformation>,
 ) -> Result<Json<bool>, Status> {
-    let token_namespace = token.namespace.strip_prefix("/").unwrap();
+    let token_namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace);
 
     let input_space_path = transformation.input_space.clone();
     let output_space_path = transformation.output_space.clone();
@@ -45,22 +41,34 @@ pub async fn transform(
         return Err(Status::Unauthorized);
     }
 
-    let input_path_serialized = input_space_path.into_os_string().into_string().unwrap();
-
-    let output_path_serialized = output_space_path.into_os_string().into_string().unwrap();
-
     let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
+    let mork_base = mork_url.trim_end_matches('/');
 
-    let mork_transform_url = format!(
-        "{}/transform/{}/{}/{}/{}",
-        mork_url,
-        encode(&input_path_serialized),
-        encode(&output_path_serialized),
-        encode(&pattern),
-        encode(&template)
+    // Convert paths to sexpr structure
+    let input_path_sexpr = path_to_metta_sexpr(&input_space_path);
+    let output_path_sexpr = path_to_metta_sexpr(&output_space_path);
+
+    // Nest the user's pattern and template within the path structures.
+    // path_to_metta_sexpr returns something like (level (1 $x)), 
+    // so we replace $x with the user's expression.
+    let effective_pattern = input_path_sexpr.replace("$x", &pattern);
+    let effective_template = output_path_sexpr.replace("$x", &template);
+
+    // In MORK, transform body is:
+    // (transform (, (pattern0 ...) ) (, (template0 ...) ) )
+    let transform_body = format!(
+        "(transform (, {}) (, {}) )",
+        effective_pattern, effective_template
     );
 
-    let resp = reqwest::get(mork_transform_url).await;
+    let mork_transform_url = format!("{}/transform", mork_base);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(mork_transform_url)
+        .body(transform_body)
+        .send()
+        .await;
 
     let data = match resp {
         Ok(resp) => resp.text().await,
@@ -85,50 +93,53 @@ pub async fn transform(
     }
 }
 
+#[post("/spaces", data = "<space>")]
+pub async fn import_root(token: Token, space: String) -> Result<Json<bool>, Status> {
+    import(token, PathBuf::new(), space).await
+}
+
 #[post("/spaces/<path..>", data = "<space>")]
 pub async fn import(token: Token, path: PathBuf, space: String) -> Result<Json<bool>, Status> {
-    if !path.starts_with(&token.namespace.strip_prefix("/").unwrap()) || !token.permission_write {
+    if !path.starts_with(&token.namespace.strip_prefix('/').unwrap_or(&token.namespace)) || !token.permission_write {
         return Err(Status::Unauthorized);
     }
 
     let file_id = Uuid::new_v4();
     let file_path = format!("static/{}.metta", file_id);
 
-    let file = File::create(&file_path);
-
-    let write_result = match file {
-        Ok(mut a) => a.write_all(space.as_bytes()),
-        Err(e) => {
-            eprintln!("Error saving file for MORK import request: {}", e);
-            return Err(Status::InternalServerError);
-        }
-    };
-
-    match write_result {
-        Ok(_) => println!("Successfully wrote MeTTa string to file {}", &file_path),
-        Err(e) => {
-            eprintln!("Error writing to file for MORK import request: {}", e);
-            return Err(Status::InternalServerError);
-        }
+    let mut file = File::create(&file_path).unwrap();
+    if let Err(e) = file.write_all(space.as_bytes()) {
+        eprintln!("Error saving file for MORK import request: {}", e);
+        return Err(Status::InternalServerError);
     }
-
-    let file_expr = String::from("$x");
-    let space_expr = path_to_metta_sexpr(&path);
+    println!("Successfully wrote MeTTa string to file {}", &file_path);
 
     let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
+    let mork_base = mork_url.trim_end_matches('/');
     let origin = env::var("METTA_KG_ORIGIN_URL").unwrap();
 
-    let import_file_url = format!("{}/public/{}.metta", origin, file_id);
+    let pattern = String::from("$x");
+    let template = path_to_metta_sexpr(&path);
+    let uri = format!("{}/public/{}.metta", origin, file_id);
 
     let mork_import_url = format!(
         "{}/import/{}/{}?uri={}",
-        mork_url, file_expr, space_expr, import_file_url
+        mork_base,
+        encode(&pattern),
+        encode(&template),
+        encode(&uri)
     );
 
     let resp = reqwest::get(mork_import_url).await;
 
     let data = match resp {
-        Ok(resp) => resp.text().await,
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                eprintln!("MORK import returned error status: {}", resp.status());
+                return Err(Status::InternalServerError);
+            }
+            resp.text().await
+        }
         Err(e) => {
             eprintln!("Error sending MORK import request: {}", e);
             return Err(Status::InternalServerError);
@@ -150,24 +161,38 @@ pub async fn import(token: Token, path: PathBuf, space: String) -> Result<Json<b
     }
 }
 
+#[get("/spaces")]
+pub async fn export_root(token: Token) -> Result<Json<String>, Status> {
+    export(token, PathBuf::new()).await
+}
+
 #[get("/spaces/<path..>")]
 pub async fn export(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
-    if !path.starts_with(&token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
+    let token_namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace);
+
+    if !path.starts_with(&token_namespace) || !token.permission_read {
         return Err(Status::Unauthorized);
     }
 
-    let path_serialized = path_to_metta_sexpr(&path);
-
     let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
+    let mork_base = mork_url.trim_end_matches('/');
+    let pattern = path_to_metta_sexpr(&path);
+    let template = String::from("$x");
 
-    let mork_export_url = format!("{}/export/{}/$x", mork_url, path_serialized);
+    let mork_export_url = format!("{}/export/{}/{}", mork_base, encode(&pattern), encode(&template));
 
     println!("{}", mork_export_url);
 
     let resp = reqwest::get(mork_export_url).await;
 
     let data = match resp {
-        Ok(resp) => resp.text().await,
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                eprintln!("MORK export returned error status: {}", resp.status());
+                return Err(Status::InternalServerError);
+            }
+            resp.text().await
+        }
         Err(e) => {
             eprintln!("Error sending MORK export request: {}", e);
             return Err(Status::InternalServerError);
@@ -176,7 +201,7 @@ pub async fn export(token: Token, path: PathBuf) -> Result<Json<String>, Status>
 
     match data {
         Ok(data) => {
-            println!("MORK export request response text: {}", data);
+            println!("MORK export request response text length: {}", data.len());
             Ok(Json(data))
         }
         Err(e) => {
@@ -189,3 +214,220 @@ pub async fn export(token: Token, path: PathBuf) -> Result<Json<String>, Status>
     }
 }
 
+#[get("/busywait/<millis>/<path..>?<writer>")]
+pub async fn busywait(
+    token: Token,
+    millis: u64,
+    path: PathBuf,
+    writer: Option<bool>,
+) -> Result<Json<String>, Status> {
+    let token_namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace);
+
+    if !path.starts_with(&token_namespace) {
+        return Err(Status::Unauthorized);
+    }
+
+    let is_writer = writer.unwrap_or(false);
+
+    if is_writer && !token.permission_write {
+        return Err(Status::Unauthorized);
+    } else if !is_writer && !token.permission_read {
+        return Err(Status::Unauthorized);
+    }
+
+    let path_serialized = path_to_metta_sexpr(&path);
+
+    let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
+    let mork_base = mork_url.trim_end_matches('/');
+
+    let mut mork_busywait_url = format!(
+        "{}/busywait/{}/?expr1={}",
+        mork_base,
+        millis,
+        urlencoding::encode(&path_serialized)
+    );
+
+    if is_writer {
+        mork_busywait_url.push_str("&writer1");
+    }
+
+    println!("{}", mork_busywait_url);
+
+    let resp = reqwest::get(mork_busywait_url).await;
+
+    let data = match resp {
+        Ok(resp) => resp.text().await,
+        Err(e) => {
+            eprintln!("Error sending MORK busywait request: {}", e);
+            return Err(Status::InternalServerError);
+        }
+    };
+
+    match data {
+        Ok(data) => {
+            println!("MORK busywait request response text: {}", data);
+            Ok(Json(data))
+        }
+        Err(e) => {
+            eprintln!(
+                "Error converting MORK busywait request response to textual string: {}",
+                e
+            );
+            return Err(Status::InternalServerError);
+        }
+    }
+}
+
+#[rocket::delete("/spaces")]
+pub async fn clear_root(token: Token) -> Result<Json<bool>, Status> {
+    clear(token, PathBuf::new()).await
+}
+
+#[rocket::delete("/spaces/<path..>")]
+pub async fn clear(token: Token, path: PathBuf) -> Result<Json<bool>, Status> {
+    let token_namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace);
+
+    if !path.starts_with(&token_namespace) || !token.permission_write {
+        return Err(Status::Unauthorized);
+    }
+
+    let path_serialized = path_to_metta_sexpr(&path);
+
+    let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
+    let mork_base = mork_url.trim_end_matches('/');
+    let mork_clear_url = format!("{}/clear/{}", mork_base, urlencoding::encode(&path_serialized));
+
+    println!("{}", mork_clear_url);
+
+    let resp = reqwest::get(mork_clear_url).await;
+
+    match resp {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                eprintln!("MORK clear returned error status: {}", resp.status());
+                return Err(Status::InternalServerError);
+            }
+            Ok(Json(true))
+        }
+        Err(e) => {
+            eprintln!("Error sending MORK clear request: {}", e);
+            Err(Status::InternalServerError)
+        }
+    }
+}
+
+#[rocket::post("/spaces/<src_path..>?<dst_path>")]
+pub async fn copy(token: Token, src_path: PathBuf, dst_path: String) -> Result<Json<bool>, Status> {
+    let token_namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace);
+
+    let dst_path_buf = PathBuf::from(&dst_path);
+
+    if !src_path.starts_with(&token_namespace) || !dst_path_buf.starts_with(&token_namespace) {
+        return Err(Status::Unauthorized);
+    }
+
+    if !token.permission_read || !token.permission_write {
+        return Err(Status::Unauthorized);
+    }
+
+    let src_path_serialized = path_to_metta_sexpr(&src_path);
+    let dst_path_serialized = path_to_metta_sexpr(&dst_path_buf);
+
+    let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
+    let mork_base = mork_url.trim_end_matches('/');
+    let mork_copy_url = format!(
+        "{}/copy/{}/{}",
+        mork_base,
+        urlencoding::encode(&src_path_serialized),
+        urlencoding::encode(&dst_path_serialized)
+    );
+
+    println!("{}", mork_copy_url);
+
+    let resp = reqwest::get(mork_copy_url).await;
+
+    match resp {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                eprintln!("MORK copy returned error status: {}", resp.status());
+                return Err(Status::InternalServerError);
+            }
+            Ok(Json(true))
+        }
+        Err(e) => {
+            eprintln!("Error sending MORK copy request: {}", e);
+            Err(Status::InternalServerError)
+        }
+    }
+}
+
+#[get("/explore?<focus_token>")]
+pub async fn explore_root(token: Token, focus_token: Option<String>) -> Result<Json<String>, Status> {
+    explore(token, PathBuf::new(), focus_token).await
+}
+
+#[rocket::get("/explore/<path..>?<focus_token>")]
+pub async fn explore(
+    token: Token,
+    path: PathBuf,
+    focus_token: Option<String>,
+) -> Result<Json<String>, Status> {
+    let token_namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace);
+
+    if !path.starts_with(&token_namespace) || !token.permission_read {
+        return Err(Status::Unauthorized);
+    }
+
+    let path_serialized = path_to_metta_sexpr(&path);
+
+    let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
+    let mork_base = mork_url.trim_end_matches('/');
+
+    let focus = focus_token.unwrap_or_else(|| String::from(""));
+    let mork_explore_url = if focus.is_empty() {
+        format!(
+            "{}/explore/{}//",
+            mork_base,
+            urlencoding::encode(&path_serialized)
+        )
+    } else {
+        format!(
+            "{}/explore/{}/{}",
+            mork_base,
+            urlencoding::encode(&path_serialized),
+            urlencoding::encode(&focus)
+        )
+    };
+
+    println!("{}", mork_explore_url);
+
+    let resp = reqwest::get(mork_explore_url).await;
+
+    let data = match resp {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                eprintln!("MORK explore returned error status: {}", resp.status());
+                return Ok(Json(String::from("[]")));
+            }
+            resp.text().await
+        }
+        Err(e) => {
+            eprintln!("Error sending MORK explore request: {}", e);
+            return Ok(Json(String::from("[]")));
+        }
+    };
+
+    match data {
+        Ok(data) => {
+            println!("MORK explore request response text length: {}", data.len());
+            Ok(Json(data))
+        }
+        Err(e) => {
+            eprintln!(
+                "Error converting MORK explore request response to textual string: {}",
+                e
+            );
+            return Err(Status::InternalServerError);
+        }
+    }
+}

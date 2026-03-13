@@ -2,10 +2,14 @@ import type { Component, JSX, ResourceFetcherInfo } from 'solid-js'
 import { createResource, createSignal, For, onMount, Show } from 'solid-js'
 import { A } from '@solidjs/router'
 import { BACKEND_URL } from './urls'
-import { AiOutlineCopy, AiOutlineGithub } from 'solid-icons/ai'
+import { AiOutlineArrowLeft, AiOutlineCopy, AiOutlineGithub } from 'solid-icons/ai'
+import { VsSettings } from 'solid-icons/vs'
 import styles from './Tokens.module.scss'
-import toast, { Toaster } from 'solid-toast'
+import { Toaster } from 'solid-toast'
+import { notify } from './notify'
+import { useTheme } from './ThemeContext'
 import { Token } from './types'
+import { Header } from './components/Header'
 
 enum SortableColumns {
     TIMESTAMP,
@@ -38,11 +42,11 @@ const fetchTokens = async (
 
         const tokens = await resp.json()
 
-        toast(`Loaded ${tokens.length} tokens.`)
+        notify.success(`Loaded ${tokens.length} tokens.`)
 
         return tokens
     } catch (e) {
-        toast(`Failed to fetch tokens`)
+        notify.error(`Failed to fetch tokens`)
         return []
     }
 }
@@ -188,6 +192,7 @@ const Tokens: Component = () => {
                 event.clientX <= rect.left + rect.width
 
             if (!isInDialog) {
+                event.stopPropagation()
                 refreshTokensModel.close()
             }
         })
@@ -203,6 +208,7 @@ const Tokens: Component = () => {
                 event.clientX <= rect.left + rect.width
 
             if (!isInDialog) {
+                event.stopPropagation()
                 deleteTokensModal.close()
             }
         })
@@ -244,7 +250,7 @@ const Tokens: Component = () => {
                 // signals propagate: the mutateTokens call above causes newTokenNamespaceInput to re-render
                 newTokenNamespaceInput.value = namespace
 
-                toast.success(
+                notify.custom(
                     (t) => (
                         <div>
                             <span>Successfully created token.</span>
@@ -263,7 +269,7 @@ const Tokens: Component = () => {
                     }
                 )
             } catch (e) {
-                toast(`Failed to create new token.`)
+                notify.error(`Failed to create new token.`)
             }
         }
     })
@@ -314,7 +320,7 @@ const Tokens: Component = () => {
             tokens().filter((t) => selectedTokenIDs.includes(t.id))
         )
 
-        toast(`Refreshed code for ${results.length} tokens.`)
+        notify.success(`Refreshed code for ${results.length} tokens.`)
     }
 
     const handleDeleteTokensButtonClick = async () => {
@@ -331,9 +337,9 @@ const Tokens: Component = () => {
 
             tokenTableSelectAllCheckbox.checked = false
 
-            toast(`Deleted ${count} tokens.`)
+            notify.success(`Deleted ${count} tokens.`)
         } catch (e) {
-            toast(`Failed to delete tokens.`)
+            notify.error(`Failed to delete tokens.`)
         }
     }
 
@@ -399,18 +405,19 @@ const Tokens: Component = () => {
     }
 
     return (
-        <>
-            <header>
-                <h1>MeTTa KG</h1>
-                <nav>
-                    <A href="/" class={styles.OutlineButton}>
-                        Editor
-                    </A>
-                    <a href="https://github.com/Qoba-ai/MeTTa-KG">
-                        <AiOutlineGithub class={styles.Icon} size={32} />
-                    </a>
-                </nav>
-            </header>
+        <div class={styles.MainLayout}>
+            <Header title="MeTTa KG Tokens">
+                <A href="/" class={styles.OutlineButton}>
+                    <AiOutlineArrowLeft size={18} style={{ "margin-right": "8px" }} />
+                    Back to Editor
+                </A>
+                <A href="/settings" class={styles.IconButton} title="Settings">
+                    <VsSettings size={24} />
+                </A>
+                <a href="https://github.com/Qoba-ai/MeTTa-KG" target="_blank" rel="noopener noreferrer" class="github-link">
+                    <AiOutlineGithub size={32} />
+                </a>
+            </Header>
             <main class={styles.Main}>
                 <form
                     class={styles.RootTokenForm}
@@ -1157,7 +1164,11 @@ const Tokens: Component = () => {
                 </div>
             </main>
             <dialog ref={refreshTokensModel!} class={styles.RefreshTokensModal}>
-                <form>
+                <form onsubmit={(ev) => {
+                    ev.preventDefault()
+                    handleRefreshTokensButtonClick()
+                    refreshTokensModel.close()
+                }}>
                     <h2>Refresh Tokens?</h2>
                     <p>
                         Selected tokens will no longer give access to the
@@ -1165,27 +1176,28 @@ const Tokens: Component = () => {
                     </p>
                     <div class={styles.ModalButtonBar}>
                         <button
-                            class={styles.Button}
-                            onclick={(ev) => {
-                                ev.preventDefault()
-                                handleRefreshTokensButtonClick()
-                                refreshTokensModel.close()
-                            }}
-                        >
-                            Confirm
-                        </button>
-                        <button
                             type="button"
                             class={styles.TextButton}
                             onclick={() => refreshTokensModel.close()}
                         >
                             Cancel
                         </button>
+                        <div class={styles.Spacer}></div>
+                        <button
+                            type="submit"
+                            class={styles.Button}
+                        >
+                            Confirm
+                        </button>
                     </div>
                 </form>
             </dialog>
             <dialog ref={deleteTokensModal!} class={styles.deleteTokensModal}>
-                <form>
+                <form onsubmit={(ev) => {
+                    ev.preventDefault()
+                    handleDeleteTokensButtonClick()
+                    deleteTokensModal.close()
+                }}>
                     <h2>Delete tokens?</h2>
                     <p>
                         Selected tokens will be deleted permanently. Sub-tokens
@@ -1193,21 +1205,18 @@ const Tokens: Component = () => {
                     </p>
                     <div class={styles.ModalButtonBar}>
                         <button
-                            class={styles.Button}
-                            onclick={(ev) => {
-                                ev.preventDefault()
-                                handleDeleteTokensButtonClick()
-                                deleteTokensModal.close()
-                            }}
-                        >
-                            Confirm
-                        </button>
-                        <button
                             type="button"
                             class={styles.TextButton}
                             onclick={() => deleteTokensModal.close()}
                         >
                             Cancel
+                        </button>
+                        <div class={styles.Spacer}></div>
+                        <button
+                            type="submit"
+                            class={styles.Button}
+                        >
+                            Confirm
                         </button>
                     </div>
                 </form>
@@ -1216,7 +1225,7 @@ const Tokens: Component = () => {
                 toastOptions={{ className: styles.Toaster }}
                 containerStyle={{ 'margin-top': '60px' }}
             />
-        </>
+        </div>
     )
 }
 

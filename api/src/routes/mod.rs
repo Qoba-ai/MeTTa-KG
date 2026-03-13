@@ -33,7 +33,6 @@ pub fn path_to_metta_sexpr(path: &Path) -> String {
     sexpr
 }
 
-
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Token {
     type Error = AuthError;
@@ -43,7 +42,7 @@ impl<'r> FromRequest<'r> for Token {
         use crate::schema::tokens::dsl::*;
 
         /*
-        
+
         return Outcome::Success(Token {
             id: 0,
             code: "aaa".to_string(),

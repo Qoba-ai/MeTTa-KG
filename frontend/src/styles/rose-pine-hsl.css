@@ -43,7 +43,8 @@
 	--rp-dawn-pine: hsl(197deg, 53%, 34%);
 	--rp-dawn-foam: hsl(189deg, 30%, 48%);
 	--rp-dawn-iris: hsl(268deg, 21%, 57%);
-	--rp-dawn-highlight-low: hsl(25deg, 35%, 93%);
-	--rp-dawn-highlight-med: hsl(10deg, 9%, 86%);
-	--rp-dawn-highlight-high: hsl(315deg, 4%, 80%);
-}
+		--rp-dawn-highlight-low: hsl(25deg, 35%, 93%);
+		--rp-dawn-highlight-med: hsl(10deg, 9%, 86%);
+		--rp-dawn-highlight-high: hsl(315deg, 4%, 80%);
+	}
+	

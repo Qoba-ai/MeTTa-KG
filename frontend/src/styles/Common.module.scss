@@ -16,35 +16,77 @@ body {
 }
 
 header {
-    position: relative;
+    position: sticky;
+    top: 0;
     width: 100%;
-    z-index: 1;
+    z-index: 1000;
     background: var(--rp-surface);
-    padding: 16px;
-    box-shadow:
-        0px 2px 4px -1px rgba(0, 0, 0, 0.2),
-        0px 4px 5px 0px rgba(0, 0, 0, 0.14),
-        0px 1px 10px 0px rgba(0, 0, 0, 0.12);
+    padding: 0 24px;
+    height: 64px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--rp-highlight-low);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 
     h1 {
-        display: inline-block;
-        font-size: 1.6rem;
+        font-size: 1.25rem;
         margin: 0;
+        font-weight: 700;
+        color: var(--rp-text);
+        letter-spacing: -0.5px;
     }
 
     nav {
-        float: right;
         display: flex;
         flex-direction: row;
-        justify-content: start;
+        justify-content: flex-end;
         align-items: center;
-        margin: 0px 8px;
+        margin: 0;
         gap: 16px;
+        height: 100%;
+
+        & > * {
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .github-link {
+            color: var(--rp-subtle);
+            transition: all 0.2s;
+            &:hover {
+                color: var(--rp-text);
+                transform: scale(1.1);
+            }
+        }
     }
 }
 
 .Icon {
-    color: var(--rp-moon-subtle);
+    color: var(--rp-subtle);
+    transition: color 0.2s;
+
+    &:hover {
+        color: var(--rp-text);
+    }
+}
+
+.IconButton {
+    background: transparent;
+    border: none;
+    color: var(--rp-text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    border-radius: 8px;
+    transition: background 0.2s;
+
+    &:hover {
+        background: var(--rp-highlight-low);
+    }
 }
 
 input:not([type='file']) {
@@ -59,9 +101,62 @@ input:focus {
     outline: 1px var(--rp-highlight-high) solid;
 }
 
+%button-style {
+    background: transparent;
+    color: var(--rp-love);
+    text-decoration: none;
+    border: solid 1px var(--rp-love);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+
+    &:hover:not(:disabled) {
+        background: var(--rp-love);
+        color: var(--rp-base);
+        box-shadow: 0 4px 12px rgba(235, 111, 146, 0.2);
+    }
+
+    &:disabled {
+        border-color: var(--rp-muted);
+        color: var(--rp-muted);
+        cursor: not-allowed;
+    }
+}
+
+.Button {
+    @extend %button-style;
+}
+
+.OutlineButton {
+    @extend %button-style;
+}
+
+.TextButton {
+    background: transparent;
+    color: var(--rp-text);
+    text-decoration: none;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover:not(:disabled) {
+        background: var(--rp-highlight-low);
+    }
+}
+
+.TextButton:disabled {
+    color: var(--rp-muted);
+    cursor: not-allowed;
+}
+
 input[type='submit'],
 input[type='button'] {
-    @extend .Button;
+    @extend %button-style;
 }
 
 input[type='checkbox'] {
@@ -71,7 +166,7 @@ input[type='checkbox'] {
 select {
     background: transparent;
     color: var(--rp-text);
-    border-radius: 4px;
+    border-radius: 8px;
     padding: 8px 16px;
     border: solid 1px var(--rp-highlight-high);
 
@@ -79,51 +174,6 @@ select {
         background: var(--rp-overlay);
         border: none;
     }
-}
-
-.OutlineButton {
-    background: transparent;
-    color: var(--rp-love);
-    text-decoration: none;
-    border: solid 1px var(--rp-love);
-    border-radius: 8px;
-    padding: 6px 20px;
-}
-
-.OutlineButton:disabled {
-    @extend .OutlineButton;
-    border-color: var(--rp-muted);
-    color: var(--rp-muted);
-}
-
-.Button {
-    background: transparent;
-    color: var(--rp-love);
-    text-decoration: none;
-    border: solid 1px var(--rp-love);
-    border-radius: 4px;
-    padding: 8px 20px;
-}
-
-.Button:disabled {
-    @extend .Button;
-    border-color: var(--rp-muted);
-    color: var(--rp-muted);
-}
-
-.TextButton {
-    background: transparent;
-    color: var(--rp-text);
-    text-decoration: none;
-    border: none;
-    border-radius: 8px;
-    padding: 6px 20px;
-}
-
-.TextButton:disabled {
-    @extend .TextButton;
-    border-color: var(--rp-muted);
-    color: var(--rp-muted);
 }
 
 input[type='file']:invalid::file-selector-button {
@@ -206,7 +256,7 @@ legend {
 }
 
 .Toaster {
-    background: var(--rp-moon-overlay) !important;
+    background: var(--rp-overlay) !important;
     color: var(--rp-text) !important;
 
     button {

@@ -1,261 +1,756 @@
 @import 'styles/Common.module';
 
-// using class .Main for HTML main elements to prevent applying these styles to main elements on other pages
-// sass requires you to use class and id selectors
+.MainLayout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
 .Main {
-    position: absolute;
-    top: 0;
-    left: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 24px;
+    box-sizing: border-box;
+    background: var(--rp-base);
+    overflow: hidden;
+}
+
+.EditorLayout {
+    display: flex;
+    flex-direction: row;
     width: 100%;
     height: 100%;
+    gap: 20px;
+    flex: 1;
+    min-height: 0;
+}
+
+.Sidebar {
     display: flex;
-    justify-content: safe center;
-    align-items: safe center;
-    gap: 64px;
-    overflow-x: auto;
+    flex-direction: column;
+    gap: 16px;
+    width: 240px;
+    background: var(--rp-surface);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border: 1px solid var(--rp-highlight-low);
+    flex-shrink: 0;
+
+    h2 {
+        font-size: 1.1rem;
+        margin: 0 0 16px 0;
+        color: var(--rp-gold);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        border-bottom: 1px solid var(--rp-highlight-low);
+        padding-bottom: 8px;
+    }
+
+    .MettaEditorActions {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        gap: 4px;
+        
+        button {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 12px;
+            padding: 10px 12px;
+            background: transparent;
+            color: var(--rp-subtle);
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            text-align: left;
+            transition: all 0.2s;
+            cursor: pointer;
+
+            &:hover {
+                background: var(--rp-highlight-low);
+                color: var(--rp-love);
+                padding-left: 16px;
+            }
+
+            svg {
+                color: var(--rp-iris);
+            }
+        }
+    }
+
+    .ImportParametersForm {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        width: 100%;
+
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--rp-subtle);
+
+            select {
+                width: 100%;
+                padding: 8px;
+                border-radius: 6px;
+                background: var(--rp-base);
+                border: 1px solid var(--rp-highlight-low);
+                color: var(--rp-text);
+            }
+        }
+
+        .Instructions {
+            font-size: 0.85rem;
+            line-height: 1.4;
+            background: var(--rp-base);
+            padding: 10px;
+            border-radius: 8px;
+            margin: 0;
+            border: 1px solid var(--rp-highlight-low);
+        }
+
+        .ImportActions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 8px;
+        }
+    }
+}
+
+.MainEditorArea {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 16px;
+    height: 100%;
+    min-width: 0;
 }
 
 .EditorWrapper {
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    flex: 1;
+    width: 100%;
+    background: var(--rp-base);
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--rp-highlight-low);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.EditorTabs {
+    display: flex;
+    flex-direction: row;
+    background: var(--rp-surface);
+    border-bottom: 1px solid var(--rp-highlight-low);
+    padding: 0 8px;
+    gap: 4px;
+    align-items: flex-end;
+    height: 40px;
+    overflow-x: auto;
+
+    &::-webkit-scrollbar {
+        height: 2px;
+    }
+
+    .AddTab {
+        background: transparent;
+        border: none;
+        color: var(--rp-subtle);
+        cursor: pointer;
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        transition: color 0.2s;
+
+        &:hover {
+            color: var(--rp-text);
+        }
+    }
+}
+
+.EditorTab {
+    display: flex;
+    flex-direction: row;
     align-items: center;
-    flex-shrink: 1;
-    width: 700px;
-    min-height: 500px;
-    background: var(--rp-moon-base);
-    box-shadow:
-        0px 8px 10px -5px rgba(0, 0, 0, 0.2),
-        0px 16px 24px 2px rgba(0, 0, 0, 0.14),
-        0px 6px 30px 5px rgba(0, 0, 0, 0.12);
-    border-radius: 20px;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--rp-base);
+    border: 1px solid var(--rp-highlight-low);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    min-width: 120px;
+    max-width: 240px;
+    transition: all 0.2s;
+    height: 32px;
+    position: relative;
+
+    &:hover {
+        background: var(--rp-highlight-low);
+    }
+
+    &.ActiveTab {
+        background: var(--rp-base);
+        border-top: 2px solid var(--rp-love);
+        color: var(--rp-love);
+        height: 36px;
+        z-index: 2;
+    }
+
+    .TabTitle {
+        font-size: 0.85rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+    }
+
+    .TabClose {
+        background: transparent;
+        border: none;
+        color: var(--rp-subtle);
+        cursor: pointer;
+        padding: 2px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        opacity: 0;
+        transition: all 0.2s;
+
+        &:hover {
+            background: var(--rp-highlight-med);
+            color: var(--rp-love);
+        }
+    }
+
+    &:hover .TabClose, &.ActiveTab .TabClose {
+        opacity: 1;
+    }
 }
 
 .MettaInputActionsWrapper {
     width: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: start;
-    gap: 8px;
-    background: var(--rp-moon-surface);
-    border-top-left-radius: 20px;
-    border-top-right-radius: 20px;
-    box-shadow:
-        0px 3px 3px -2px rgba(0, 0, 0, 0.2),
-        0px 3px 4px 0px rgba(0, 0, 0, 0.14),
-        0px 1px 8px 0px rgba(0, 0, 0, 0.12);
-    padding: 8px;
+    background: var(--rp-surface);
+    border-bottom: 1px solid var(--rp-highlight-low);
+    padding: 10px 16px;
+    box-sizing: border-box;
 
     .EditorRootTokenFormWrapper {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
         width: 100%;
 
-        padding: 0 16px;
-        display: flex;
-        justify-content: row;
-        align-items: center;
-        gap: 16px;
-
         .EditorRootTokenForm {
-            flex: 1;
-
             display: flex;
-            justify-content: row;
+            flex-direction: row;
             align-items: center;
             gap: 8px;
+            flex: 1;
+            max-width: 600px;
+        }
 
-            input[type="search"] {
-                flex: 1;
-            }
+        .Spacer {
+            flex-grow: 1;
+        }
 
-            input {
-                border-radius: 12px;
-                padding: 12px 20px;
+        .RunButton {
+            color: var(--rp-pine);
+            background: var(--rp-highlight-low);
+            padding: 8px 12px;
+            
+            &:hover {
+                background: var(--rp-highlight-med);
+                color: var(--rp-foam);
             }
         }
     }
 }
 
 .MettaInput {
-    width: 700px;
-    flex-grow: 1;
-    border: none;
-    caret-color: var(--rp-text);
-    color: var(--rp-text);
-    border-radius: 16px;
-    padding: 8px 0px;
-    box-sizing: border-box;
-    word-break: break-all;
-}
-
-.NewSessionDiv {
-    color: var(--rp-text);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 12px;
-    width: 700px;
-
-    & > div {
-        display: flex;
-        flex-direction: row;
-        margin: 16px 0;
-        width: 30%;
-        height: 0;
-        gap: 10px;
-        text-align: center;
-        line-height: 0px;
-
-        & > div {
-            width: 100%;
-            border: solid 1px var(--rp-highlight-high);
-        }
-    }
-
-    .ImportButton {
-        background: transparent;
-        border: none;
-        color: var(--rp-text);
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        font-size: 1.4rem;
+    width: 100%;
+    flex: 1;
+    overflow: hidden;
+    background: var(--rp-base);
+    
+    :global(.cm-editor) {
+        height: 100%;
     }
 }
 
 .Console {
     width: 100%;
-    height: 120px;
-    border-top: solid 1px var(--rp-highlight-high);
-    border-bottom-left-radius: 20px;
-    border-bottom-right-radius: 20px;
-    padding: 12px;
+    height: var(--console-height, 120px);
+    background: var(--rp-surface);
+    border-top: 1px solid var(--rp-highlight-low);
+    padding: 12px 20px;
     box-sizing: border-box;
-    background: transparent;
     margin: 0;
     overflow-y: auto;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9rem;
+    color: var(--rp-foam);
 }
 
-.Console::-webkit-scrollbar {
+.Resizer, .ConsoleResizer {
     background: transparent;
-    width: 5px;
-    height: 5px;
+    transition: background 0.3s;
+    z-index: 10;
+
+    &:hover, &.Resizing {
+        background: var(--rp-love);
+    }
 }
 
-.Console::-webkit-scrollbar-thumb {
-    background-color: var(--rp-highlight-med);
+.Resizer {
+    width: 4px;
+    cursor: col-resize;
+    margin: 0 -2px;
 }
 
-.Console::-webkit-scrollbar-corner {
-    background-color: transparent;
+.ConsoleResizer {
+    height: 4px;
+    cursor: row-resize;
+    margin: -2px 0;
 }
 
-#ImportParametersForm {
-    background-color: var(--rp-surface);
-    padding: 8px 16px 16px 16px;
-    border-radius: 8px;
+.TrieExplorer {
+    width: var(--trie-width, 300px);
+    background: var(--rp-surface);
+    border-radius: 16px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
+    gap: 16px;
+    border: 1px solid var(--rp-highlight-low);
+    flex-shrink: 0;
+    height: 100%;
+    overflow: hidden;
+
+    h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        color: var(--rp-gold);
+        border-bottom: 1px solid var(--rp-highlight-low);
+        padding-bottom: 10px;
+    }
+}
+
+.TrieContent {
+    flex: 1;
+    overflow-y: auto;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-right: 4px;
+
+    &::-webkit-scrollbar {
+        width: 4px;
+    }
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    &::-webkit-scrollbar-thumb {
+        background: var(--rp-highlight-low);
+        border-radius: 10px;
+    }
+    &::-webkit-scrollbar-thumb:hover {
+        background: var(--rp-highlight-med);
+    }
+}
+
+.TrieNode {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    user-select: none;
+    width: 100%;
+    box-sizing: border-box;
+
+    &:hover {
+        background: var(--rp-highlight-low);
+
+        .TrieActions {
+            opacity: 1;
+        }
+    }
+}
+
+.TrieActions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
     gap: 4px;
-    box-shadow:
-        0px 3px 3px -2px rgba(0, 0, 0, 0.2),
-        0px 3px 4px 0px rgba(0, 0, 0, 0.14),
-        0px 1px 8px 0px rgba(0, 0, 0, 0.12);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
 
-    & > h2 {
-        margin: 16px 8px;
+.TrieActionBtn {
+    background: transparent;
+    border: none;
+    color: var(--rp-subtle);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+
+    &:hover {
+        background: var(--rp-highlight-med);
+        color: var(--rp-foam);
+        transform: scale(1.1);
+    }
+}
+
+.TrieDeleteBtn:hover {
+    color: var(--rp-love);
+}
+
+.TrieBranchIcon {
+    color: var(--rp-foam);
+    flex-shrink: 0;
+}
+
+.TrieLeafIcon {
+    color: var(--rp-iris);
+    flex-shrink: 0;
+}
+
+.TrieBranchText {
+    color: var(--rp-rose);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.TrieLeafText {
+    color: var(--rp-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.TrieEmpty {
+    padding: 20px;
+    text-align: center;
+    color: var(--rp-subtle);
+    font-style: italic;
+}
+
+.Spacer {
+    flex-grow: 1;
+}
+
+.ModalButtonBar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    margin-top: 12px;
+    padding-top: 20px;
+    border-top: 1px solid var(--rp-highlight-low);
+
+    .TextButton {
+        color: var(--rp-subtle);
+        &:hover {
+            color: var(--rp-love);
+        }
+    }
+}
+
+.TransformModal {
+    width: 700px;
+    max-width: 90vw;
+    
+    form {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
     }
 
-    & > * {
-        margin: 8px;
+    .TransformIOSpaces {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
     }
 
-    label {
+    .TransformPatterns {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .FieldGroup {
         display: flex;
         flex-direction: column;
         gap: 8px;
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--rp-gold);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input, .SelectSpaces, :global(.NamespaceSelector) input, .NamespaceSelector input {
+            width: 100%;
+            padding: 10px 16px;
+            border-radius: 10px;
+            background: var(--rp-base);
+            border: 1px solid var(--rp-highlight-low);
+            color: var(--rp-text);
+            box-sizing: border-box;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9rem;
+            transition: border-color 0.2s;
+
+            &:focus {
+                border-color: var(--rp-love);
+                outline: none;
+            }
+        }
     }
-}
-
-.MettaEditorActions {
-    width: 100%;
-    display: flex;
-    gap: 8px;
-
-    button {
-        @extend .TextButton;
-        color: var(--rp-subtle);
-    }
-
-    button:hover {
-        text-decoration: underline;
-    }
-}
-
-.RunIcon {
-    @extend .Icon;
-    color: var(--rp-moon-pine);
 }
 
 .LoadSpaceModal {
-    width: 400px;
+    form {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
 
-    input {
-        width: 100%;
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--rp-gold);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+
+            input {
+                width: 100%;
+                padding: 10px 16px;
+                border-radius: 10px;
+                background: var(--rp-base);
+                border: 1px solid var(--rp-highlight-low);
+                color: var(--rp-text);
+                box-sizing: border-box;
+                font-family: 'Fira Code', monospace;
+                font-size: 0.9rem;
+                transition: border-color 0.2s;
+
+                &:focus {
+                    border-color: var(--rp-love);
+                    outline: none;
+                }
+            }
+        }
     }
 }
 
-.TransformIOSpaces {
+.NewSessionDiv {
+    flex: 1;
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
     gap: 24px;
-}
+    background: var(--rp-base);
 
-.TransformIOSpaces > div {
-    width: 100%;
-    gap: 16px;
-}
-
-.SelectSpaces {
-    width: 100%;
-    height: 100%;
-}
-
-.SelectSpaces > option {
-    color: white;
-}
-
-#ImportFileFormInput {
-    margin: 16px;
-}
-
-@media screen and (max-width: 1024px) {
-    .Main {
-        flex-direction: column;
-    }
-
-    #ImportParametersForm {
-        width: 500px;
-    }
-}
-
-@media screen and (min-width: 1025px) {
-    .Main {
+    .ImportButton {
+        background: var(--rp-surface);
+        border: 1px solid var(--rp-highlight-high);
+        color: var(--rp-text);
+        display: flex;
         flex-direction: row;
+        align-items: center;
+        padding: 20px 40px;
+        border-radius: 16px;
+        gap: 16px;
+        font-size: 1.5rem;
+        transition: all 0.3s;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
 
-        // center editor with optional panes to the sides
-        & > div:first-child,
-        & > div:last-child {
-            width: 50%;
+        &:hover {
+            transform: translateY(-4px);
+            border-color: var(--rp-love);
+            color: var(--rp-love);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+        }
+    }
+}
+
+.NamespaceSelector {
+    position: relative;
+    flex: 1;
+
+    input {
+        width: 100%;
+        border-radius: 10px;
+        padding: 10px 16px;
+        background: var(--rp-base);
+        border: 1px solid var(--rp-highlight-low);
+        color: var(--rp-text);
+        box-sizing: border-box;
+        transition: border-color 0.2s;
+
+        &:focus {
+            border-color: var(--rp-love);
+            outline: none;
+        }
+    }
+}
+
+.ExploreDropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    background: var(--rp-overlay);
+    border: 1px solid var(--rp-highlight-high);
+    border-radius: 12px;
+    z-index: 100;
+    max-height: 300px;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+}
+
+.ExploreItem {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-bottom: 1px solid var(--rp-highlight-low);
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:last-child { border-bottom: none; }
+    &:hover, &.ExploreItemFocused {
+        background: var(--rp-highlight-med);
+    }
+
+    .ExploreItemMain {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+
+        .ExploreIcon {
+            color: var(--rp-iris);
         }
     }
 
-    #ImportParametersForm {
-        width: 320px;
+    .ExploreItemPath {
+        font-weight: 600;
+        color: var(--rp-rose);
+        font-size: 0.9rem;
+    }
+
+    .ExploreItemHint {
+        color: var(--rp-subtle);
+        font-size: 0.75rem;
+        font-family: 'Fira Code', monospace;
+    }
+}
+
+.ExploreItemEmpty {
+    padding: 16px;
+    text-align: center;
+    color: var(--rp-subtle);
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+.ImportModalWide {
+    width: 650px;
+    max-width: 90vw;
+}
+
+.ImportModalContent {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin: 16px 0;
+}
+
+.DropZoneSmall {
+    padding: 20px !important;
+    flex-direction: row !important;
+    gap: 16px !important;
+    justify-content: center;
+}
+
+.ImportSettingsContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: var(--rp-surface);
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid var(--rp-highlight-low);
+}
+
+.ActiveFileDisplay {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: var(--rp-base);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--rp-text);
+    border: 1px solid var(--rp-highlight-low);
+
+    span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+
+.ImportSettingsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+}
+
+.ImportWarning {
+    color: var(--rp-love);
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.DropZone {
+    border: 2px dashed var(--rp-highlight-high);
+    border-radius: 20px;
+    padding: 60px 40px;
+    background: var(--rp-surface);
+    transition: all 0.3s;
+
+    &:hover, &.DropZoneActive {
+        border-color: var(--rp-love);
+        background: var(--rp-overlay);
     }
 }

@@ -4,6 +4,8 @@ import { Route, Router } from "@solidjs/router";
 
 import Editor from "./Editor";
 import Tokens from "./Tokens";
+import Settings from "./Settings";
+import { ThemeProvider } from "./ThemeContext";
 
 import './styles/global.scss';
 
@@ -19,10 +21,13 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 render(
   () => (
-    <Router>
-      <Route path="/" component={Editor} />
-      <Route path="/tokens" component={Tokens} />
-    </Router>
+    <ThemeProvider>
+      <Router>
+        <Route path="/" component={Editor} />
+        <Route path="/tokens" component={Tokens} />
+        <Route path="/settings" component={Settings} />
+      </Router>
+    </ThemeProvider>
   ),
   root!
 );

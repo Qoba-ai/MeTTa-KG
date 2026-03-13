@@ -95,7 +95,7 @@
     // make code cells look clickable
     td > div.CodeCell:hover {
         .CodeCellIcon {
-            color: var(--rp-moon-text);
+            color: var(--rp-text);
         }
 
         &:not(.Copied) {

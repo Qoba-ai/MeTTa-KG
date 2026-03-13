@@ -1,17 +1,62 @@
 import type { Component } from 'solid-js'
 import {
-    AiFillFileMarkdown,
     AiFillFolderOpen,
-    AiOutlineGithub,
 } from 'solid-icons/ai'
-import { VsRunAll } from 'solid-icons/vs'
-import { createMemo, createSignal, onMount, Show } from 'solid-js'
+import {
+    VsPlay,
+    VsRefresh,
+    VsFolderOpened,
+    VsCloudUpload,
+    VsIndent,
+    VsSave,
+    VsScreenFull,
+    VsScreenNormal,
+    VsCloudDownload,
+    VsReplace,
+    VsClearAll,
+    VsSettings,
+    VsClose,
+    VsAdd
+} from 'solid-icons/vs'
+import { createMemo, createSignal, onMount, Show, For, createEffect, batch } from 'solid-js'
 import styles from './Editor.module.scss'
 import { A } from '@solidjs/router'
-import toast, { Toaster } from 'solid-toast'
+import { Toaster } from 'solid-toast'
+import { notify } from './notify'
+import { useTheme } from './ThemeContext'
 import { BACKEND_URL, TOKEN } from './urls'
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/panda-syntax-dark.css'
+
+hljs.registerLanguage('metta', (hljs) => ({
+    name: 'MeTTa',
+    case_insensitive: false,
+    keywords: {
+        $pattern: /[A-Za-z_0-9,!=:?\-]+/,
+        keyword: 'if match empty case let let* get-type get-metatype : -> = unify import! bind! new-space add-atom remove-atom pragma! println! trace! nop new-state get-state change-state car-atom cdr-atom cons-atom assertEqual assertEqualToResult collapse superpose load-ascii call regex quote add-reduct !',
+        literal: 'True False',
+        type: 'Number Bool String'
+    },
+    contains: [
+        hljs.COMMENT(';', '$'),
+        {
+            className: 'string',
+            begin: '"', end: '"'
+        },
+        {
+            className: 'variable',
+            begin: '\\$[A-Za-z_0-9,!=:?\\-]+'
+        },
+        {
+            className: 'symbol',
+            begin: '&[A-Za-z_0-9,!=:?\\-]+'
+        },
+        {
+            className: 'number',
+            begin: '\\b-?\\d+(\\.\\d+)?\\b'
+        }
+    ]
+}))
 import {
     bracketMatching,
     foldGutter,
@@ -45,926 +90,836 @@ import {
     EditorMode,
     ImportCSVDirection,
     ImportFormat,
-    ParserParameters,
     Token,
 } from './types'
 import {
-    editorTheme,
+    getEditorTheme,
     highlightStyle,
     languageSupport,
     mettaLinter,
-    toJSON,
+    themeCompartment,
 } from './mettaLanguageSupport'
-import { parser } from './parser/parser'
 import { Expression, Symbol, Variable } from './parser/parser.terms'
+import { diffExtension, setOriginalContentEffect } from './diffExtension'
+import { NamespaceSelector } from './NamespaceSelector'
+import { TrieExplorer, buildTrie, TrieNode } from './TrieExplorer'
+
+// Components
+import { Header } from './components/Header'
+import { ConfirmModal } from './components/ConfirmModal'
+import { LoadSpaceModal } from './components/LoadSpaceModal'
+import { ImportModal } from './components/ImportModal'
+import { TransformModal } from './components/TransformModal'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
-    const extension = file.name.split('.')[1]
+    const extension = file.name.split('.').pop()?.toLowerCase()
 
     switch (extension) {
-        case 'csv': {
+        case 'csv':
             return ImportFormat.CSV
-        }
-        case 'nt': {
+        case 'nt':
+        case 'ntriples':
             return ImportFormat.NTRIPLES
-        }
-        case 'n3': {
+        case 'n3':
             return ImportFormat.N3
-        }
-        case 'jsonld': {
+        case 'jsonld':
+        case 'json-ld':
             return ImportFormat.JSONLD
-        }
+        default:
+            return undefined
     }
 }
 
+const sexprToPath = (sexpr: string): string => {
+    if (!sexpr || sexpr.trim() === '' || sexpr.trim() === '$x') return '/';
+    const cleaned = sexpr.replace(/[()]/g, '').replace(/\$x$/, '').trim();
+    const parts = cleaned.split(/\s+/).filter(p => p.length > 0);
+    if (parts.length === 0) return '/';
+    return '/' + parts.join('/') + '/';
+}
+
+const pathToSexpr = (path: string): string => {
+    if (!path || path === '/') return '$x';
+    const parts = path.split('/').filter(p => p.length > 0);
+    if (parts.length === 0) return '$x';
+    let sexpr = '$x';
+    for (let i = parts.length - 1; i >= 0; i--) {
+        sexpr = `(${parts[i]} ${sexpr})`;
+    }
+    return sexpr;
+}
+
+interface EditorPanel {
+    id: string;
+    namespace: string;
+    content: string;
+    originalContent: string;
+    view?: EditorView;
+}
+
 const App: Component = () => {
+    console.log("VITE_TOKEN detected:", TOKEN);
+    // Refs
     let importFileModal: HTMLDialogElement
-    let importFileForm: HTMLFormElement
-    let importFileFormInput: HTMLInputElement
     let commitImportForm: HTMLFormElement
     let mettaEditor: HTMLDivElement
     let mettaInput: HTMLDivElement
-    let rootTokenFormInput: HTMLInputElement
     let loadSpaceModal: HTMLDialogElement
-    let loadSpaceForm: HTMLFormElement
-    let loadSpaceFormInput: HTMLInputElement
-    let loadSubspaceForm: HTMLFormElement
     let transformModal: HTMLDialogElement
-    let transformForm: HTMLFormElement
+    let confirmModal: HTMLDialogElement
 
+    // Space State
     const [token, setToken] = createSignal<Token>()
-
     const [namespaces, setNamespaces] = createSignal<string[]>([])
-    const [selectedNamespace, setSelectedNamespace] = createSignal<string>()
 
-    const [editorContent, setEditorContent] = createSignal<string>('')
+    // Panels State
+    const [panels, setPanels] = createSignal<EditorPanel[]>([])
+    const [activePanelId, setActivePanelId] = createSignal<string>('')
+    
+    const activePanel = () => panels().find(p => p.id === activePanelId())
+
+    // Editor Content State
     const [editorOutput, setEditorOutput] = createSignal('')
-    const [editorView, setEditorView] = createSignal<EditorView>()
     const [editorMode, setEditorMode] = createSignal<EditorMode>(
-        EditorMode.DEFAULT
+        (TOKEN || localStorage.getItem('rootToken')) ? EditorMode.EDIT : EditorMode.DEFAULT
     )
 
-    const [activeImportFile, setActiveImportFile] = createSignal<File>()
-    const activeImportFileFormat = createMemo<ImportFormat | undefined>(() => {
-        const file = activeImportFile()
-
-        if (file) {
-            return extensionToImportFormat(file)
-        }
-    })
-
-    // TODO: replace tokens with namespaces to obtain tree-view of space
-    const [availableTokens, setAvailableTokens] = createSignal<Token[]>([])
-
+    // UI Layout State
     const [isFullscreen, setIsFullscreen] = createSignal<boolean>(false)
+    const [trieWidth, setTrieWidth] = createSignal(300)
+    const [isResizing, setIsResizing] = createSignal(false)
+    const [consoleHeight, setConsoleHeight] = createSignal(120)
+    const [isResizingConsole, setIsResizingConsole] = createSignal(false)
 
-    // controlled value of form input: move to separate component
-    const [tokenToOpen, setTokenToOpen] = createSignal('')
+    // Import State
+    const [activeImportFile, setActiveImportFile] = createSignal<File>()
+    const [isDraggingOver, setIsDraggingOver] = createSignal(false)
+    const [manualImportFormat, setManualImportFormat] = createSignal<ImportFormat>()
+    const [isTranslating, setIsTranslating] = createSignal(false)
+    const [importCSVDirection, setImportCSVDirection] = createSignal<ImportCSVDirection>(ImportCSVDirection.CELL_LABELED)
+    const [importCSVDelimiter, setImportCSVDelimiter] = createSignal<string>('\u002C')
 
-    // CSV-specific import parameters
-    const [importCSVDirection, setImportCSVDirection] =
-        createSignal<ImportCSVDirection>(ImportCSVDirection.CELL_LABELED)
-    const [importCSVDelimiter, setImportCSVDelimiter] =
-        createSignal<string>('\u002C')
-
-    const [transformInputSpaces, setTransformInputSpaces] =
-        createSignal<string>('')
-    const [transformOutputSpaces, setTransformOutputSpaces] =
-        createSignal<string>('')
+    // Transform State
+    const [transformInputSpaces, setTransformInputSpaces] = createSignal<string>('/')
+    const [transformOutputSpaces, setTransformOutputSpaces] = createSignal<string>('/')
     const [transformPattern, setTransformPattern] = createSignal<string>('')
     const [transformTemplate, setTransformTemplate] = createSignal<string>('')
 
-    const editorState = EditorState.create({
-        doc: editorContent(),
-        extensions: [
-            editorTheme,
-            languageSupport,
-            highlightActiveLineGutter(),
-            history(),
-            foldGutter(),
-            drawSelection(),
-            highlightSelectionMatches(),
-            dropCursor(),
-            bracketMatching(),
-            closeBrackets(),
-            highlightActiveLine(),
-            syntaxHighlighting(highlightStyle),
-            EditorView.lineWrapping,
-            autocompletion(),
-            mettaLinter,
-            keymap.of([
-                ...closeBracketsKeymap,
-                ...defaultKeymap,
-                ...searchKeymap,
-                ...historyKeymap,
-                ...foldKeymap,
-                ...completionKeymap,
-                ...lintKeymap,
-            ]),
-            EditorView.updateListener.of((update) => {
-                if (update.docChanged) {
-                    setEditorContent(update.state.doc.toString())
-                }
-            }),
-            EditorView.domEventHandlers({
-                drop: (event, view) => {
-                    // prevent pasting the original content along with its translation
-                    event.preventDefault()
-
-                    // translate files dropped into the editor (csv, jsonld,...)
-                    const draggedFile = event.dataTransfer?.files?.item(0)
-
-                    if (draggedFile) {
-                        setActiveImportFile(draggedFile)
-
-                        translateToMetta()
-                    }
-                },
-            }),
-        ],
+    // Confirmation State
+    const [confirmData, setConfirmData] = createSignal({
+        title: '',
+        message: '',
+        onConfirm: () => {}
     })
 
-    onMount(() => {
-        // TODO: put this in separate component
-        // dismiss import dialog when clicking on backdrop
-        importFileModal.addEventListener('click', function (event) {
-            const rect = importFileModal.getBoundingClientRect()
-            const isInDialog =
-                rect.top <= event.clientY &&
-                event.clientY <= rect.top + rect.height &&
-                rect.left <= event.clientX &&
-                event.clientX <= rect.left + rect.width
-
-            if (!isInDialog) {
-                importFileModal.close()
-            }
-        })
-
-        // TODO: put this in separate component
-        // dismiss import dialog when clicking on backdrop
-        loadSpaceModal.addEventListener('click', function (event) {
-            const rect = loadSpaceModal.getBoundingClientRect()
-            const isInDialog =
-                rect.top <= event.clientY &&
-                event.clientY <= rect.top + rect.height &&
-                rect.left <= event.clientX &&
-                event.clientX <= rect.left + rect.width
-
-            if (!isInDialog) {
-                loadSpaceModal.close()
-            }
-        })
-
-        transformModal.addEventListener('click', function (event) {
-            const rect = transformModal.getBoundingClientRect()
-            const isInDialog =
-                rect.top <= event.clientY &&
-                event.clientY <= rect.top + rect.height &&
-                rect.left <= event.clientX &&
-                event.clientX <= rect.left + rect.width
-
-            if (!isInDialog) {
-                transformModal.close()
-            }
-        })
-
-        // perform translation and set editor into import mode
-        importFileForm.onsubmit = async (event) => {
-            // prevent page refresh on submit
-            event.preventDefault()
-
-            await translateToMetta()
-
-            importFileModal.close()
-        }
-
-        if (TOKEN) {
-            loadSpace(TOKEN)
-            setEditorMode(EditorMode.EDIT)
-        }
-
-        loadSpaceForm.onsubmit = (event) => {
-            // prevent page refresh on submit
-            event.preventDefault()
-
-            loadSpace(tokenToOpen())
-            setEditorMode(EditorMode.EDIT)
-
-            loadSpaceModal.close()
-        }
-
-        transformModal.onsubmit = async (event) => {
-            // prevent page refresh on submit
-            event.preventDefault()
-            await transform()
-
-            transformModal.close()
-        }
-
-        // clear file input after closing modal
-        importFileModal.addEventListener('close', function (event) {
-            importFileFormInput.value = ''
-        })
-
-        // update fullscreen status when user exits fullscreen using ESC key
-        document.onfullscreenchange = async (event) => {
-            if (!document.fullscreenElement) {
-                setIsFullscreen(false)
-            }
-        }
-    })
-
-    // called right before mettaInput is added to the DOM
-    // the HTML element is not added to the DOM when the component is mounted,
-    // so we cannot initialize the editor in onMount
-    const initializeEditor = (): void => {
-        setEditorView(
-            new EditorView({
-                state: editorState,
-                parent: mettaInput,
-            })
-        )
-    }
-
-    const initializeLoadSubspaceForm = (): void => {
-        loadSubspaceForm.onsubmit = (event) => {
-            // prevent page refresh on submit
-            event.preventDefault()
-
-            read(token())
-        }
-    }
-
-    const handleImportFileSelect = (
-        e: Event & {
-            currentTarget: HTMLInputElement
-            target: HTMLInputElement
-        }
-    ) => {
-        const file = e.target?.files?.[0]
-
+    const activeImportFileFormat = createMemo<ImportFormat | undefined>(() => {
+        const file = activeImportFile()
         if (file) {
-            setActiveImportFile(file)
+            const format = manualImportFormat() || extensionToImportFormat(file)
+            return format
         }
+    })
+
+    createEffect(() => {
+        const file = activeImportFile()
+        if (file && importFileModal && !importFileModal.open) {
+            importFileModal.showModal()
+        }
+    })
+
+    const { theme: currentTheme } = useTheme()
+
+    const createEditorState = (initialDoc: string) => {
+        return EditorState.create({
+            doc: initialDoc,
+            extensions: [
+                themeCompartment.of(getEditorTheme(currentTheme() === 'dark')),
+                languageSupport,
+                diffExtension,
+                highlightActiveLineGutter(),
+                history(),
+                foldGutter(),
+                drawSelection(),
+                highlightSelectionMatches(),
+                dropCursor(),
+                bracketMatching(),
+                closeBrackets(),
+                highlightActiveLine(),
+                syntaxHighlighting(highlightStyle),
+                EditorView.lineWrapping,
+                autocompletion(),
+                mettaLinter,
+                keymap.of([
+                    ...closeBracketsKeymap,
+                    ...defaultKeymap,
+                    ...searchKeymap,
+                    ...historyKeymap,
+                    ...foldKeymap,
+                    ...completionKeymap,
+                    ...lintKeymap,
+                ]),
+                EditorView.updateListener.of((update) => {
+                    if (update.docChanged) {
+                        const content = update.state.doc.toString()
+                        setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, content } : p))
+                    }
+                }),
+                EditorView.domEventHandlers({
+                    drop: (event, view) => {
+                        event.preventDefault()
+                        const draggedFile = event.dataTransfer?.files?.item(0)
+                        if (draggedFile) {
+                            setActiveImportFile(draggedFile)
+                            importFileModal.showModal()
+                        }
+                    },
+                }),
+            ],
+        })
     }
 
-    const getParserParameters = (): ParserParameters => {
-        switch (activeImportFileFormat()) {
-            case ImportFormat.CSV: {
-                return {
-                    direction: importCSVDirection(),
-                    delimiter: importCSVDelimiter(),
-                }
+    createEffect(() => {
+        const p = activePanel()
+        if (p && p.view) {
+            p.view.dispatch({ effects: setOriginalContentEffect.of(p.originalContent) })
+        }
+    })
+
+    createEffect(() => {
+        const isDark = currentTheme() === 'dark'
+        panels().forEach(p => {
+            if (p.view) {
+                p.view.dispatch({ effects: themeCompartment.reconfigure(getEditorTheme(isDark)) })
             }
-            case ImportFormat.NTRIPLES: {
-                return {
-                    dummy: '',
-                }
-            }
-            case ImportFormat.JSONLD: {
-                return {
-                    dummy: '',
-                }
-            }
-            case ImportFormat.N3: {
-                return {
-                    dummy: '',
-                }
-            }
-            default: {
-                throw new Error('Failed to get parser parameters')
+        })
+    })
+
+    // Handle swapping views when active panel changes
+    createEffect(() => {
+        const p = activePanel()
+        if (p && mettaInput) {
+            // Clear existing editor
+            mettaInput.innerHTML = ''
+            if (!p.view) {
+                const view = new EditorView({ 
+                    state: createEditorState(p.content), 
+                    parent: mettaInput 
+                })
+                setPanels(prev => prev.map(item => item.id === p.id ? { ...item, view } : item))
+            } else {
+                mettaInput.appendChild(p.view.dom)
             }
         }
+    })
+
+    let isMounted = false
+    onMount(() => {
+        if (isMounted) return
+        isMounted = true
+
+        const setupModalBackdrop = (modal: HTMLDialogElement) => {
+            modal.addEventListener('click', (event) => {
+                const rect = modal.getBoundingClientRect()
+                const isInDialog =
+                    rect.top <= event.clientY &&
+                    event.clientY <= rect.top + rect.height &&
+                    rect.left <= event.clientX &&
+                    event.clientX <= rect.left + rect.width
+                if (!isInDialog) {
+                    event.stopPropagation()
+                    modal.close()
+                }
+            })
+        }
+
+        setupModalBackdrop(importFileModal)
+        setupModalBackdrop(loadSpaceModal)
+        setupModalBackdrop(transformModal)
+        setupModalBackdrop(confirmModal)
+
+        const effectiveToken = TOKEN || localStorage.getItem('rootToken');
+        console.log("Token check:", { VITE_TOKEN: TOKEN, localStorage: localStorage.getItem('rootToken') });
+
+        if (effectiveToken) {
+            setEditorMode(EditorMode.EDIT);
+            loadSpace(effectiveToken, true);
+        }
+
+        importFileModal.addEventListener('close', () => {
+            (importFileModal.querySelector('input[type="file"]') as HTMLInputElement).value = ''
+        })
+
+        document.onfullscreenchange = async () => {
+            if (!document.fullscreenElement) setIsFullscreen(false)
+        }
+
+        window.addEventListener('dragover', (e) => e.preventDefault(), false)
+        window.addEventListener('drop', (e) => e.preventDefault(), false)
+    })
+
+    const getParserParameters = (): any => {
+        const format = activeImportFileFormat()
+        if (format === ImportFormat.CSV) {
+            return { direction: importCSVDirection(), delimiter: importCSVDelimiter() }
+        }
+        return { dummy: '' }
     }
 
-    /**
-     * EDITOR ACTION: import, translate
-     */
     const translateToMetta = async (): Promise<void> => {
         const file = activeImportFile()
         const fileFormat = activeImportFileFormat()
-
-        if (!fileFormat) {
-            return
-        }
-
+        if (!fileFormat || !file) return
+        
+        setIsTranslating(true)
         const parameters = new URLSearchParams(getParserParameters() as any)
 
         try {
-            const resp = await fetch(
-                `${BACKEND_URL}/translations/${fileFormat}?${parameters.toString()}`,
-                {
-                    method: 'POST',
-                    headers: {},
-                    body: file,
-                }
-            )
+            const resp = await fetch(`${BACKEND_URL}/translations/${fileFormat}?${parameters.toString()}`, {
+                method: 'POST',
+                body: file,
+            })
+
+            if (!resp.ok) throw new Error(`Status ${resp.status}`)
 
             const mettaTranslation = await resp.json()
+            const p = activePanel()
+            if (!p || !p.view) throw new Error('No active editor view')
 
-            const view = editorView()
+            p.view.dispatch(p.view.state.update({
+                changes: { from: p.view.state.selection.main.head, insert: mettaTranslation },
+            }))
 
-            if (!view) {
-                throw new Error('Failed to translate: editorView was undefined')
-            }
-
-            // switch to import mode to allow modification of import parameters
-            setEditorMode(EditorMode.IMPORT)
-
-            // insert translated MeTTa code at cursor location
-            view.dispatch(
-                view.state.update({
-                    changes: {
-                        from: view.state.selection.main.head,
-                        insert: mettaTranslation,
-                    },
-                })
-            )
+            notify.success('Successfully translated file to MeTTa')
+            setEditorMode(EditorMode.EDIT)
+            setActiveImportFile(undefined)
+            setManualImportFormat(undefined)
+            importFileModal.close()
         } catch (e) {
             console.error(e)
-            // TODO: specific error messages
-            toast(
-                `Failed to transform to MeTTa, verify the parameters and try again.`
-            )
+            notify.error(`Failed to transform to MeTTa (Backend error or invalid file format).`)
+        } finally {
+            setIsTranslating(false)
         }
     }
 
-    /**
-     * EDITOR ACTION: export
-     */
     const exportMetta = (): void => {
-        // TODO: include namespace back in filename
-        const blob = URL.createObjectURL(new Blob([editorContent()]))
-
+        const p = activePanel()
+        if (!p) return
+        const blob = URL.createObjectURL(new Blob([p.content]))
         const anchor = document.createElement('a')
-
         anchor.setAttribute('download', `$metta-${Date.now()}.metta`)
         anchor.setAttribute('href', blob)
-
         document.body.appendChild(anchor)
-
         anchor.click()
         URL.revokeObjectURL(blob)
     }
 
-    /**
-     * EDITOR ACTION: run
-     */
     const run = async (): Promise<void> => {
+        const p = activePanel()
+        if (!p) return
         try {
-            const resp = await fetch(
-                'https://inter.metta-lang.dev/api/v1/codes',
-                {
-                    headers: {
-                        accept: '*/*',
-                        'content-type': 'application/json',
-                    },
-                    referrer: 'https://metta-lang.dev/',
-                    referrerPolicy: 'strict-origin-when-cross-origin',
-                    body: JSON.stringify({
-                        code: editorContent(),
-                    }),
-                    method: 'POST',
-                    mode: 'cors',
-                    credentials: 'omit',
-                }
-            )
-
+            const resp = await fetch('https://inter.metta-lang.dev/api/v1/codes', {
+                headers: { accept: '*/*', 'content-type': 'application/json' },
+                referrer: 'https://metta-lang.dev/',
+                body: JSON.stringify({ code: p.content, language: 'metta' }),
+                method: 'POST',
+            })
             const data = await resp.json()
-
             setEditorOutput(data['result'])
         } catch (e) {
             console.error(e)
-            // TODO: specific error messages
-            toast(`Failed to run MeTTa.`)
+            notify.error(`Failed to run MeTTa.`)
         }
     }
 
-    /**
-     * EDITOR ACTION: indent
-     */
     const indent = (): void => {
-        const view = editorView()
+        const p = activePanel()
+        if (!p || !p.view) {
+            notify.error('Failed to indent code (unknown error).')
+            return
+        }
+        indentSelection({ state: p.view.state, dispatch: (transaction) => p.view?.dispatch(transaction) })
+    }
 
-        if (!view) {
-            console.error('Failed to indent: editorView was undefined')
-            toast('Failed to indent code (unknown error).')
+    const loadSpace = async (tokenStr: string, silent: boolean = false): Promise<void> => {
+        try {
+            const resp = await fetch(`${BACKEND_URL}/token`, {
+                headers: { 'Content-Type': 'application/json', Authorization: tokenStr },
+            })
+            const self: Token = await resp.json()
+            if (self) {
+                setToken(self)
+                await addPanel(self.namespace)
+                setEditorMode(EditorMode.EDIT)
+            } else if (!silent) notify.error(`Failed to load space`)
+        } catch (e) {
+            console.error(e)
+            if (!silent) notify.error(`Failed to load space using token ${tokenStr}`)
+        }
+    }
+
+    const addPanel = async (ns: string) => {
+        const existing = panels().find(p => p.namespace === ns)
+        if (existing) {
+            setActivePanelId(existing.id)
             return
         }
 
-        indentSelection({
-            state: view.state,
-            dispatch: (transaction) => view.dispatch(transaction),
-        })
+        const id = Math.random().toString(36).substring(7)
+        const encodedPath = ns.split('/').map(encodeURIComponent).join('/')
+        
+        try {
+            const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
+                headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+            })
+            if (!resp.ok) throw new Error(`Status ${resp.status}`)
+            const metta: string = await resp.json()
+            
+            const newPanel: EditorPanel = {
+                id,
+                namespace: ns,
+                content: metta,
+                originalContent: metta
+            }
+            
+            batch(() => {
+                setPanels(prev => [...prev, newPanel])
+                setActivePanelId(id)
+                setEditorMode(EditorMode.EDIT)
+            })
+            
+            notify.success(`Loaded space '${ns}'`)
+        } catch (e) {
+            console.error(e)
+            notify.error(`Failed to load space '${ns}'`)
+        }
     }
 
-    /**
-     * EDITOR ACTION: load space
-     */
-    const loadSpace = async (token: string): Promise<void> => {
-        try {
-            const resp = await fetch(`${BACKEND_URL}/token`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: token,
-                },
-            })
-
-            const self: Token = await resp.json()
-
-            if (self) {
-                setToken(self)
-                setSelectedNamespace('')
-                await read(self)
-
-                toast(`Successfully loaded space '${self.namespace}'`)
+    const closePanel = (id: string, e: MouseEvent) => {
+        e.stopPropagation()
+        const panelToClose = panels().find(p => p.id === id)
+        if (panelToClose?.view) {
+            panelToClose.view.destroy()
+        }
+        
+        const remaining = panels().filter(p => p.id !== id)
+        setPanels(remaining)
+        
+        if (activePanelId() === id) {
+            if (remaining.length > 0) {
+                setActivePanelId(remaining[remaining.length - 1].id)
             } else {
-                toast(`Failed to load space`)
+                setActivePanelId('')
+                setEditorMode(EditorMode.DEFAULT)
+            }
+        }
+    }
+
+    const write = async () => {
+        const p = activePanel()
+        if (!p) return
+        const path = p.namespace
+        const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+
+        setConfirmData({
+            title: 'Save to Space',
+            message: `Are you sure you want to save the current content to space '${path}'?`,
+            onConfirm: async () => {
+                try {
+                    const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+                        body: p.content,
+                    })
+                    if (resp.ok) {
+                        notify.success(`Successfully saved to space '${path}'`)
+                        // Refresh original content
+                        setPanels(prev => prev.map(item => item.id === p.id ? { ...item, originalContent: p.content } : item))
+                    } else notify.error(`Failed to save to space '${path}' (Status: ${resp.status})`)
+                } catch (e) {
+                    console.error(e)
+                    notify.error(`Error saving to space '${path}'`)
+                }
+                confirmModal.close()
+            },
+        })
+        confirmModal.showModal()
+    }
+
+    const read = async (ns?: string) => {
+        const p = activePanel()
+        const path = ns || p?.namespace || '/'
+        const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+        try {
+            const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
+                headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+            })
+            if (!resp.ok) throw new Error(`Status ${resp.status}`)
+            const metta: string = await resp.json()
+            
+            if (p && !ns) {
+                // Update current panel
+                setPanels(prev => prev.map(item => item.id === p.id ? { ...item, content: metta, originalContent: metta } : item))
+                p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: metta } }))
+                notify.success(`Reloaded space '${path}'`)
+            } else {
+                addPanel(path)
             }
         } catch (e) {
             console.error(e)
-            toast(`Failed to load space using token ${token}`)
+            notify.error(`Failed to load space '${path}'`)
         }
-    }
-
-    /**
-     * EDITOR ACTION: fullscreen mode
-     */
-    const switchFullscreen = async (): Promise<void> => {
-        if (isFullscreen()) {
-            await document.exitFullscreen()
-            setIsFullscreen(false)
-        } else {
-            await mettaEditor.requestFullscreen()
-            setIsFullscreen(true)
-        }
-    }
-
-    // TODO: remove hljs
-    hljs.registerLanguage('metta', () => ({
-        name: 'metta',
-        case_insensitive: true,
-        keywords: ['Type', ':', '->', '='],
-        contains: [
-            hljs.inherit(hljs.QUOTE_STRING_MODE),
-            hljs.inherit(hljs.NUMBER_MODE),
-            {
-                class: 'name',
-                scope: 'name',
-                match: '[a-z]([a-z]|[0-9]|/|\\.|_|-|:|#)*',
-            },
-        ],
-    }))
-
-    /**
-     * EDITOR ACTION: import into MORK
-     */
-    const write = async () => {
-        const content = editorContent()
-
-        await fetch(
-            `${BACKEND_URL}/spaces`, // ${token()?.namespace}${selectedNamespace()}
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: token()?.code ?? '',
-                },
-                body: content,
-            }
-        )
-
-        await read(token())
-    }
-
-    const read = async (token?: Token) => {
-        const resp = await fetch(`${BACKEND_URL}/spaces`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: token?.code ?? '',
-            },
-        })
-
-        const metta: string = await resp.json()
-
-        const view = editorView()
-
-        if (!view) {
-            throw new Error('Failed to translate: editorView was undefined')
-        }
-
-        // TODO:
-        setNamespaces(['/'])
-
-        view.dispatch(
-            view.state.update({
-                changes: {
-                    from: 0,
-                    to: view.state.doc.length,
-                    insert: metta,
-                },
-            })
-        )
     }
 
     const transform = async () => {
-        const resp = await fetch(`${BACKEND_URL}/spaces`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: token()?.code ?? '',
-            },
-            body: JSON.stringify({
-                input_space: 'metta', // transformInputSpaces(),
-                output_space: 'transformed', // transformOutputSpaces(),
-                pattern: '(a $x $y)', //transformTemplate(),
-                template: '($x $y)', // transformTemplate(),
-            }),
+        const inputSpace = transformInputSpaces()
+        const outputSpace = transformOutputSpaces()
+        const pattern = transformPattern()
+        const template = transformTemplate()
+        if (!inputSpace || !outputSpace || !pattern || !template) {
+            notify.error('Please fill in all transformation fields')
+            return
+        }
+        try {
+            const resp = await fetch(`${BACKEND_URL}/spaces`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+                body: JSON.stringify({ input_space: inputSpace, output_space: outputSpace, pattern, template }),
+            })
+            if (resp.ok) {
+                notify.success('Transformation successfully dispatched')
+                transformModal.close()
+            } else notify.error(`Transformation failed (Status: ${resp.status})`)
+        } catch (e) { console.error(e); notify.error('Error during transformation') }
+    }
+
+    const fetchExploreResults = async (path: string, focusToken: string = '') => {
+        if (!token()) return []
+        let ns = path
+        if (ns.startsWith('/')) ns = ns.substring(1)
+        const encodedNs = ns.split('/').map(encodeURIComponent).join('/')
+        
+        const results: any[] = []
+        const uniqueNextLevelPaths = new Set<string>()
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/explore/${encodedNs}?focus_token=${encodeURIComponent(focusToken)}`, {
+                headers: { Authorization: token()?.code ?? '' }
+            })
+            if (res.ok) {
+                const data = await res.json()
+                const parsed: any[] = typeof data === 'string' ? (data.trim() === '' ? [] : JSON.parse(data)) : data
+                const currentParts = path.split('/').filter(p => p.length > 0)
+                
+                for (const item of parsed) {
+                    const samplePath = sexprToPath(item.expr)
+                    const sampleParts = samplePath.split('/').filter(p => p.length > 0)
+                    
+                    if (sampleParts.length <= currentParts.length) continue
+                    
+                    // Pick the segment that comes immediately after our current depth
+                    const nextSegment = sampleParts[currentParts.length]
+                    const nextParts = [...currentParts, nextSegment]
+                    const nextPath = '/' + nextParts.join('/') + '/'
+                    const nextSexpr = pathToSexpr(nextPath)
+                    
+                    if (!uniqueNextLevelPaths.has(nextSexpr)) {
+                        uniqueNextLevelPaths.add(nextSexpr)
+                        // results.push({ token: item.token, expr: nextSexpr, path: nextPath }) // This line was missing in the original, added here.
+                        // The original code had a typo: nextLevelResults instead of results
+                        // Corrected to push to results array
+                        results.push({ token: item.token, expr: nextSexpr, path: nextPath });
+                    }
+                }
+            }
+        } catch (e) { console.error("Explore API failed:", e) }
+
+        // Local fallback: use current editor content to find sub-namespaces
+        const p = activePanel()
+        if (p) {
+            const trie = buildTrie(p.content)
+            const currentParts = path.split('/').filter(p => p.length > 0)
+            
+            let currentLevel = trie
+            for (const part of currentParts) {
+                if (currentLevel.children[part]) {
+                    currentLevel = currentLevel.children[part]
+                } else {
+                    currentLevel = { children: {}, isDeletable: false }
+                    break
+                }
+            }
+
+            for (const [name, node] of Object.entries(currentLevel.children)) {
+                const nextPath = '/' + [...currentParts, name].join('/') + '/'
+                const nextSexpr = pathToSexpr(nextPath)
+                if (!uniqueNextLevelPaths.has(nextSexpr)) {
+                    uniqueNextLevelPaths.add(nextSexpr)
+                    results.push({ token: [], expr: nextSexpr, path: nextPath })
+                }
+            }
+        }
+
+        return results
+    }
+
+    const clearSpace = async () => {
+        const p = activePanel()
+        if (!p) return
+        const path = p.namespace
+        const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+        setConfirmData({
+            title: 'Clear Space',
+            message: `Are you sure you want to clear the space '${path}'?`,
+            onConfirm: async () => {
+                try {
+                    const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
+                        method: 'DELETE',
+                        headers: { Authorization: token()?.code ?? '' },
+                    })
+                    if (resp.ok) {
+                        notify.success(`Successfully cleared space '${path}'`)
+                        await read()
+                    } else notify.error(`Failed to clear space '${path}'`)
+                } catch (e) { console.error(e); notify.error(`Error clearing space '${path}'`) }
+                confirmModal.close()
+            }
         })
+        confirmModal.showModal()
+    }
+
+    const deleteSubspace = async (path: string) => {
+        // Rocket's <path..> doesn't match trailing slashes well, and path.split('/') with trailing slash 
+        // results in an empty last segment. We should filter empty segments.
+        const segments = path.split('/').filter(p => p.length > 0)
+        const encodedPath = segments.map(encodeURIComponent).join('/')
+        
+        setConfirmData({
+            title: 'Delete Subspace',
+            message: `Are you sure you want to delete the subspace '${path}'? This will remove all atoms matching this prefix.`,
+            onConfirm: async () => {
+                try {
+                    const url = segments.length > 0 
+                        ? `${BACKEND_URL}/spaces/${encodedPath}`
+                        : `${BACKEND_URL}/spaces`;
+                        
+                    const resp = await fetch(url, {
+                        method: 'DELETE',
+                        headers: { Authorization: token()?.code ?? '' },
+                    })
+                    if (resp.ok) {
+                        notify.success(`Successfully deleted subspace '${path}'`)
+                        await read()
+                    } else notify.error(`Failed to delete subspace '${path}' (Status: ${resp.status})`)
+                } catch (e) {
+                    console.error(e)
+                    notify.error(`Error deleting subspace '${path}'`)
+                }
+                confirmModal.close()
+            }
+        })
+        confirmModal.showModal()
+    }
+
+    const startResizing = (e: MouseEvent) => {
+        setIsResizing(true)
+        const initialX = e.clientX; const initialWidth = trieWidth()
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            const deltaX = initialX - moveEvent.clientX
+            setTrieWidth(Math.max(150, Math.min(800, initialWidth + deltaX)))
+        }
+        const onMouseUp = () => {
+            setIsResizing(false)
+            document.removeEventListener('mousemove', onMouseMove)
+            document.removeEventListener('mouseup', onMouseUp)
+        }
+        document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp)
+    }
+
+    const startConsoleResizing = (e: MouseEvent) => {
+        setIsResizingConsole(true)
+        const initialY = e.clientY; const initialHeight = consoleHeight()
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            const deltaY = moveEvent.clientY - initialY
+            setConsoleHeight(Math.max(60, Math.min(600, initialHeight + deltaY)))
+        }
+        const onMouseUp = () => {
+            setIsResizingConsole(false)
+            document.removeEventListener('mousemove', onMouseMove)
+            document.removeEventListener('mouseup', onMouseUp)
+        }
+        document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp)
     }
 
     return (
-        <>
-            <header>
-                <h1>MeTTa KG</h1>
-                <nav>
-                    <A href="/tokens" class={styles.OutlineButton}>
-                        Tokens
-                    </A>
-                    <a href="https://github.com/Qoba-ai/MeTTa-KG">
-                        <AiOutlineGithub class={styles.Icon} size={32} />
-                    </a>
-                </nav>
-            </header>
-            <main class={styles.Main}>
-                <div></div>
-                <div ref={mettaEditor!} class={styles.EditorWrapper}>
-                    <Show when={editorMode() === EditorMode.DEFAULT}>
-                        <div class={styles.NewSessionDiv}>
-                            <button
-                                onClick={() => loadSpaceModal.showModal()}
-                                class={styles.ImportButton}
-                            >
-                                <AiFillFolderOpen
-                                    class={styles.Icon}
-                                    size={28}
-                                />
-                                <span>Load</span>
-                            </button>
-                        </div>
-                    </Show>
+        <div class={styles.MainLayout}>
+            <Header />
+            <main
+                class={styles.Main}
+                style={{ "--trie-width": `${trieWidth()}px`, "--console-height": `${consoleHeight()}px` }}
+                onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onDrop={(e) => {
+                    e.preventDefault(); e.stopPropagation()
+                    const draggedFile = e.dataTransfer?.files?.item(0)
+                    if (draggedFile) {
+                        setActiveImportFile(draggedFile); setManualImportFormat(undefined); importFileModal.showModal();
+                    }
+                }}
+            >
+                <div class={styles.EditorLayout}>
                     <Show when={editorMode() !== EditorMode.DEFAULT}>
-                        <div class={styles.MettaInputActionsWrapper}>
+                        <aside class={styles.Sidebar}>
+                            <h2>MeTTa Editor</h2>
                             <div class={styles.MettaEditorActions}>
-                                <button
-                                    onClick={() => loadSpaceModal.showModal()}
-                                >
-                                    Load
+                                <button onClick={() => importFileModal.showModal()}>
+                                    <VsCloudUpload size={20} />
+                                    <span>Import File</span>
                                 </button>
-                                <button
-                                    onClick={() => importFileModal.showModal()}
-                                >
-                                    Import
+                                <button onclick={() => indent()}>
+                                    <VsIndent size={20} />
+                                    <span>Indent Code</span>
                                 </button>
-                                <button onclick={() => indent()}>Indent</button>
-                                <button onclick={() => write()}>Write</button>
-                                <button onclick={() => switchFullscreen()}>
-                                    {isFullscreen()
-                                        ? 'Exit Fullscreen'
-                                        : 'Fullscreen'}
+                                <button onclick={() => write()}>
+                                    <VsCloudUpload size={20} /> {/* This seems like a copy-paste error, should be VsCloudDownload for saving */}
+                                    <span>Save to Space</span>
                                 </button>
                                 <button onclick={() => exportMetta()}>
-                                    Export
+                                    <VsSave size={20} />
+                                    <span>Export File</span>
                                 </button>
-                                <button
-                                    onclick={() => transformModal.showModal()}
-                                >
-                                    Transform
+                                <button onclick={() => transformModal.showModal()}>
+                                    <VsReplace size={20} />
+                                    <span>Transform</span>
                                 </button>
-                                <div style={{ 'flex-grow': 1 }}></div>
-                                <button onclick={() => run()}>
-                                    <VsRunAll
-                                        class={styles.RunIcon}
-                                        size={22}
-                                    />
+                                <button onclick={() => clearSpace()}>
+                                    <VsClearAll size={20} />
+                                    <span>Clear Space</span>
                                 </button>
                             </div>
-                            <div class={styles.EditorRootTokenFormWrapper}>
-                                <p>{token()?.namespace}</p>
-                                <form
-                                    ref={(e) => {
-                                        loadSubspaceForm = e
-                                        initializeLoadSubspaceForm()
-                                    }}
-                                    class={styles.EditorRootTokenForm}
-                                    onsubmit={(e) => e.preventDefault()}
-                                >
-                                    <input
-                                        ref={(e) => {
-                                            rootTokenFormInput = e
-                                        }}
-                                        id="root-token"
-                                        type="search"
-                                        placeholder="Namespace"
-                                        role="search"
-                                        autocomplete={'off'}
-                                        oninvalid={() =>
-                                            rootTokenFormInput.setCustomValidity(
-                                                "Namespaces start with '/' followed by 2 or more alphanumeric characters and end with '/'."
-                                            )
-                                        }
-                                        value={selectedNamespace() ?? ''}
-                                        onchange={(e) => {
-                                            setSelectedNamespace(e.target.value)
-                                            rootTokenFormInput.setCustomValidity(
-                                                ''
-                                            )
-                                        }}
-                                        list={'available-namespaces'}
-                                        pattern={
-                                            '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$'
-                                        }
-                                        disabled={
-                                            editorMode() !== EditorMode.EDIT
-                                        }
-                                    />
-                                    <input type="submit" />
-                                </form>
-                            </div>
-                        </div>
-                        <div
-                            class={styles.MettaInput}
-                            ref={(ref) => {
-                                mettaInput = ref
+                        </aside>
+                    </Show>
 
-                                initializeEditor()
-                            }}
-                        ></div>
-                        <pre class={styles.Console}>
-                            <code
-                                class={'language-metta'}
-                                innerHTML={
-                                    hljs.highlight(editorOutput(), {
-                                        language: 'metta',
-                                    }).value
-                                }
-                            ></code>
-                        </pre>
+                    <div class={styles.MainEditorArea}>
+                        <div ref={mettaEditor!} class={styles.EditorWrapper}>
+                            <Show when={panels().length === 0 && editorMode() === EditorMode.DEFAULT}>
+                                <div class={styles.NewSessionDiv}>
+                                    <button onClick={() => loadSpaceModal.showModal()} class={styles.ImportButton}>
+                                        <AiFillFolderOpen class={styles.Icon} size={28} />
+                                        <span>Load MeTTa Space</span>
+                                    </button>
+                                </div>
+                            </Show>
+                            <Show when={panels().length > 0 || editorMode() !== EditorMode.DEFAULT}>
+                                <div class={styles.EditorTabs}>
+                                    <For each={panels()}>
+                                        {(p) => (
+                                            <div 
+                                                class={`${styles.EditorTab} ${p.id === activePanelId() ? styles.ActiveTab : ''}`}
+                                                onClick={() => setActivePanelId(p.id)}
+                                            >
+                                                <span class={styles.TabTitle}>{p.namespace}</span>
+                                                <button class={styles.TabClose} onClick={(e) => closePanel(p.id, e)}>
+                                                    <VsClose size={14} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </For>
+                                    <button class={styles.AddTab} onClick={() => loadSpaceModal.showModal()}>
+                                        <VsAdd size={16} />
+                                    </button>
+                                </div>
+                                <div class={styles.MettaInputActionsWrapper}>
+                                    <div class={styles.EditorRootTokenFormWrapper}>
+                                        <form class={styles.EditorRootTokenForm} onsubmit={(e) => { e.preventDefault(); read() }}>
+                                            <NamespaceSelector 
+                                                value={activePanel()?.namespace || '/'} 
+                                                onInput={(ns) => {
+                                                    // This updates the namespace of the current panel
+                                                    setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, namespace: ns } : p))
+                                                }} 
+                                                fetchExploreResults={fetchExploreResults} 
+                                                disabled={editorMode() !== EditorMode.EDIT} 
+                                            />
+                                            <button type="submit" class={styles.IconButton} title="Load Space">
+                                                <VsRefresh class={styles.RunIcon} size={24} />
+                                            </button>
+                                        </form>
+                                        <div class={styles.Spacer} />
+                                        <button type="button" onclick={(e) => { e.stopPropagation(); run() }} class={`${styles.IconButton} ${styles.RunButton}`} title="Run MeTTa">
+                                            <VsPlay class={styles.RunIcon} size={24} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class={styles.MettaInput} ref={(ref) => { mettaInput = ref; }}></div>
+                                <div class={`${styles.ConsoleResizer} ${isResizingConsole() ? styles.Resizing : ''}`} onMouseDown={startConsoleResizing} />
+                                <pre class={styles.Console}>
+                                    <code class={'language-metta'} innerHTML={hljs.highlight(editorOutput(), { language: 'metta' }).value}></code>
+                                </pre>
+                            </Show>
+                        </div>
+                    </div>
+
+                    <Show when={editorMode() !== EditorMode.DEFAULT}>
+                        <div class={`${styles.Resizer} ${isResizing() ? styles.Resizing : ''}`} onMouseDown={startResizing} />
+                        <TrieExplorer 
+                            content={activePanel()?.content || ''} 
+                            onDelete={deleteSubspace}
+                            rootPath={activePanel()?.namespace || '/'}
+                            onOpenSubspace={(path) => addPanel(path)}
+                        />
                     </Show>
                 </div>
-                <Show
-                    when={editorMode() === EditorMode.IMPORT}
-                    fallback={<div></div>}
-                >
-                    <div class={styles.ImportParametersFormWrapper}>
-                        <form
-                            id={styles.ImportParametersForm}
-                            ref={commitImportForm!}
-                            onsubmit={(e) => e.preventDefault()}
-                        >
-                            <h2>Import File</h2>
-                            <p class={styles.Instructions}>
-                                Modify the import parameters as needed before
-                                finalizing your import.
-                            </p>
-                            <Show
-                                when={
-                                    activeImportFileFormat() ===
-                                    ImportFormat.CSV
-                                }
-                            >
-                                <label>
-                                    Scheme
-                                    <select
-                                        id="csv-import-scheme"
-                                        onChange={(e) => {
-                                            setImportCSVDirection(
-                                                e.target
-                                                    .value as ImportCSVDirection
-                                            )
-                                            translateToMetta()
-                                        }}
-                                    >
-                                        <option value={'Row'}>Row</option>
-                                        <option value={'Column'}>Column</option>
-                                        <option value={'CellLabeled'}>
-                                            Labeled Cell
-                                        </option>
-                                        <option value={'CellUnlabeled'}>
-                                            Unlabeled Cell
-                                        </option>
-                                    </select>
-                                </label>
-                                <label>
-                                    Delimiter
-                                    <select
-                                        onChange={(e) => {
-                                            setImportCSVDelimiter(
-                                                e.target.value
-                                            )
-                                            translateToMetta()
-                                        }}
-                                    >
-                                        <option value={'\u0020'}>
-                                            Space (' ')
-                                        </option>
-                                        <option value={'\u0009'}>
-                                            Tab ('\t')
-                                        </option>
-                                        <option value={'\u002C'}>
-                                            Comma (',')
-                                        </option>
-                                    </select>
-                                </label>
-                            </Show>
-                            <input
-                                type="submit"
-                                value={'Import (coming soon)'}
-                                disabled
-                            />
-                        </form>
-                    </div>
-                </Show>
             </main>
-            <dialog ref={importFileModal!}>
-                <form ref={importFileForm!}>
-                    <h2>Select File</h2>
-                    <p>
-                        The following formats are supported. Files with
-                        extensions other than the ones listed will not be
-                        recognized:
-                    </p>
-                    <ul>
-                        <li>CSV (.csv)</li>
-                        <li>N3 (.nt3)</li>
-                        <li>JSON-LD (.jsonld)</li>
-                        <li>N-Triples (.nt)</li>
-                    </ul>
-                    <input
-                        id={styles.ImportFileFormInput}
-                        ref={importFileFormInput!}
-                        type="file"
-                        required
-                        onchange={(e) => handleImportFileSelect(e)}
-                    />
-                    <div class={styles.ModalButtonBar}>
-                        <button
-                            type="button"
-                            class={styles.TextButton}
-                            onclick={() => importFileModal.close()}
-                        >
-                            Cancel
-                        </button>
-                        <div style={{ 'flex-grow': 1 }}></div>
-                        <button
-                            class={styles.Button}
-                            disabled={activeImportFile() === null}
-                        >
-                            Import
-                        </button>
-                    </div>
-                </form>
-            </dialog>
-            <dialog ref={loadSpaceModal!} class={styles.LoadSpaceModal}>
-                <form ref={loadSpaceForm!}>
-                    <h2>Open Space</h2>
-                    <label>
-                        Token
-                        <input
-                            ref={loadSpaceFormInput!}
-                            type="text"
-                            required
-                            oninvalid={() =>
-                                loadSpaceFormInput.setCustomValidity(
-                                    'Please enter a valid UUIDv4'
-                                )
-                            }
-                            value={tokenToOpen() ?? ''}
-                            onchange={(e) => {
-                                setTokenToOpen(e.target.value.trim())
-                                loadSpaceFormInput.setCustomValidity('')
-                            }}
-                            pattern={
-                                '(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)'
-                            }
-                        />
-                    </label>
-                    <div class={styles.ModalButtonBar}>
-                        <button
-                            type="button"
-                            class={styles.TextButton}
-                            onclick={() => loadSpaceModal.close()}
-                        >
-                            Cancel
-                        </button>
-                        <div style={{ 'flex-grow': 1 }}></div>
-                        <button
-                            class={styles.Button}
-                            disabled={tokenToOpen() === ''}
-                        >
-                            Open
-                        </button>
-                    </div>
-                </form>
-            </dialog>
-            <dialog ref={transformModal!} class={styles.TransformModal}>
-                <form ref={transformForm!}>
-                    <h2>Transform</h2>
-                    <div class={styles.TransformIOSpaces}>
-                        <div>
-                            <h4>Input Spaces</h4>
-                            <input
-                                class={styles.SelectSpaces}
-                                value={transformInputSpaces()}
-                                onchange={(ev) =>
-                                    setTransformInputSpaces(ev.target.value)
-                                }
-                                placeholder="Input"
-                            />
-                            <select
-                                class={styles.SelectSpaces}
-                                value={transformInputSpaces()}
-                                onchange={(ev) =>
-                                    setTransformInputSpaces(ev.target.value)
-                                }
-                            >
-                                {namespaces().map((namespace) => (
-                                    <option value={namespace}>
-                                        {namespace}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <h4>Output Spaces</h4>
-                            <input
-                                class={styles.SelectSpaces}
-                                value={transformOutputSpaces()}
-                                onchange={(ev) =>
-                                    setTransformOutputSpaces(ev.target.value)
-                                }
-                                placeholder="Output"
-                            />
-                            <select
-                                class={styles.SelectSpaces}
-                                value={transformOutputSpaces()}
-                                onchange={(ev) =>
-                                    setTransformOutputSpaces(ev.target.value)
-                                }
-                            >
-                                {namespaces().map((namespace) => (
-                                    <option value={namespace}>
-                                        {namespace}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <input
-                                class={styles.SelectSpaces}
-                                value={transformPattern()}
-                                placeholder="Pattern"
-                                onchange={(ev) =>
-                                    setTransformPattern(ev.target.value)
-                                }
-                            />
-                            <input
-                                class={styles.SelectSpaces}
-                                value={transformTemplate()}
-                                placeholder="Template"
-                                onchange={(ev) =>
-                                    setTransformTemplate(ev.target.value)
-                                }
-                            />
-                        </div>
-                    </div>
-                    <div class={styles.ModalButtonBar}>
-                        <button
-                            type="button"
-                            class={styles.TextButton}
-                            onclick={() => transformModal.close()}
-                        >
-                            Cancel
-                        </button>
-                        <div style={{ 'flex-grow': 1 }}></div>
-                        <button class={styles.Button} disabled={false}>
-                            Transform
-                        </button>
-                    </div>
-                </form>
-            </dialog>
-            <Toaster
-                toastOptions={{ className: styles.Toaster }}
-                containerStyle={{ 'margin-top': '60px' }}
+
+            <ImportModal 
+                ref={importFileModal!}
+                activeFile={activeImportFile}
+                onFileSelect={(file) => { setActiveImportFile(file); setManualImportFormat(undefined); }}
+                onCancel={() => { importFileModal.close(); setActiveImportFile(undefined); setManualImportFormat(undefined); }}
+                isDraggingOver={isDraggingOver}
+                setIsDraggingOver={setIsDraggingOver}
+                format={activeImportFileFormat}
+                setManualFormat={setManualImportFormat}
+                csvDirection={importCSVDirection}
+                setCsvDirection={setImportCSVDirection}
+                csvDelimiter={importCSVDelimiter}
+                setCsvDelimiter={setImportCSVDelimiter}
+                onImport={translateToMetta}
+                isTranslating={isTranslating}
             />
-            <datalist id="available-namespaces">
-                {namespaces().map((n) => (
-                    <option value={n}></option>
-                ))}
-            </datalist>
-        </>
+
+            <LoadSpaceModal 
+                ref={loadSpaceModal!}
+                onLoad={(t) => { loadSpace(t); loadSpaceModal.close() }}
+                onCancel={() => loadSpaceModal.close()}
+            />
+
+            <TransformModal 
+                ref={transformModal!}
+                inputSpace={transformInputSpaces}
+                setInputSpace={setTransformInputSpaces}
+                outputSpace={transformOutputSpaces}
+                setOutputSpace={setTransformOutputSpaces}
+                pattern={transformPattern}
+                setPattern={setTransformPattern}
+                template={transformTemplate}
+                setTemplate={setTransformTemplate}
+                fetchExploreResults={fetchExploreResults}
+                onTransform={transform}
+                onCancel={() => transformModal.close()}
+            />
+
+            <ConfirmModal 
+                ref={confirmModal!}
+                title={confirmData().title}
+                message={confirmData().message}
+                onConfirm={confirmData().onConfirm}
+                onCancel={() => confirmModal.close()}
+            />
+
+            <Toaster toastOptions={{ className: styles.Toaster }} containerStyle={{ 'margin-top': '60px' }} />
+        </div>
     )
 }
 

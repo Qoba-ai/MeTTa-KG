@@ -17,7 +17,7 @@ fn rocket() -> Rocket<Build> {
 
     let cors = rocket_cors::CorsOptions {
         allowed_origins,
-        allowed_methods: vec![Method::Get, Method::Post, Method::Delete]
+        allowed_methods: vec![Method::Get, Method::Post, Method::Put, Method::Delete]
             .into_iter()
             .map(From::from)
             .collect(),
@@ -41,8 +41,17 @@ fn rocket() -> Rocket<Build> {
                 routes::tokens::delete,
                 routes::tokens::delete_batch,
                 routes::spaces::export,
+                routes::spaces::export_root,
                 routes::spaces::import,
-                routes::spaces::transform
+                routes::spaces::import_root,
+                routes::spaces::transform,
+                routes::spaces::busywait,
+                routes::spaces::clear,
+                routes::spaces::clear_root,
+                routes::spaces::copy,
+                routes::spaces::explore,
+                routes::spaces::explore_root
+
             ],
         )
         .mount("/public", FileServer::from("static"))
