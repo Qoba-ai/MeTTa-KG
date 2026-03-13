@@ -1,7 +1,7 @@
 use chrono::format;
 use core::str;
 use diesel::{ExpressionMethods, RunQueryDsl};
-use rocket::http::Status;
+use rocket::{http::Status, put};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -15,7 +15,7 @@ use rocket::{get, post};
 use std::path::PathBuf;
 use urlencoding::encode;
 
-use crate::{db::establish_connection, model::Token};
+use crate::{db::establish_connection, model::Token, routes::path_to_metta_sexpr};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Transformation {
@@ -25,7 +25,7 @@ pub struct Transformation {
     template: String,
 }
 
-#[post("/spaces", data = "<transformation>")]
+#[put("/spaces", data = "<transformation>")]
 pub async fn transform(
     token: Token,
     transformation: Json<Transformation>,
@@ -112,7 +112,8 @@ pub async fn import(token: Token, path: PathBuf, space: String) -> Result<Json<b
         }
     }
 
-    let path_serialized = path.into_os_string().into_string().unwrap();
+    let file_expr = String::from("$x");
+    let space_expr = path_to_metta_sexpr(&path);
 
     let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
     let origin = env::var("METTA_KG_ORIGIN_URL").unwrap();
@@ -120,8 +121,8 @@ pub async fn import(token: Token, path: PathBuf, space: String) -> Result<Json<b
     let import_file_url = format!("{}/public/{}.metta", origin, file_id);
 
     let mork_import_url = format!(
-        "{}/import/{}?uri={}",
-        mork_url, path_serialized, import_file_url
+        "{}/import/{}/{}?uri={}",
+        mork_url, file_expr, space_expr, import_file_url
     );
 
     let resp = reqwest::get(mork_import_url).await;
@@ -150,16 +151,18 @@ pub async fn import(token: Token, path: PathBuf, space: String) -> Result<Json<b
 }
 
 #[get("/spaces/<path..>")]
-pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
+pub async fn export(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
     if !path.starts_with(&token.namespace.strip_prefix("/").unwrap()) || !token.permission_read {
         return Err(Status::Unauthorized);
     }
 
-    let path_serialized = path.into_os_string().into_string().unwrap();
+    let path_serialized = path_to_metta_sexpr(&path);
 
     let mork_url = env::var("METTA_KG_MORK_URL").unwrap();
 
-    let mork_export_url = format!("{}/export/{}", mork_url, path_serialized);
+    let mork_export_url = format!("{}/export/{}/$x", mork_url, path_serialized);
+
+    println!("{}", mork_export_url);
 
     let resp = reqwest::get(mork_export_url).await;
 
@@ -185,3 +188,4 @@ pub async fn read(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
         }
     }
 }
+

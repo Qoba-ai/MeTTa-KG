@@ -40,7 +40,7 @@ fn rocket() -> Rocket<Build> {
                 routes::tokens::update,
                 routes::tokens::delete,
                 routes::tokens::delete_batch,
-                routes::spaces::read,
+                routes::spaces::export,
                 routes::spaces::import,
                 routes::spaces::transform
             ],

@@ -8,6 +8,7 @@ use rocket::{
     Request,
 };
 use serde::{Deserialize, Serialize};
+use std::path::{Component, Path};
 
 pub mod spaces;
 pub mod tokens;
@@ -18,6 +19,20 @@ pub enum AuthError {
     InvalidToken,
     Unknown,
 }
+
+pub fn path_to_metta_sexpr(path: &Path) -> String {
+    let mut sexpr = String::from("$x");
+
+    for component in path.components().rev() {
+        if let Component::Normal(name) = component {
+            let name_str = name.to_string_lossy();
+            sexpr = format!("({} {})", name_str, sexpr);
+        }
+    }
+
+    sexpr
+}
+
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Token {
