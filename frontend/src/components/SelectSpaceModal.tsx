@@ -23,6 +23,7 @@ export const SelectSpaceModal: Component<SelectSpaceModalProps> = (props) => {
   return (
     <dialog ref={props.ref} class={styles.LoadSpaceModal}>
       <form onsubmit={handleSubmit}>
+        <button type="button" autofocus style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;padding:0;border:0;" />
         <h2>Select MeTTa Space</h2>
         <div class={styles.FieldGroup}>
           <label>Space Path</label>

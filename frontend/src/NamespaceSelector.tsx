@@ -6,6 +6,7 @@ import { handleAutoClose } from "./utils/editorUtils";
 interface NamespaceSelectorProps {
   value: string;
   onInput: (val: string) => void;
+  onCommit?: () => void;
   placeholder?: string;
   disabled?: boolean;
   fetchExploreResults: (path: string) => Promise<any[]>;
@@ -43,12 +44,17 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
 
   const handleKeyDown = async (e: KeyboardEvent) => {
     handleAutoClose(e);
-    if (!isExploring() && e.key === "ArrowDown") {
-      e.preventDefault();
-      handleFocus();
+
+    if (!isExploring()) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        handleFocus();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        props.onCommit?.();
+      }
       return;
     }
-    if (!isExploring()) return;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -68,12 +74,13 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
         setExploreResults(nextResults);
       }
     } else if (e.key === "Enter") {
+      e.preventDefault();
       if (exploreFocusIndex() >= 0 && exploreFocusIndex() < exploreResults().length) {
-        e.preventDefault();
         const res = exploreResults()[exploreFocusIndex()];
         props.onInput(res.path);
-        setIsExploring(false);
       }
+      setIsExploring(false);
+      setExploreFocusIndex(-1);
     }
   };
 

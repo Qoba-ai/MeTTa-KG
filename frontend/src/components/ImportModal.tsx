@@ -125,6 +125,7 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
   return (
     <dialog ref={props.ref} class={styles.ImportModalWide}>
       <form onsubmit={(e) => { e.preventDefault(); props.onImport(); }}>
+        <button type="button" autofocus style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;padding:0;border:0;" />
         <h2>Import</h2>
 
         <div class={styles.ImportModalContent}>

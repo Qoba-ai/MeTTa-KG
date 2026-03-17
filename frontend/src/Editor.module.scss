@@ -29,37 +29,96 @@
     min-height: 0;
 }
 
+// ── Inside-card sidebar ───────────────────────────────────────────────────────
+
+.EditorBody {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.EditorContent {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
 .Sidebar {
     display: flex;
     flex-direction: column;
-    gap: 0;
-    width: 200px;
+    width: 160px;
+    min-width: 160px;
     background: var(--rp-surface);
     border-right: 1px solid var(--rp-highlight-low);
     flex-shrink: 0;
-    overflow-y: auto;
+    overflow: hidden;
+    transition: width 0.2s ease, min-width 0.2s ease;
+
+    &.SidebarCollapsed {
+        width: 42px;
+        min-width: 42px;
+
+        .MettaEditorActions button {
+            justify-content: center;
+            padding: 9px 0;
+
+            span { display: none; }
+        }
+
+        .ButtonGroup + .ButtonGroup {
+            margin-top: 2px;
+            padding-top: 2px;
+        }
+    }
+
+    .SidebarToggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 32px;
+        flex-shrink: 0;
+        margin-top: auto;
+        background: transparent;
+        border: none;
+        border-top: 1px solid var(--rp-highlight-low);
+        color: var(--rp-subtle);
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+
+        &:hover {
+            background: var(--rp-highlight-low);
+            color: var(--rp-text);
+        }
+    }
 
     .MettaEditorActions {
         display: flex;
         flex-direction: column;
         align-items: stretch;
         width: 100%;
-        padding: 12px 0 0;
+        padding: 6px 0 0;
+        overflow-y: auto;
 
         button {
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            gap: 10px;
-            padding: 9px 16px;
+            gap: 8px;
+            padding: 8px 14px;
             background: transparent;
             color: var(--rp-subtle);
             border: none;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             text-align: left;
             transition: background 0.15s, color 0.15s;
             cursor: pointer;
             width: 100%;
+            white-space: nowrap;
 
             &:hover {
                 background: var(--rp-highlight-low);
@@ -130,10 +189,10 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    gap: 16px;
-    height: 100%;
+    gap: 0;
+    min-height: 0;
     min-width: 0;
-    padding: 24px;
+    padding: 16px 0 16px 16px;
     box-sizing: border-box;
     overflow: hidden;
 }
@@ -268,42 +327,11 @@
 
 .MettaInputActionsWrapper {
     width: 100%;
-    background: var(--rp-surface);
+    background: var(--rp-base);
     border-bottom: 1px solid var(--rp-highlight-low);
-    padding: 10px 16px;
+    padding: 6px 12px;
     box-sizing: border-box;
-
-    .EditorRootTokenFormWrapper {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 12px;
-        width: 100%;
-
-        .EditorRootTokenForm {
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            gap: 8px;
-            flex: 1;
-            max-width: 600px;
-        }
-
-        .Spacer {
-            flex-grow: 1;
-        }
-
-        .RunButton {
-            color: var(--rp-pine);
-            background: var(--rp-highlight-low);
-            padding: 8px 12px;
-            
-            &:hover {
-                background: var(--rp-highlight-med);
-                color: var(--rp-foam);
-            }
-        }
-    }
+    flex-shrink: 0;
 }
 
 .MettaInput {
@@ -317,12 +345,47 @@
     }
 }
 
-.Console {
-    width: 100%;
+.ConsoleSection {
+    display: flex;
+    flex-direction: column;
     height: var(--console-height, 120px);
+    flex-shrink: 0;
     background: var(--rp-surface);
     border-top: 1px solid var(--rp-highlight-low);
-    padding: 12px 20px;
+}
+
+.ConsoleToolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 2px 8px;
+    border-bottom: 1px solid var(--rp-highlight-low);
+    flex-shrink: 0;
+}
+
+.RunButton {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: var(--rp-highlight-low);
+    border: none;
+    border-radius: 4px;
+    color: var(--rp-pine);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+
+    &:hover {
+        background: var(--rp-highlight-med);
+        color: var(--rp-foam);
+    }
+}
+
+.Console {
+    flex: 1;
+    width: 100%;
+    padding: 10px 16px;
     box-sizing: border-box;
     margin: 0;
     overflow-y: auto;
@@ -344,7 +407,7 @@
 .Resizer {
     width: 4px;
     cursor: col-resize;
-    margin: 0 -2px;
+    margin: 16px 4px;
 }
 
 .ConsoleResizer {
@@ -362,8 +425,9 @@
     flex-direction: column;
     gap: 16px;
     border: 1px solid var(--rp-highlight-low);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     flex-shrink: 0;
-    height: 100%;
+    margin: 16px 16px 16px 0;
     overflow: hidden;
 
     h3 {
@@ -588,7 +652,7 @@
             transition: border-color 0.2s;
 
             &:focus {
-                border-color: var(--rp-love);
+                border-color: var(--rp-highlight-high);
                 outline: none;
             }
         }
@@ -679,7 +743,7 @@
         transition: border-color 0.2s;
 
         &:focus {
-            border-color: var(--rp-love);
+            border-color: var(--rp-highlight-high);
             outline: none;
         }
     }
