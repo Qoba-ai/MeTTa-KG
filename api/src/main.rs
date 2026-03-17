@@ -1,6 +1,6 @@
 use rocket::fs::FileServer;
 use rocket::http::Method;
-use rocket::{self, launch, routes, tokio, Build, Rocket};
+use rocket::{self, launch, routes, Build, Rocket};
 use rocket_cors::AllowedOrigins;
 
 mod db;
@@ -44,18 +44,28 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::export_root,
                 routes::spaces::import,
                 routes::spaces::import_root,
+                routes::spaces::import_csv,
+                routes::spaces::import_nt,
+                routes::spaces::import_jsonld,
+                routes::spaces::import_n3,
                 routes::spaces::transform,
                 routes::spaces::busywait,
                 routes::spaces::clear,
                 routes::spaces::clear_root,
-                routes::spaces::copy,
+                routes::spaces::status,
+                routes::spaces::status_root,
                 routes::spaces::explore,
                 routes::spaces::explore_root,
                 routes::spaces::count,
-                routes::spaces::count_root
+                routes::spaces::count_root,
+                routes::spaces::copy,
+                routes::spaces::import_url_metta,
+                routes::spaces::import_url_csv,
+                routes::spaces::import_url_nt,
+                routes::spaces::import_url_jsonld,
+                routes::spaces::import_url_n3,
             ],
         )
         .mount("/public", FileServer::from("static"))
-        .attach(cors.clone())
-        .manage(cors)
+        .attach(cors)
 }

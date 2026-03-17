@@ -90,6 +90,7 @@ import {
     EditorMode,
     ImportCSVDirection,
     ImportFormat,
+    ImportSource,
     Token,
 } from './types'
 import {
@@ -101,6 +102,7 @@ import {
 } from './mettaLanguageSupport'
 import { Expression, Symbol, Variable } from './parser/parser.terms'
 import { diffExtension, setOriginalContentEffect } from './diffExtension'
+import { setCollapsedKeysEffect, collapsedKeysField, createPathFoldExtension, getFoldedTopLevelKeys } from './pathFoldExtension'
 import { NamespaceSelector } from './NamespaceSelector'
 import { TrieExplorer, buildTrie, TrieNode } from './TrieExplorer'
 
@@ -196,7 +198,11 @@ const App: Component = () => {
     const [isResizingConsole, setIsResizingConsole] = createSignal(false)
 
     // Import State
+    const [importSource, setImportSource] = createSignal<ImportSource>(ImportSource.FILE)
+    const [importNamespace, setImportNamespace] = createSignal<string>('/')
     const [activeImportFile, setActiveImportFile] = createSignal<File>()
+    const [importUrl, setImportUrl] = createSignal<string>('')
+    const [importText, setImportText] = createSignal<string>('')
     const [isDraggingOver, setIsDraggingOver] = createSignal(false)
     const [manualImportFormat, setManualImportFormat] = createSignal<ImportFormat>()
     const [isTranslating, setIsTranslating] = createSignal(false)
@@ -206,6 +212,9 @@ const App: Component = () => {
     // Transform State
     const [transformConfigs, setTransformConfigs] = createSignal<SpaceConfig[]>([])
 
+    // Trie/Editor fold sync state — full paths like "/key/" that are collapsed
+    const [collapsedPaths, setCollapsedPaths] = createSignal<Set<string>>(new Set())
+
     // Confirmation State
     const [confirmData, setConfirmData] = createSignal({
         title: '',
@@ -214,17 +223,20 @@ const App: Component = () => {
     })
 
     const activeImportFileFormat = createMemo<ImportFormat | undefined>(() => {
-        const file = activeImportFile()
-        if (file) {
-            const format = manualImportFormat() || extensionToImportFormat(file)
-            return format
+        const src = importSource()
+        if (src === ImportSource.FILE) {
+            const file = activeImportFile()
+            if (file) return manualImportFormat() || extensionToImportFormat(file)
+            return undefined
         }
+        // URL and Text: default to MeTTa if not manually overridden
+        return manualImportFormat() ?? ImportFormat.METTA
     })
 
     createEffect(() => {
         const file = activeImportFile()
         if (file && importFileModal && !importFileModal.open) {
-            importFileModal.showModal()
+            openImportModal()
         }
     })
 
@@ -272,10 +284,17 @@ const App: Component = () => {
                         event.preventDefault()
                         const draggedFile = event.dataTransfer?.files?.item(0)
                         if (draggedFile) {
+                            setImportSource(ImportSource.FILE)
                             setActiveImportFile(draggedFile)
-                            importFileModal.showModal()
+                            openImportModal()
                         }
                     },
+                }),
+                createPathFoldExtension((foldedKeys) => {
+                    const p = activePanel()
+                    if (!p) return
+                    const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+                    setCollapsedPaths(new Set(Array.from(foldedKeys).map(k => `${ns}${k}/`)))
                 }),
             ],
         })
@@ -307,13 +326,18 @@ const App: Component = () => {
             const p = untrack(panels).find(item => item.id === id)
             if (p) {
                 if (!p.view) {
-                    const view = new EditorView({ 
-                        state: createEditorState(p.content), 
-                        parent: mettaInput 
+                    const view = new EditorView({
+                        state: createEditorState(p.content),
+                        parent: mettaInput
                     })
                     setPanels(prev => prev.map(item => item.id === p.id ? { ...item, view } : item))
+                    setCollapsedPaths(new Set())
                 } else {
                     mettaInput.appendChild(p.view.dom)
+                    // Restore collapsed paths from this panel's current fold state
+                    const foldedKeys = getFoldedTopLevelKeys(p.view.state)
+                    const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+                    setCollapsedPaths(new Set(Array.from(foldedKeys).map(k => `${ns}${k}/`)))
                 }
             }
         }
@@ -366,6 +390,36 @@ const App: Component = () => {
         window.addEventListener('drop', (e) => e.preventDefault(), false)
     })
 
+    const openImportModal = () => {
+        setImportNamespace(activePanel()?.namespace || '/')
+        importFileModal.showModal()
+    }
+
+    const handleTrieCollapse = (path: string) => {
+        const p = activePanel()
+        if (!p?.view) return
+        const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+        if (!path.startsWith(activeNs)) return
+        const key = path.slice(activeNs.length).split('/')[0]
+        if (!key) return
+        const current = p.view.state.field(collapsedKeysField)
+        if (current.has(key)) return
+        p.view.dispatch({ effects: setCollapsedKeysEffect.of(new Set([...current, key])) })
+        // collapsedPaths is updated via the onCollapsedKeysChange callback in createPathFoldExtension
+    }
+
+    const handleTrieExpand = (path: string) => {
+        const p = activePanel()
+        if (!p?.view) return
+        const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+        if (!path.startsWith(activeNs)) return
+        const key = path.slice(activeNs.length).split('/')[0]
+        if (!key) return
+        const current = new Set(p.view.state.field(collapsedKeysField))
+        current.delete(key)
+        p.view.dispatch({ effects: setCollapsedKeysEffect.of(current) })
+    }
+
     const getParserParameters = (): any => {
         const format = activeImportFileFormat()
         if (format === ImportFormat.CSV) {
@@ -375,43 +429,95 @@ const App: Component = () => {
     }
 
     const translateToMetta = async (): Promise<void> => {
-        const file = activeImportFile()
-        const fileFormat = activeImportFileFormat()
-        if (!fileFormat || !file) return
-        
+        const format = activeImportFileFormat()
+        if (!format) return
+
         setIsTranslating(true)
 
         try {
-            let mettaTranslation: string;
-
-            if (fileFormat === ImportFormat.METTA) {
-                mettaTranslation = await file.text();
-            } else {
-                const parameters = new URLSearchParams(getParserParameters() as any)
-                const resp = await fetch(`${BACKEND_URL}/translations/${fileFormat}?${parameters.toString()}`, {
-                    method: 'POST',
-                    body: file,
-                })
-
-                if (!resp.ok) throw new Error(`Status ${resp.status}`)
-                mettaTranslation = await resp.json()
-            }
-
             const p = activePanel()
             if (!p || !p.view) throw new Error('No active editor view')
+            const targetNs = importNamespace()
+            const encodedPath = targetNs.split('/').map(encodeURIComponent).join('/')
+            const src = importSource()
 
-            p.view.dispatch(p.view.state.update({
-                changes: { from: p.view.state.selection.main.head, insert: mettaTranslation },
-            }))
+            if (src === ImportSource.FILE) {
+                const file = activeImportFile()
+                if (!file) return
 
-            notify.success(fileFormat === ImportFormat.METTA ? 'Successfully imported MeTTa file' : 'Successfully translated file to MeTTa')
+                if (format === ImportFormat.METTA) {
+                    const text = await file.text()
+                    const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+                        body: text,
+                    })
+                    if (!resp.ok) throw new Error(`Status ${resp.status}`)
+                } else {
+                    const parameters = new URLSearchParams(getParserParameters() as any)
+                    const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}${encodedPath}?${parameters.toString()}`, {
+                        method: 'POST',
+                        headers: { Authorization: token()?.code ?? '' },
+                        body: file,
+                    })
+                    if (!resp.ok) throw new Error(`Status ${resp.status}`)
+                }
+
+            } else if (src === ImportSource.URL) {
+                const url = importUrl().trim()
+                if (!url) return
+
+                if (format === ImportFormat.METTA) {
+                    const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta${encodedPath}?url=${encodeURIComponent(url)}`, {
+                        headers: { Authorization: token()?.code ?? '' },
+                    })
+                    if (!resp.ok) throw new Error(`Status ${resp.status}`)
+                } else {
+                    const parameters = new URLSearchParams({ ...getParserParameters() as any, url })
+                    const resp = await fetch(`${BACKEND_URL}/spaces/import/url/${format}${encodedPath}?${parameters.toString()}`, {
+                        headers: { Authorization: token()?.code ?? '' },
+                    })
+                    if (!resp.ok) throw new Error(`Status ${resp.status}`)
+                }
+
+            } else if (src === ImportSource.TEXT) {
+                const text = importText().trim()
+                if (!text) return
+
+                if (format === ImportFormat.METTA) {
+                    const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+                        body: text,
+                    })
+                    if (!resp.ok) throw new Error(`Status ${resp.status}`)
+                } else {
+                    const parameters = new URLSearchParams(getParserParameters() as any)
+                    const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}${encodedPath}?${parameters.toString()}`, {
+                        method: 'POST',
+                        headers: { Authorization: token()?.code ?? '' },
+                        body: text,
+                    })
+                    if (!resp.ok) throw new Error(`Status ${resp.status}`)
+                }
+            }
+
+            if (targetNs === activePanel()?.namespace) {
+                await read()
+            } else {
+                await addPanel(targetNs)
+            }
+
+            notify.success(format === ImportFormat.METTA ? 'Successfully imported to space' : 'Successfully translated and imported to space')
             setEditorMode(EditorMode.EDIT)
             setActiveImportFile(undefined)
+            setImportUrl('')
+            setImportText('')
             setManualImportFormat(undefined)
             importFileModal.close()
         } catch (e) {
             console.error(e)
-            notify.error(`Failed to ${fileFormat === ImportFormat.METTA ? 'import' : 'transform'} to MeTTa (Backend error or invalid file format).`)
+            notify.error(`Failed to ${format === ImportFormat.METTA ? 'import' : 'translate and import'} (Backend error or invalid format).`)
         } finally {
             setIsTranslating(false)
         }
@@ -536,19 +642,32 @@ const App: Component = () => {
         const path = p.namespace
         const encodedPath = path.split('/').map(encodeURIComponent).join('/')
 
+        const originalLines = new Set(
+            p.originalContent.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+        )
+        const newLines = p.content.split('\n').filter(l => {
+            const trimmed = l.trim()
+            return trimmed.length > 0 && !originalLines.has(trimmed)
+        })
+        const diffContent = newLines.join('\n')
+
+        if (!diffContent) {
+            notify.success(`No new content to save to space '${path}'`)
+            return
+        }
+
         setConfirmData({
             title: 'Save to Space',
-            message: `Are you sure you want to save the current content to space '${path}'?`,
+            message: `Are you sure you want to save ${newLines.length} new line(s) to space '${path}'?`,
             onConfirm: async () => {
                 try {
                     const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
-                        body: p.content,
+                        body: diffContent,
                     })
                     if (resp.ok) {
                         notify.success(`Successfully saved to space '${path}'`)
-                        // Refresh original content
                         setPanels(prev => prev.map(item => item.id === p.id ? { ...item, originalContent: p.content } : item))
                     } else notify.error(`Failed to save to space '${path}' (Status: ${resp.status})`)
                 } catch (e) {
@@ -775,7 +894,8 @@ const App: Component = () => {
                     e.preventDefault(); e.stopPropagation()
                     const draggedFile = e.dataTransfer?.files?.item(0)
                     if (draggedFile) {
-                        setActiveImportFile(draggedFile); setManualImportFormat(undefined); importFileModal.showModal();
+                        setImportSource(ImportSource.FILE)
+                        setActiveImportFile(draggedFile); setManualImportFormat(undefined); openImportModal();
                     }
                 }}
             >
@@ -784,9 +904,9 @@ const App: Component = () => {
                         <aside class={styles.Sidebar}>
                             <h2>MeTTa Editor</h2>
                             <div class={styles.MettaEditorActions}>
-                                <button onClick={() => importFileModal.showModal()}>
+                                <button onClick={() => openImportModal()}>
                                     <VsCloudUpload size={20} />
-                                    <span>Import File</span>
+                                    <span>Import</span>
                                 </button>
                                 <button onclick={() => indent()}>
                                     <VsIndent size={20} />
@@ -882,8 +1002,9 @@ const App: Component = () => {
 
                     <Show when={editorMode() !== EditorMode.DEFAULT}>
                         <div class={`${styles.Resizer} ${isResizing() ? styles.Resizing : ''}`} onMouseDown={startResizing} />
-                        <TrieExplorer 
-                            content={activePanel()?.content || ''} 
+                        <TrieExplorer
+                            content={activePanel()?.content || ''}
+                            originalContent={activePanel()?.originalContent}
                             onDelete={deleteSubspace}
                             rootPath={activePanel()?.namespace || '/'}
                             onOpenSubspace={(path) => addPanel(path)}
@@ -895,16 +1016,35 @@ const App: Component = () => {
                                 })));
                                 transformModal.showModal();
                             }}
+                            collapsedPaths={collapsedPaths}
+                            onCollapse={handleTrieCollapse}
+                            onExpand={handleTrieExpand}
                         />
                     </Show>
                 </div>
             </main>
 
-            <ImportModal 
+            <ImportModal
                 ref={importFileModal!}
+                importSource={importSource}
+                setImportSource={setImportSource}
+                importNamespace={importNamespace}
+                setImportNamespace={setImportNamespace}
+                fetchExploreResults={fetchExploreResults}
                 activeFile={activeImportFile}
                 onFileSelect={(file) => { setActiveImportFile(file); setManualImportFormat(undefined); }}
-                onCancel={() => { importFileModal.close(); setActiveImportFile(undefined); setManualImportFormat(undefined); }}
+                importUrl={importUrl}
+                setImportUrl={setImportUrl}
+                importText={importText}
+                setImportText={setImportText}
+                onCancel={() => {
+                    importFileModal.close()
+                    setActiveImportFile(undefined)
+                    setImportUrl('')
+                    setImportText('')
+                    setManualImportFormat(undefined)
+                    setImportNamespace(activePanel()?.namespace || '/')
+                }}
                 isDraggingOver={isDraggingOver}
                 setIsDraggingOver={setIsDraggingOver}
                 format={activeImportFileFormat}

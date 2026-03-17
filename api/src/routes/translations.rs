@@ -41,10 +41,10 @@ pub struct JSONLDParserParameters {
 
 #[derive(FromForm, Clone)]
 pub struct ParserParameters {
-    csv_parameters: Option<CSVParserParameters>,
-    nt_parameters: Option<NTParserParameters>,
-    jsonld_parameters: Option<JSONLDParserParameters>,
-    n3_parameters: Option<N3ParserParameters>,
+    pub csv_parameters: Option<CSVParserParameters>,
+    pub nt_parameters: Option<NTParserParameters>,
+    pub jsonld_parameters: Option<JSONLDParserParameters>,
+    pub n3_parameters: Option<N3ParserParameters>,
 }
 
 pub async fn create(
@@ -209,6 +209,101 @@ pub async fn create_from_jsonld(
     )
     .await
     .map(|r| Json(r))
+}
+
+pub async fn create_from_bytes(
+    ext: &str,
+    bytes: Vec<u8>,
+    parse_parameters: ParserParameters,
+) -> Result<String, Status> {
+    let id = Uuid::new_v4();
+
+    if let Err(e) = fs::create_dir_all("temp") {
+        eprintln!("Failed to create temp directory: {}", e);
+        return Err(Status::InternalServerError);
+    }
+
+    let path = format!("temp/translations-{}", id);
+    let path_with_extension = format!("{}.{}", path, ext);
+
+    if let Err(e) = fs::write(&path_with_extension, &bytes) {
+        eprintln!("Failed to write bytes to temp file: {}", e);
+        return Err(Status::InternalServerError);
+    }
+
+    let status = match parse_parameters {
+        ParserParameters {
+            csv_parameters: Some(parameters),
+            nt_parameters: None,
+            jsonld_parameters: None,
+            n3_parameters: None,
+        } => {
+            let direction = (parameters.direction as u8).to_string();
+            let delimiter = parameters.delimiter;
+            Command::new("python3")
+                .arg("translations/src/csv_to_metta_run.py")
+                .arg(&path)
+                .arg(&direction)
+                .arg(&delimiter)
+                .status()
+        }
+        ParserParameters {
+            csv_parameters: None,
+            nt_parameters: Some(_),
+            jsonld_parameters: None,
+            n3_parameters: None,
+        } => Command::new("python3")
+            .arg("translations/src/nt_to_metta_run.py")
+            .arg(&path)
+            .status(),
+        ParserParameters {
+            csv_parameters: None,
+            nt_parameters: None,
+            jsonld_parameters: Some(_),
+            n3_parameters: None,
+        } => Command::new("python3")
+            .arg("translations/src/jsonld_to_metta_run.py")
+            .arg(&path)
+            .status(),
+        ParserParameters {
+            csv_parameters: None,
+            nt_parameters: None,
+            jsonld_parameters: None,
+            n3_parameters: Some(_),
+        } => Command::new("python3")
+            .arg("translations/src/n3_to_metta_run.py")
+            .arg(&path)
+            .status(),
+        _ => {
+            eprintln!("Invalid parser parameters combination");
+            return Err(Status::InternalServerError);
+        }
+    };
+
+    match status {
+        Ok(s) if s.success() => (),
+        Ok(s) => {
+            eprintln!("Python translation script failed with status: {}", s);
+            return Err(Status::InternalServerError);
+        }
+        Err(e) => {
+            eprintln!("Failed to execute python translation script: {}", e);
+            return Err(Status::InternalServerError);
+        }
+    };
+
+    let contents = fs::read_to_string(format!("{}-output.metta", path));
+    match contents {
+        Ok(contents) => {
+            let _ = fs::remove_file(&path_with_extension);
+            let _ = fs::remove_file(format!("{}-output.metta", path));
+            Ok(contents)
+        }
+        Err(e) => {
+            eprintln!("Failed to read translation output: {}", e);
+            Err(Status::InternalServerError)
+        }
+    }
 }
 
 #[post("/translations/n3?<parse_parameters..>", data = "<file>")]

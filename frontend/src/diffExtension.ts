@@ -55,6 +55,9 @@ const diffPlugin = ViewPlugin.fromClass(class {
     const usedOrigIndices = new Set<number>();
 
     const tokenize = (s: string) => s.split(/(\s+|[()])/).filter(t => t.length > 0);
+    
+    // Pre-tokenize original lines to avoid redundant regex operations in the inner loop
+    const origTokensCache = origLines.map(line => tokenize(line).filter(t => !/^\s+$/.test(t)));
 
     let currentPos = 0;
     
@@ -95,7 +98,7 @@ const diffPlugin = ViewPlugin.fromClass(class {
           
           for (let j = startSearch; j < endSearch; j++) {
               if (usedOrigIndices.has(j)) continue;
-              const ot = tokenize(origLines[j]).filter(t => !/^\s+$/.test(t));
+              const ot = origTokensCache[j];
               
               let matches = 0;
               const minLen = Math.min(currTokens.length, ot.length);

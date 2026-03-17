@@ -1,4 +1,4 @@
-import { Component, createSignal, For, Show } from "solid-js";
+import { Component, createSignal, createMemo, For, Show } from "solid-js";
 import styles from "./Editor.module.scss";
 import { VsChevronRight, VsChevronDown, VsSymbolEnum, VsTrash, VsFolderOpened, VsReplace, VsAdd, VsRemove } from "solid-icons/vs";
 
@@ -9,10 +9,14 @@ export interface TrieNode {
 
 interface TrieExplorerProps {
   content: string;
+  originalContent?: string;
   onDelete?: (path: string) => void;
   onOpenSubspace?: (path: string) => void;
   onConfigureTransform?: (paths: string[]) => void;
   rootPath?: string;
+  collapsedPaths?: () => Set<string>;
+  onCollapse?: (path: string) => void;
+  onExpand?: (path: string) => void;
 }
 
 const tokenize = (s: string): string[] => {
@@ -20,20 +24,24 @@ const tokenize = (s: string): string[] => {
 };
 
 const parseSExprs = (tokens: string[]): any[] => {
-  const exprs: any[] = [];
-  while (tokens.length > 0) {
-    if (tokens[0] === ")") {
-      break;
+  let i = 0;
+  const parse = (): any[] => {
+    const exprs: any[] = [];
+    while (i < tokens.length) {
+      if (tokens[i] === ")") {
+        break;
+      }
+      const token = tokens[i++];
+      if (token === "(") {
+        exprs.push(parse());
+        i++; // skip ")"
+      } else {
+        exprs.push(token);
+      }
     }
-    const token = tokens.shift();
-    if (token === "(") {
-      exprs.push(parseSExprs(tokens));
-      tokens.shift(); // remove ")"
-    } else {
-      exprs.push(token);
-    }
-  }
-  return exprs;
+    return exprs;
+  };
+  return parse();
 };
 
 const addToTrie = (node: TrieNode, expr: any) => {
@@ -84,6 +92,10 @@ const TrieBranch: Component<{
 
     depth: number; 
 
+    diffState: "added" | "removed" | "unchanged" | "modified";
+    
+    originalNode?: TrieNode;
+
     path: string;
 
     onDelete?: (path: string) => void;
@@ -102,9 +114,26 @@ const TrieBranch: Component<{
 
     onGetSelectionCount: (path: string) => number;
 
+    collapsedPaths?: () => Set<string>;
+
+    onCollapse?: (path: string) => void;
+
+    onExpand?: (path: string) => void;
+
 }> = (props) => {
 
-  const [isOpen, setIsOpen] = createSignal(props.depth <= 0);
+  const [localOpen, setLocalOpen] = createSignal(props.depth <= 0);
+  const isOpen = () => props.collapsedPaths ? !props.collapsedPaths().has(props.path) : localOpen();
+
+  const toggleOpen = (e: MouseEvent) => {
+    e.stopPropagation();
+    if (props.onCollapse && props.onExpand) {
+      if (isOpen()) props.onCollapse(props.path);
+      else props.onExpand(props.path);
+    } else {
+      setLocalOpen(!localOpen());
+    }
+  };
 
   const isLeaf = () => Object.keys(props.node.children).length === 0;
 
@@ -134,15 +163,33 @@ const TrieBranch: Component<{
     if (!isLeaf()) props.onRemoveSelect(props.path);
   }
 
+  const getBgColor = () => {
+    if (props.diffState === "added") return "rgba(156, 207, 216, 0.15)";
+    if (props.diffState === "removed") return "rgba(235, 111, 146, 0.15)";
+    if (props.diffState === "modified") return "rgba(246, 193, 119, 0.15)";
+    return "";
+  }
+  
+  const getBorderColor = () => {
+      if (props.diffState === "added") return "2px solid var(--rp-foam)";
+      return "";
+  }
+
   return (
     <div style={{ "margin-left": `${props.depth > 0 ? 16 : 0}px` }}>
       <div 
         class={`${styles.TrieNode} ${props.isSelected ? styles.SelectedNode : ""}`} 
         onClick={handleAdd}
-        style={{ cursor: isLeaf() ? "default" : "pointer" }}
+        style={{ 
+            cursor: isLeaf() ? "default" : "pointer", 
+            "background-color": getBgColor(), 
+            "border-left": getBorderColor(),
+            "opacity": props.diffState === "removed" ? 0.6 : 1,
+            "text-decoration": props.diffState === "removed" ? "line-through" : "none"
+        }}
       >
         <Show when={!isLeaf()} fallback={<div style={{ width: "16px" }} />}>
-          <div onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen()); }}>
+          <div onClick={toggleOpen}>
             {isOpen() ? <VsChevronDown size={14} /> : <VsChevronRight size={14} />}
           </div>
         </Show>
@@ -197,14 +244,34 @@ const TrieBranch: Component<{
 
 
       <Show when={isOpen() && !isLeaf()}>
-        <For each={Object.entries(props.node.children)}>
-          {([childName, childNode]) => {
+        <For each={
+            Array.from(new Set([
+                ...Object.keys(props.node.children),
+                ...(props.originalNode ? Object.keys(props.originalNode.children) : [])
+            ])).sort()
+        }>
+          {(childName) => {
             const childPath = `${props.path}${childName}/`;
+            const currChild = props.node.children[childName];
+            const origChild = props.originalNode?.children?.[childName];
+            
+            let diffState: "added" | "removed" | "unchanged" | "modified" = "unchanged";
+            
+            if (currChild && !origChild) diffState = "added";
+            else if (!currChild && origChild) diffState = "removed";
+            else if (currChild && origChild && Object.keys(currChild.children).length !== Object.keys(origChild.children).length) {
+                diffState = "modified";
+            }
+
+            if (!currChild && !origChild) return null; // should not happen
+
             return (
-              <TrieBranch 
-                  name={childName} 
-                  node={childNode} 
-                  depth={props.depth + 1} 
+              <TrieBranch
+                  name={childName}
+                  node={currChild || origChild!}
+                  originalNode={origChild}
+                  diffState={diffState}
+                  depth={props.depth + 1}
                   path={childPath}
                   onDelete={props.onDelete}
                   onOpenSubspace={props.onOpenSubspace}
@@ -214,6 +281,9 @@ const TrieBranch: Component<{
                   onRemoveSelect={props.onRemoveSelect}
                   onIsSelected={props.onIsSelected}
                   onGetSelectionCount={props.onGetSelectionCount}
+                  collapsedPaths={props.collapsedPaths}
+                  onCollapse={props.onCollapse}
+                  onExpand={props.onExpand}
               />
             );
           }}
@@ -224,7 +294,8 @@ const TrieBranch: Component<{
 };
 
 export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
-  const trie = () => buildTrie(props.content);
+  const trie = createMemo(() => buildTrie(props.content));
+  const originalTrie = createMemo(() => props.originalContent !== undefined ? buildTrie(props.originalContent) : buildTrie(props.content));
   const rootPath = () => props.rootPath || "/";
   const [selectedPaths, setSelectedPaths] = createSignal<string[]>([]);
 
@@ -267,12 +338,14 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
         </Show>
       </div>
       <div class={styles.TrieContent}>
-        <TrieBranch 
-            name={rootPath().replace(/^\/|\/$/g, "") || "/"} 
-            node={trie()} 
-            depth={0} 
+        <TrieBranch
+            name={rootPath().replace(/^\/|\/$/g, "") || "/"}
+            node={trie()}
+            originalNode={originalTrie()}
+            diffState={"unchanged"}
+            depth={0}
             path={rootPath()}
-            onDelete={undefined} // Root cannot be deleted
+            onDelete={undefined}
             onOpenSubspace={props.onOpenSubspace}
             isSelected={isSelected(rootPath())}
             selectionCount={getSelectionCount(rootPath())}
@@ -280,8 +353,11 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
             onRemoveSelect={removeSelect}
             onIsSelected={isSelected}
             onGetSelectionCount={getSelectionCount}
+            collapsedPaths={props.collapsedPaths}
+            onCollapse={props.onCollapse}
+            onExpand={props.onExpand}
         />
-        <Show when={Object.keys(trie().children).length === 0}>
+        <Show when={Object.keys(trie().children).length === 0 && Object.keys(originalTrie().children).length === 0}>
           <div class={styles.TrieEmpty}>No data to display</div>
         </Show>
       </div>

@@ -26,6 +26,12 @@ enum ImportFormat {
     METTA = 'metta',
 }
 
+enum ImportSource {
+    FILE = 'file',
+    URL = 'url',
+    TEXT = 'text',
+}
+
 enum ImportCSVDirection {
     ROW = 'Row',
     COLUMN = 'Column',
@@ -56,6 +62,7 @@ export {
     type Token,
     EditorMode,
     ImportFormat,
+    ImportSource,
     ImportCSVDirection,
     type ParserParameters,
     type CSVParserParameters,

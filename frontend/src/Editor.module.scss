@@ -789,3 +789,99 @@
         background: var(--rp-overlay);
     }
 }
+.ImportSourceTabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--rp-surface);
+    border-radius: 8px;
+}
+
+.ImportSourceTab {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: var(--rp-subtle);
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+
+    &:hover {
+        color: var(--rp-text);
+        background: var(--rp-highlight-low);
+    }
+
+    &.ImportSourceTabActive {
+        background: var(--rp-overlay);
+        color: var(--rp-love);
+    }
+}
+
+.ImportInput {
+    width: 100%;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: var(--rp-base);
+    border: 1px solid var(--rp-highlight-low);
+    color: var(--rp-text);
+    box-sizing: border-box;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9rem;
+
+    &:focus {
+        border-color: var(--rp-love);
+        outline: none;
+    }
+}
+
+.ImportTextArea {
+    width: 100%;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: var(--rp-base);
+    border: 1px solid var(--rp-highlight-low);
+    color: var(--rp-text);
+    box-sizing: border-box;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9rem;
+    min-height: 120px;
+    resize: vertical;
+
+    &:focus {
+        border-color: var(--rp-love);
+        outline: none;
+    }
+}
+
+.ImportFieldGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--rp-gold);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    select, input {
+        width: 100%;
+        padding: 10px 16px;
+        border-radius: 8px;
+        background: var(--rp-base);
+        border: 1px solid var(--rp-highlight-low);
+        color: var(--rp-text);
+        box-sizing: border-box;
+        font-family: 'Fira Code', monospace;
+        font-size: 0.9rem;
+
+        &:focus {
+            border-color: var(--rp-love);
+            outline: none;
+        }
+    }
+}
