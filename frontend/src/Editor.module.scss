@@ -518,6 +518,10 @@
     }
 }
 
+.Hidden {
+    visibility: hidden !important;
+}
+
 .TrieDeleteBtn:hover {
     color: var(--rp-love);
 }
