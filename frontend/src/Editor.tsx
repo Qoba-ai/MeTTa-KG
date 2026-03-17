@@ -182,7 +182,6 @@ const App: Component = () => {
     const [activePanelId, setActivePanelId] = createSignal<string>('')
     
     const activePanel = () => panels().find(p => p.id === activePanelId())
-    const hasChanges = createMemo(() => activePanel()?.content !== activePanel()?.originalContent)
 
     // Editor Content State
     const [editorOutput, setEditorOutput] = createSignal('')
@@ -1005,12 +1004,10 @@ const App: Component = () => {
                                                         <VsReplace size={16} />
                                                         <span>Transform</span>
                                                     </button>
-                                                <Show when={hasChanges()}>
                                                     <button onclick={() => write()}>
                                                         <VsCloudDownload size={16} />
                                                         <span>Save</span>
                                                     </button>
-                                                </Show>
                                                 </div>
                                                 <div class={styles.ButtonGroup}>
                                                     <button onclick={() => indent()}>
