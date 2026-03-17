@@ -84,7 +84,7 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
                     <select 
                       value={config().type} 
                       onchange={(e) => updateConfig(i, { type: (e.target as HTMLSelectElement).value as 'input' | 'output' })}
-                      style={{ padding: "8px", "border-radius": "8px", background: "var(--rp-surface)", color: "var(--rp-text)", border: "1px solid var(--rp-highlight-low)" }}
+                      style={{ padding: "8px", "border-radius": "6px", background: "var(--rp-surface)", color: "var(--rp-text)", border: "1px solid var(--rp-highlight-low)" }}
                     >
                       <option value="input">Input (Pattern)</option>
                       <option value="output">Output (Template)</option>

@@ -8,7 +8,7 @@
 .RootTokenForm {
     background: var(--rp-surface);
     padding: 8px 16px 16px 16px;
-    border-radius: 8px;
+    border-radius: 6px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -29,7 +29,7 @@
 .NewTokenForm {
     background: var(--rp-surface);
     padding: 8px 16px 16px 16px;
-    border-radius: 8px;
+    border-radius: 6px;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -68,11 +68,11 @@
     }
 
     th:first-child {
-        border-top-left-radius: 8px;
+        border-top-left-radius: 6px;
     }
 
     th:last-child {
-        border-top-right-radius: 8px;
+        border-top-right-radius: 6px;
     }
 
     td,
@@ -127,7 +127,7 @@
         background: var(--rp-overlay);
         color: var(--rp-text);
         padding: 12px;
-        border-radius: 8px;
+        border-radius: 6px;
         border: solid 1px var(--rp-highlight-high);
         position: absolute;
         z-index: 1;
@@ -164,8 +164,8 @@
 .TableButtonBar {
     width: auto;
     background: var(--rp-surface);
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
     margin-top: 16px;
     padding: 8px 16px;
     display: flex;

@@ -110,6 +110,7 @@ import { ConfirmModal } from './components/ConfirmModal'
 import { LoadSpaceModal } from './components/LoadSpaceModal'
 import { ImportModal } from './components/ImportModal'
 import { TransformModal, SpaceConfig } from './components/TransformModal'
+import { SelectSpaceModal } from './components/SelectSpaceModal'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.').pop()?.toLowerCase()
@@ -125,6 +126,8 @@ const extensionToImportFormat = (file: File): ImportFormat | undefined => {
         case 'jsonld':
         case 'json-ld':
             return ImportFormat.JSONLD
+        case 'metta':
+            return ImportFormat.METTA
         default:
             return undefined
     }
@@ -165,6 +168,7 @@ const App: Component = () => {
     let mettaEditor: HTMLDivElement
     let mettaInput: HTMLDivElement
     let loadSpaceModal: HTMLDialogElement
+    let selectSpaceModal: HTMLDialogElement
     let transformModal: HTMLDialogElement
     let confirmModal: HTMLDialogElement
 
@@ -338,6 +342,7 @@ const App: Component = () => {
 
         setupModalBackdrop(importFileModal)
         setupModalBackdrop(loadSpaceModal)
+        setupModalBackdrop(selectSpaceModal)
         setupModalBackdrop(transformModal)
         setupModalBackdrop(confirmModal)
 
@@ -375,17 +380,23 @@ const App: Component = () => {
         if (!fileFormat || !file) return
         
         setIsTranslating(true)
-        const parameters = new URLSearchParams(getParserParameters() as any)
 
         try {
-            const resp = await fetch(`${BACKEND_URL}/translations/${fileFormat}?${parameters.toString()}`, {
-                method: 'POST',
-                body: file,
-            })
+            let mettaTranslation: string;
 
-            if (!resp.ok) throw new Error(`Status ${resp.status}`)
+            if (fileFormat === ImportFormat.METTA) {
+                mettaTranslation = await file.text();
+            } else {
+                const parameters = new URLSearchParams(getParserParameters() as any)
+                const resp = await fetch(`${BACKEND_URL}/translations/${fileFormat}?${parameters.toString()}`, {
+                    method: 'POST',
+                    body: file,
+                })
 
-            const mettaTranslation = await resp.json()
+                if (!resp.ok) throw new Error(`Status ${resp.status}`)
+                mettaTranslation = await resp.json()
+            }
+
             const p = activePanel()
             if (!p || !p.view) throw new Error('No active editor view')
 
@@ -393,14 +404,14 @@ const App: Component = () => {
                 changes: { from: p.view.state.selection.main.head, insert: mettaTranslation },
             }))
 
-            notify.success('Successfully translated file to MeTTa')
+            notify.success(fileFormat === ImportFormat.METTA ? 'Successfully imported MeTTa file' : 'Successfully translated file to MeTTa')
             setEditorMode(EditorMode.EDIT)
             setActiveImportFile(undefined)
             setManualImportFormat(undefined)
             importFileModal.close()
         } catch (e) {
             console.error(e)
-            notify.error(`Failed to transform to MeTTa (Backend error or invalid file format).`)
+            notify.error(`Failed to ${fileFormat === ImportFormat.METTA ? 'import' : 'transform'} to MeTTa (Backend error or invalid file format).`)
         } finally {
             setIsTranslating(false)
         }
@@ -834,7 +845,7 @@ const App: Component = () => {
                                             </div>
                                         )}
                                     </For>
-                                    <button class={styles.AddTab} onClick={() => loadSpaceModal.showModal()}>
+                                    <button class={styles.AddTab} onClick={() => selectSpaceModal.showModal()}>
                                         <VsAdd size={16} />
                                     </button>
                                 </div>
@@ -910,6 +921,14 @@ const App: Component = () => {
                 ref={loadSpaceModal!}
                 onLoad={(t) => { loadSpace(t); loadSpaceModal.close() }}
                 onCancel={() => loadSpaceModal.close()}
+            />
+
+            <SelectSpaceModal 
+                ref={selectSpaceModal!}
+                onSelect={(path) => { addPanel(path); selectSpaceModal.close() }}
+                onCancel={() => selectSpaceModal.close()}
+                fetchExploreResults={fetchExploreResults}
+                initialValue={activePanel()?.namespace || '/'}
             />
 
             <TransformModal 

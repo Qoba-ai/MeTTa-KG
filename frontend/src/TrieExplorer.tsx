@@ -150,7 +150,7 @@ const TrieBranch: Component<{
         <span class={isLeaf() ? styles.TrieLeafText : styles.TrieBranchText}>{props.name}</span>
         
         <Show when={props.selectionCount > 0}>
-            <span style={{ "font-size": "0.7rem", background: "var(--rp-love)", color: "var(--rp-base)", "padding": "0 4px", "border-radius": "4px", "margin-left": "4px" }}>
+            <span style={{ "font-size": "0.7rem", background: "var(--rp-love)", color: "var(--rp-base)", "padding": "0 4px", "border-radius": "2px", "margin-left": "4px" }}>
                 {props.selectionCount}
             </span>
         </Show>
@@ -286,14 +286,15 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
         </Show>
       </div>
 
-      <button 
-        class={styles.TrieConfigTransform}
-        disabled={selectedPaths().length < 2}
-        onClick={() => props.onConfigureTransform?.(selectedPaths())}
-      >
-        <VsReplace size={16} />
-        Configure Transformation
-      </button>
+      <Show when={selectedPaths().length >= 2}>
+        <button 
+          class={styles.TrieConfigTransform}
+          onClick={() => props.onConfigureTransform?.(selectedPaths())}
+        >
+          <VsReplace size={16} />
+          Configure Transformation
+        </button>
+      </Show>
     </div>
   );
 };

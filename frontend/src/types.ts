@@ -23,6 +23,7 @@ enum ImportFormat {
     N3 = 'n3',
     JSONLD = 'jsonld',
     NTRIPLES = 'nt',
+    METTA = 'metta',
 }
 
 enum ImportCSVDirection {

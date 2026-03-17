@@ -35,7 +35,7 @@
     gap: 16px;
     width: 240px;
     background: var(--rp-surface);
-    border-radius: 16px;
+    border-radius: 12px;
     padding: 20px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     border: 1px solid var(--rp-highlight-low);
@@ -67,7 +67,7 @@
             background: transparent;
             color: var(--rp-subtle);
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             font-size: 0.9rem;
             text-align: left;
             transition: all 0.2s;
@@ -101,7 +101,7 @@
             select {
                 width: 100%;
                 padding: 8px;
-                border-radius: 6px;
+                border-radius: 4px;
                 background: var(--rp-base);
                 border: 1px solid var(--rp-highlight-low);
                 color: var(--rp-text);
@@ -113,7 +113,7 @@
             line-height: 1.4;
             background: var(--rp-base);
             padding: 10px;
-            border-radius: 8px;
+            border-radius: 6px;
             margin: 0;
             border: 1px solid var(--rp-highlight-low);
         }
@@ -142,7 +142,7 @@
     flex: 1;
     width: 100%;
     background: var(--rp-base);
-    border-radius: 16px;
+    border-radius: 12px;
     overflow: hidden;
     border: 1px solid var(--rp-highlight-low);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
@@ -188,7 +188,7 @@
     background: var(--rp-base);
     border: 1px solid var(--rp-highlight-low);
     border-bottom: none;
-    border-radius: 8px 8px 0 0;
+    border-radius: 6px 6px 0 0;
     cursor: pointer;
     min-width: 120px;
     max-width: 240px;
@@ -222,7 +222,7 @@
         color: var(--rp-subtle);
         cursor: pointer;
         padding: 2px;
-        border-radius: 4px;
+        border-radius: 2px;
         display: flex;
         align-items: center;
         opacity: 0;
@@ -329,7 +329,7 @@
 .TrieExplorer {
     width: var(--trie-width, 300px);
     background: var(--rp-surface);
-    border-radius: 16px;
+    border-radius: 12px;
     padding: 20px;
     display: flex;
     flex-direction: column;
@@ -366,7 +366,7 @@
     }
     &::-webkit-scrollbar-thumb {
         background: var(--rp-highlight-low);
-        border-radius: 10px;
+        border-radius: 8px;
     }
     &::-webkit-scrollbar-thumb:hover {
         background: var(--rp-highlight-med);
@@ -378,7 +378,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 6px;
-    border-radius: 6px;
+    border-radius: 4px;
     transition: all 0.2s;
     user-select: none;
     width: 100%;
@@ -413,7 +413,7 @@
     color: var(--rp-subtle);
     cursor: pointer;
     padding: 2px 4px;
-    border-radius: 4px;
+    border-radius: 2px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -462,7 +462,7 @@
     background: var(--rp-love);
     color: var(--rp-base);
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
@@ -550,7 +550,7 @@
         input, .SelectSpaces, :global(.NamespaceSelector) input, .NamespaceSelector input {
             width: 100%;
             padding: 10px 16px;
-            border-radius: 10px;
+            border-radius: 8px;
             background: var(--rp-base);
             border: 1px solid var(--rp-highlight-low);
             color: var(--rp-text);
@@ -586,7 +586,7 @@
             input {
                 width: 100%;
                 padding: 10px 16px;
-                border-radius: 10px;
+                border-radius: 8px;
                 background: var(--rp-base);
                 border: 1px solid var(--rp-highlight-low);
                 color: var(--rp-text);
@@ -621,7 +621,7 @@
         flex-direction: row;
         align-items: center;
         padding: 20px 40px;
-        border-radius: 16px;
+        border-radius: 12px;
         gap: 16px;
         font-size: 1.5rem;
         transition: all 0.3s;
@@ -642,7 +642,7 @@
 
     input {
         width: 100%;
-        border-radius: 10px;
+        border-radius: 8px;
         padding: 10px 16px;
         background: var(--rp-base);
         border: 1px solid var(--rp-highlight-low);
@@ -664,7 +664,7 @@
     width: 100%;
     background: var(--rp-overlay);
     border: 1px solid var(--rp-highlight-high);
-    border-radius: 12px;
+    border-radius: 10px;
     z-index: 100;
     max-height: 300px;
     overflow-y: auto;
@@ -742,7 +742,7 @@
     gap: 16px;
     background: var(--rp-surface);
     padding: 20px;
-    border-radius: 12px;
+    border-radius: 10px;
     border: 1px solid var(--rp-highlight-low);
     overflow: visible; // Allow dropdowns to overflow
 }
@@ -753,7 +753,7 @@
     gap: 12px;
     padding: 8px 12px;
     background: var(--rp-base);
-    border-radius: 8px;
+    border-radius: 6px;
     font-size: 0.9rem;
     color: var(--rp-text);
     border: 1px solid var(--rp-highlight-low);
@@ -779,7 +779,7 @@
 
 .DropZone {
     border: 2px dashed var(--rp-highlight-high);
-    border-radius: 20px;
+    border-radius: 16px;
     padding: 60px 40px;
     background: var(--rp-surface);
     transition: all 0.3s;

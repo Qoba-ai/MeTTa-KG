@@ -81,7 +81,7 @@ header {
     align-items: center;
     justify-content: center;
     padding: 6px;
-    border-radius: 8px;
+    border-radius: 6px;
     transition: background 0.2s;
 
     &:hover {
@@ -92,7 +92,7 @@ header {
 input:not([type='file']) {
     background: transparent;
     color: var(--rp-text);
-    border-radius: 4px;
+    border-radius: 2px;
     padding: 8px 16px;
     border: solid 1px var(--rp-highlight-high);
 }
@@ -106,7 +106,7 @@ input:focus {
     color: var(--rp-love);
     text-decoration: none;
     border: solid 1px var(--rp-love);
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 8px 16px;
     font-size: 0.9rem;
     cursor: pointer;
@@ -138,7 +138,7 @@ input:focus {
     color: var(--rp-text);
     text-decoration: none;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 8px 16px;
     font-size: 0.9rem;
     cursor: pointer;
@@ -166,7 +166,7 @@ input[type='checkbox'] {
 select {
     background: transparent;
     color: var(--rp-text);
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 8px 16px;
     border: solid 1px var(--rp-highlight-high);
 
@@ -215,7 +215,7 @@ dialog {
         0px 8px 10px -5px rgba(0, 0, 0, 0.2),
         0px 16px 24px 2px rgba(0, 0, 0, 0.14),
         0px 6px 30px 5px rgba(0, 0, 0, 0.12);
-    border-radius: 12px;
+    border-radius: 10px;
     padding: 18px;
 
     h2 {

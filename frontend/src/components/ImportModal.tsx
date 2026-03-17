@@ -77,7 +77,7 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
             </div>
             <Show when={!props.activeFile()}>
                 <div class={styles.DropZoneHint}>
-                    Accepted: .csv, .n3, .jsonld, .nt
+                    Accepted: .csv, .n3, .jsonld, .nt, .metta
                 </div>
             </Show>
           </div>
@@ -101,6 +101,7 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
                     <option value={ImportFormat.NTRIPLES}>N-Triples (.nt)</option>
                     <option value={ImportFormat.N3}>N3</option>
                     <option value={ImportFormat.JSONLD}>JSON-LD</option>
+                    <option value={ImportFormat.METTA}>MeTTa (.metta)</option>
                   </select>
                 </div>
 
@@ -159,7 +160,11 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
             type="submit" 
             disabled={!props.activeFile() || !props.format() || props.isTranslating()}
           >
-            {props.isTranslating() ? "Translating..." : "Translate and Import"}
+            <Show when={props.format() === ImportFormat.METTA} fallback={
+                props.isTranslating() ? "Translating..." : "Translate and Import"
+            }>
+                {props.isTranslating() ? "Importing..." : "Import"}
+            </Show>
           </button>
         </div>
       </form>
