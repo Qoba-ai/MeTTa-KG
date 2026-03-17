@@ -146,7 +146,7 @@ class PathFoldMarker extends GutterMarker {
 
     toDOM() {
         const el = document.createElement('span')
-        el.style.cssText = 'cursor:pointer;font-size:10px;opacity:0.7;'
+        el.style.cssText = 'cursor:pointer;font-size:14px;opacity:0.8;line-height:1;'
         el.textContent = this.collapsed ? '▸' : '▾'
         el.title = this.collapsed ? `Expand ${this.sym}` : `Collapse ${this.sym}`
         return el

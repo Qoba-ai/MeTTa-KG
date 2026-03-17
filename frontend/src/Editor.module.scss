@@ -11,9 +11,9 @@
 .Main {
     flex: 1;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: stretch;
-    padding: 24px;
+    padding: 0;
     box-sizing: border-box;
     background: var(--rp-base);
     overflow: hidden;
@@ -24,7 +24,7 @@
     flex-direction: row;
     width: 100%;
     height: 100%;
-    gap: 20px;
+    gap: 0;
     flex: 1;
     min-height: 0;
 }
@@ -32,56 +32,55 @@
 .Sidebar {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    width: 240px;
+    gap: 0;
+    width: 200px;
     background: var(--rp-surface);
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    border: 1px solid var(--rp-highlight-low);
+    border-right: 1px solid var(--rp-highlight-low);
     flex-shrink: 0;
-
-    h2 {
-        font-size: 1.1rem;
-        margin: 0 0 16px 0;
-        color: var(--rp-gold);
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        border-bottom: 1px solid var(--rp-highlight-low);
-        padding-bottom: 8px;
-    }
+    overflow-y: auto;
 
     .MettaEditorActions {
         display: flex;
         flex-direction: column;
         align-items: stretch;
         width: 100%;
-        gap: 4px;
-        
+        padding: 12px 0 0;
+
         button {
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            gap: 12px;
-            padding: 10px 12px;
+            gap: 10px;
+            padding: 9px 16px;
             background: transparent;
             color: var(--rp-subtle);
             border: none;
-            border-radius: 6px;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             text-align: left;
-            transition: all 0.2s;
+            transition: background 0.15s, color 0.15s;
             cursor: pointer;
+            width: 100%;
 
             &:hover {
                 background: var(--rp-highlight-low);
-                color: var(--rp-love);
-                padding-left: 16px;
+                color: var(--rp-text);
             }
 
             svg {
+                flex-shrink: 0;
                 color: var(--rp-iris);
             }
+        }
+    }
+
+    .ButtonGroup {
+        display: flex;
+        flex-direction: column;
+
+        & + .ButtonGroup {
+            border-top: 1px solid var(--rp-highlight-low);
+            margin-top: 4px;
+            padding-top: 4px;
         }
     }
 
@@ -134,6 +133,9 @@
     gap: 16px;
     height: 100%;
     min-width: 0;
+    padding: 24px;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .EditorWrapper {
@@ -236,6 +238,31 @@
 
     &:hover .TabClose, &.ActiveTab .TabClose {
         opacity: 1;
+    }
+
+    .TabLocked {
+        display: flex;
+        align-items: center;
+        color: var(--rp-gold);
+        font-size: 0.75rem;
+        opacity: 0.85;
+        flex-shrink: 0;
+    }
+}
+
+// ── Connection indicator ──────────────────────────────────────────────────────
+
+.OnlineIndicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--rp-muted);
+    transition: background 0.4s;
+    flex-shrink: 0;
+
+    &.OnlineIndicatorOnline {
+        background: var(--rp-foam);
+        box-shadow: 0 0 5px var(--rp-foam);
     }
 }
 
@@ -376,13 +403,14 @@
 .TrieNode {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 6px;
+    gap: 8px;
+    padding: 6px 8px;
     border-radius: 4px;
     transition: all 0.2s;
     user-select: none;
     width: 100%;
     box-sizing: border-box;
+    font-size: 0.9rem;
 
     &:hover {
         background: var(--rp-highlight-low);
@@ -412,8 +440,8 @@
     border: none;
     color: var(--rp-subtle);
     cursor: pointer;
-    padding: 2px 4px;
-    border-radius: 2px;
+    padding: 4px 6px;
+    border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;

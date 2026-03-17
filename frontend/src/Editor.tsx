@@ -16,15 +16,17 @@ import {
     VsClearAll,
     VsSettings,
     VsClose,
-    VsAdd
+    VsAdd,
+    VsLock,
 } from 'solid-icons/vs'
-import { createMemo, createSignal, onMount, Show, For, createEffect, batch, on, untrack } from 'solid-js'
+import { createMemo, createSignal, onMount, onCleanup, Show, For, createEffect, batch, on, untrack } from 'solid-js'
 import styles from './Editor.module.scss'
 import { A } from '@solidjs/router'
 import { Toaster } from 'solid-toast'
 import { notify } from './notify'
 import { useTheme } from './ThemeContext'
 import { BACKEND_URL, TOKEN } from './urls'
+import { wsService } from './websocket'
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/panda-syntax-dark.css'
 
@@ -215,6 +217,9 @@ const App: Component = () => {
     // Trie/Editor fold sync state — full paths like "/key/" that are collapsed
     const [collapsedPaths, setCollapsedPaths] = createSignal<Set<string>>(new Set())
 
+    // WebSocket: set of space paths currently locked (import in progress)
+    const [lockedPaths, setLockedPaths] = createSignal<Set<string>>(new Set())
+
     // Confirmation State
     const [confirmData, setConfirmData] = createSignal({
         title: '',
@@ -343,6 +348,25 @@ const App: Component = () => {
         }
     }))
 
+
+    // Connect the events WebSocket once we have a token, and subscribe to space events
+    createEffect(() => {
+        const t = token()
+        if (!t) return
+        wsService.connectEvents(t.code)
+        const unsub = wsService.onSpaceEvent((event) => {
+            setLockedPaths((prev: Set<string>) => {
+                const next = new Set<string>(prev)
+                if (event.type === 'locked') next.add(event.path)
+                else next.delete(event.path)
+                return next
+            })
+        })
+        onCleanup(() => {
+            unsub()
+            wsService.disconnectEvents()
+        })
+    })
 
     let isMounted = false
     onMount(() => {
@@ -902,40 +926,45 @@ const App: Component = () => {
                 <div class={styles.EditorLayout}>
                     <Show when={editorMode() !== EditorMode.DEFAULT}>
                         <aside class={styles.Sidebar}>
-                            <h2>MeTTa Editor</h2>
                             <div class={styles.MettaEditorActions}>
-                                <button onClick={() => openImportModal()}>
-                                    <VsCloudUpload size={20} />
-                                    <span>Import</span>
-                                </button>
-                                <button onclick={() => indent()}>
-                                    <VsIndent size={20} />
-                                    <span>Indent Code</span>
-                                </button>
-                                <button onclick={() => write()}>
-                                    <VsCloudUpload size={20} /> {/* This seems like a copy-paste error, should be VsCloudDownload for saving */}
-                                    <span>Save to Space</span>
-                                </button>
-                                <button onclick={() => exportMetta()}>
-                                    <VsSave size={20} />
-                                    <span>Export File</span>
-                                </button>
-                                <button onclick={() => {
-                                    if (transformConfigs().length === 0) {
-                                        setTransformConfigs([
-                                            { path: '/', type: 'input', patternOrTemplate: '' },
-                                            { path: '/', type: 'output', patternOrTemplate: '' }
-                                        ]);
-                                    }
-                                    transformModal.showModal();
-                                }}>
-                                    <VsReplace size={20} />
-                                    <span>Transform</span>
-                                </button>
-                                <button onclick={() => clearSpace()}>
-                                    <VsClearAll size={20} />
-                                    <span>Clear Space</span>
-                                </button>
+                                <div class={styles.ButtonGroup}>
+                                    <button onClick={() => openImportModal()}>
+                                        <VsCloudUpload size={18} />
+                                        <span>Import</span>
+                                    </button>
+                                    <button onclick={() => exportMetta()}>
+                                        <VsSave size={18} />
+                                        <span>Export</span>
+                                    </button>
+                                </div>
+                                <div class={styles.ButtonGroup}>
+                                    <button onclick={() => clearSpace()}>
+                                        <VsClearAll size={18} />
+                                        <span>Clear</span>
+                                    </button>
+                                    <button onclick={() => {
+                                        if (transformConfigs().length === 0) {
+                                            setTransformConfigs([
+                                                { path: '/', type: 'input', patternOrTemplate: '' },
+                                                { path: '/', type: 'output', patternOrTemplate: '' }
+                                            ]);
+                                        }
+                                        transformModal.showModal();
+                                    }}>
+                                        <VsReplace size={18} />
+                                        <span>Transform</span>
+                                    </button>
+                                    <button onclick={() => write()}>
+                                        <VsCloudDownload size={18} />
+                                        <span>Save</span>
+                                    </button>
+                                </div>
+                                <div class={styles.ButtonGroup}>
+                                    <button onclick={() => indent()}>
+                                        <VsIndent size={18} />
+                                        <span>Reformat</span>
+                                    </button>
+                                </div>
                             </div>
                         </aside>
                     </Show>
@@ -954,11 +983,16 @@ const App: Component = () => {
                                 <div class={styles.EditorTabs}>
                                     <For each={panels()}>
                                         {(p) => (
-                                            <div 
+                                            <div
                                                 class={`${styles.EditorTab} ${p.id === activePanelId() ? styles.ActiveTab : ''}`}
                                                 onClick={() => setActivePanelId(p.id)}
                                             >
                                                 <span class={styles.TabTitle}>{p.namespace}</span>
+                                                <Show when={lockedPaths().has(p.namespace)}>
+                                                    <span class={styles.TabLocked} title="Space is locked (import in progress)">
+                                                        <VsLock size={12} />
+                                                    </span>
+                                                </Show>
                                                 <button class={styles.TabClose} onClick={(e) => closePanel(p.id, e)}>
                                                     <VsClose size={14} />
                                                 </button>

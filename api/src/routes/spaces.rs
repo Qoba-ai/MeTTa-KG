@@ -1,17 +1,19 @@
 use core::str;
 use rocket::serde::json::{Json, serde_json};
 use rocket::{http::Status, put};
+use rocket::State;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use rocket::{get, post};
 use std::path::PathBuf;
 use urlencoding::encode;
 
-use crate::{model::Token, routes::path_to_metta_sexpr};
+use crate::{events::{EventBus, SpaceEvent}, model::Token, routes::path_to_metta_sexpr};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Transformation {
@@ -101,16 +103,30 @@ pub async fn transform(
 }
 
 #[post("/spaces", data = "<space>")]
-pub async fn import_root(token: Token, space: String) -> Result<Json<bool>, Status> {
-    do_import(&token, &PathBuf::new(), &space).await
+pub async fn import_root(token: Token, space: String, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
+    do_import(&token, &PathBuf::new(), &space, &bus.0).await
 }
 
 #[post("/spaces/<path..>", data = "<space>")]
-pub async fn import(token: Token, path: PathBuf, space: String) -> Result<Json<bool>, Status> {
-    do_import(&token, &path, &space).await
+pub async fn import(token: Token, path: PathBuf, space: String, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
+    do_import(&token, &path, &space, &bus.0).await
 }
 
-pub async fn do_import(token: &Token, path: &PathBuf, space: &str) -> Result<Json<bool>, Status> {
+fn path_to_event_path(path: &PathBuf) -> String {
+    let s = path.to_string_lossy();
+    if s.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}/", s)
+    }
+}
+
+pub async fn do_import(
+    token: &Token,
+    path: &PathBuf,
+    space: &str,
+    bus: &broadcast::Sender<SpaceEvent>,
+) -> Result<Json<bool>, Status> {
     if !path.starts_with(&token.namespace.strip_prefix('/').unwrap_or(&token.namespace)) || !token.permission_write {
         return Err(Status::Unauthorized);
     }
@@ -142,21 +158,28 @@ pub async fn do_import(token: &Token, path: &PathBuf, space: &str) -> Result<Jso
         encode(&uri)
     );
 
+    let event_path = path_to_event_path(path);
+    let _ = bus.send(SpaceEvent::Locked { path: event_path.clone() });
+
     let resp = reqwest::get(mork_import_url).await;
 
     let data = match resp {
         Ok(resp) => {
             if !resp.status().is_success() {
                 eprintln!("MORK import returned error status: {}", resp.status());
+                let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
                 return Err(Status::InternalServerError);
             }
             resp.text().await
         }
         Err(e) => {
             eprintln!("Error sending MORK import request: {}", e);
+            let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
             return Err(Status::InternalServerError);
         }
     };
+
+    let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
 
     match data {
         Ok(data) => {
@@ -508,9 +531,10 @@ pub async fn import_csv(
     path: PathBuf,
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::CSVParserParameters,
+    bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
     let space = crate::routes::translations::create_from_csv(file, parse_parameters).await?.into_inner();
-    do_import(&token, &path, &space).await
+    do_import(&token, &path, &space, &bus.0).await
 }
 
 #[post("/spaces/import/nt/<path..>?<parse_parameters..>", data = "<file>")]
@@ -519,9 +543,10 @@ pub async fn import_nt(
     path: PathBuf,
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::NTParserParameters,
+    bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
     let space = crate::routes::translations::create_from_nt(file, parse_parameters).await?.into_inner();
-    do_import(&token, &path, &space).await
+    do_import(&token, &path, &space, &bus.0).await
 }
 
 #[post("/spaces/import/jsonld/<path..>?<parse_parameters..>", data = "<file>")]
@@ -530,9 +555,10 @@ pub async fn import_jsonld(
     path: PathBuf,
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::JSONLDParserParameters,
+    bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
     let space = crate::routes::translations::create_from_jsonld(file, parse_parameters).await?.into_inner();
-    do_import(&token, &path, &space).await
+    do_import(&token, &path, &space, &bus.0).await
 }
 
 #[post("/spaces/import/n3/<path..>?<parse_parameters..>", data = "<file>")]
@@ -541,9 +567,10 @@ pub async fn import_n3(
     path: PathBuf,
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::N3ParserParameters,
+    bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
     let space = crate::routes::translations::create_from_n3(file, parse_parameters).await?.into_inner();
-    do_import(&token, &path, &space).await
+    do_import(&token, &path, &space, &bus.0).await
 }
 
 async fn fetch_url_bytes(url: &str) -> Result<Vec<u8>, Status> {
@@ -569,7 +596,12 @@ async fn fetch_url_bytes(url: &str) -> Result<Vec<u8>, Status> {
         })
 }
 
-async fn do_import_from_url(token: &Token, path: &PathBuf, url: &str) -> Result<Json<bool>, Status> {
+async fn do_import_from_url(
+    token: &Token,
+    path: &PathBuf,
+    url: &str,
+    bus: &broadcast::Sender<SpaceEvent>,
+) -> Result<Json<bool>, Status> {
     let token_namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace);
     if !path.starts_with(token_namespace) || !token.permission_write {
         return Err(Status::Unauthorized);
@@ -589,25 +621,31 @@ async fn do_import_from_url(token: &Token, path: &PathBuf, url: &str) -> Result<
 
     println!("MORK import from URL: {}", mork_import_url);
 
+    let event_path = path_to_event_path(path);
+    let _ = bus.send(SpaceEvent::Locked { path: event_path.clone() });
+
     let resp = reqwest::get(mork_import_url).await;
-    match resp {
+    let result = match resp {
         Ok(resp) => {
             if !resp.status().is_success() {
                 eprintln!("MORK import returned error: {}", resp.status());
-                return Err(Status::InternalServerError);
+                Err(Status::InternalServerError)
+            } else {
+                Ok(Json(true))
             }
-            Ok(Json(true))
         }
         Err(e) => {
             eprintln!("Error sending MORK import from URL request: {}", e);
             Err(Status::InternalServerError)
         }
-    }
+    };
+    let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
+    result
 }
 
 #[get("/spaces/import/url/metta/<path..>?<url>")]
-pub async fn import_url_metta(token: Token, path: PathBuf, url: String) -> Result<Json<bool>, Status> {
-    do_import_from_url(&token, &path, &url).await
+pub async fn import_url_metta(token: Token, path: PathBuf, url: String, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
+    do_import_from_url(&token, &path, &url, &bus.0).await
 }
 
 #[get("/spaces/import/url/csv/<path..>?<url>&<parse_parameters..>")]
@@ -616,6 +654,7 @@ pub async fn import_url_csv(
     path: PathBuf,
     url: String,
     parse_parameters: crate::routes::translations::CSVParserParameters,
+    bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
@@ -629,11 +668,11 @@ pub async fn import_url_csv(
         },
     )
     .await?;
-    do_import(&token, &path, &space).await
+    do_import(&token, &path, &space, &bus.0).await
 }
 
 #[get("/spaces/import/url/nt/<path..>?<url>")]
-pub async fn import_url_nt(token: Token, path: PathBuf, url: String) -> Result<Json<bool>, Status> {
+pub async fn import_url_nt(token: Token, path: PathBuf, url: String, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
         "nt",
@@ -646,11 +685,11 @@ pub async fn import_url_nt(token: Token, path: PathBuf, url: String) -> Result<J
         },
     )
     .await?;
-    do_import(&token, &path, &space).await
+    do_import(&token, &path, &space, &bus.0).await
 }
 
 #[get("/spaces/import/url/jsonld/<path..>?<url>")]
-pub async fn import_url_jsonld(token: Token, path: PathBuf, url: String) -> Result<Json<bool>, Status> {
+pub async fn import_url_jsonld(token: Token, path: PathBuf, url: String, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
         "jsonld",
@@ -663,11 +702,11 @@ pub async fn import_url_jsonld(token: Token, path: PathBuf, url: String) -> Resu
         },
     )
     .await?;
-    do_import(&token, &path, &space).await
+    do_import(&token, &path, &space, &bus.0).await
 }
 
 #[get("/spaces/import/url/n3/<path..>?<url>")]
-pub async fn import_url_n3(token: Token, path: PathBuf, url: String) -> Result<Json<bool>, Status> {
+pub async fn import_url_n3(token: Token, path: PathBuf, url: String, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
         "n3",
@@ -680,7 +719,7 @@ pub async fn import_url_n3(token: Token, path: PathBuf, url: String) -> Result<J
         },
     )
     .await?;
-    do_import(&token, &path, &space).await
+    do_import(&token, &path, &space, &bus.0).await
 }
 
 #[get("/status")]

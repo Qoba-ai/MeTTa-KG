@@ -4,6 +4,7 @@ use rocket::{self, launch, routes, Build, Rocket};
 use rocket_cors::AllowedOrigins;
 
 mod db;
+mod events;
 mod model;
 mod routes;
 mod schema;
@@ -27,6 +28,7 @@ fn rocket() -> Rocket<Build> {
     .unwrap();
 
     rocket::build()
+        .manage(events::EventBus::new())
         .mount(
             "/",
             routes![
@@ -64,6 +66,8 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::import_url_nt,
                 routes::spaces::import_url_jsonld,
                 routes::spaces::import_url_n3,
+                routes::events::ws_ping,
+                routes::events::ws_events,
             ],
         )
         .mount("/public", FileServer::from("static"))

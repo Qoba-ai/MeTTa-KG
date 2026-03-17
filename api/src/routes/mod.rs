@@ -10,6 +10,7 @@ use rocket::{
 use serde::{Deserialize, Serialize};
 use std::path::{Component, Path};
 
+pub mod events;
 pub mod spaces;
 pub mod tokens;
 pub mod translations;

@@ -1,0 +1,124 @@
+use crate::db::establish_connection;
+use crate::events::{EventBus, SpaceEvent};
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
+use futures::{SinkExt, StreamExt};
+use rocket::http::Status;
+use rocket::State;
+use rocket_ws as ws;
+use tokio::sync::broadcast;
+
+fn validate_token_code(token_code: &str) -> Option<crate::model::Token> {
+    use crate::schema::tokens::dsl::*;
+    let conn = &mut establish_connection();
+    tokens
+        .select(crate::model::Token::as_select())
+        .filter(code.eq(token_code))
+        .get_result(conn)
+        .ok()
+}
+
+/// Returns true if the event path falls within the subscriber's namespace.
+/// Namespace is like "/" (root) or "/foo/bar/".
+/// Event path is like "/" or "/foo/bar/baz/".
+fn event_in_namespace(event: &SpaceEvent, namespace: &str) -> bool {
+    let path = match event {
+        SpaceEvent::Locked { path } | SpaceEvent::Unlocked { path } => path.as_str(),
+    };
+    // Root namespace receives all events
+    if namespace == "/" || namespace.is_empty() {
+        return true;
+    }
+    path.starts_with(namespace)
+}
+
+/// Global health/ping WebSocket — no token required.
+/// Sends `{"type":"ping"}` every 5 seconds.
+#[rocket::get("/ws/ping")]
+pub fn ws_ping(ws: ws::WebSocket) -> ws::Channel<'static> {
+    use rocket::tokio::time::{interval, Duration};
+
+    ws.channel(move |stream| {
+        Box::pin(async move {
+            let (mut sink, mut source) = stream.split();
+            let mut ticker = interval(Duration::from_secs(5));
+            // Send an immediate ping so the client knows it's connected
+            let _ = sink
+                .send(ws::Message::Text(
+                    serde_json::json!({"type": "ping"}).to_string(),
+                ))
+                .await;
+
+            loop {
+                tokio::select! {
+                    _ = ticker.tick() => {
+                        let msg = serde_json::json!({"type": "ping"}).to_string();
+                        if sink.send(ws::Message::Text(msg)).await.is_err() {
+                            break;
+                        }
+                    }
+                    msg = source.next() => {
+                        match msg {
+                            Some(Ok(ws::Message::Close(_))) | None => break,
+                            Some(Err(_)) => break,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
+    })
+}
+
+/// Authenticated space-event WebSocket.
+/// Connect with `?token_code=<your-token>`.
+/// Emits JSON events for spaces within the token's namespace.
+#[rocket::get("/ws/events?<token_code>")]
+pub fn ws_events(
+    ws: ws::WebSocket,
+    token_code: String,
+    bus: &State<EventBus>,
+) -> Result<ws::Channel<'static>, Status> {
+    let token = validate_token_code(&token_code).ok_or(Status::Unauthorized)?;
+
+    if !token.permission_read {
+        return Err(Status::Unauthorized);
+    }
+
+    let mut rx: broadcast::Receiver<SpaceEvent> = bus.inner().0.subscribe();
+    let namespace = token.namespace.clone();
+
+    Ok(ws.channel(move |stream| {
+        Box::pin(async move {
+            let (mut sink, mut source) = stream.split();
+
+            loop {
+                tokio::select! {
+                    event_result = rx.recv() => {
+                        match event_result {
+                            Ok(event) => {
+                                if event_in_namespace(&event, &namespace) {
+                                    let json = serde_json::to_string(&event)
+                                        .unwrap_or_default();
+                                    if sink.send(ws::Message::Text(json)).await.is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => break,
+                        }
+                    }
+                    msg = source.next() => {
+                        match msg {
+                            Some(Ok(ws::Message::Close(_))) | None => break,
+                            Some(Err(_)) => break,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
+    }))
+}

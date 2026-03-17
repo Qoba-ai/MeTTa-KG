@@ -1,8 +1,9 @@
-import { Component, JSX } from "solid-js";
+import { Component, JSX, createSignal, onMount, onCleanup } from "solid-js";
 import { A } from "@solidjs/router";
 import { AiOutlineGithub } from "solid-icons/ai";
 import { VsSettings } from "solid-icons/vs";
 import styles from "../Editor.module.scss";
+import { wsService } from "../websocket";
 
 interface HeaderProps {
   title?: string;
@@ -10,12 +11,25 @@ interface HeaderProps {
 }
 
 export const Header: Component<HeaderProps> = (props) => {
+  const [online, setOnline] = createSignal(false);
+
+  onMount(() => {
+    wsService.connectPing();
+    const unsub = wsService.onOnlineChange(setOnline);
+    onCleanup(unsub);
+  });
+
   return (
     <header>
       <h1>{props.title || "MeTTa KG"}</h1>
       <nav>
         {props.children || (
           <>
+            <div
+              class={styles.OnlineIndicator}
+              classList={{ [styles.OnlineIndicatorOnline]: online() }}
+              title={online() ? "Connected" : "Disconnected"}
+            />
             <A href="/settings" class={styles.IconButton} title="Settings">
               <VsSettings size={24} />
             </A>

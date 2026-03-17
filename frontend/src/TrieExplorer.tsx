@@ -177,11 +177,10 @@ const TrieBranch: Component<{
 
   return (
     <div style={{ "margin-left": `${props.depth > 0 ? 16 : 0}px` }}>
-      <div 
-        class={`${styles.TrieNode} ${props.isSelected ? styles.SelectedNode : ""}`} 
-        onClick={handleAdd}
-        style={{ 
-            cursor: isLeaf() ? "default" : "pointer", 
+      <div
+        class={`${styles.TrieNode} ${props.isSelected ? styles.SelectedNode : ""}`}
+        style={{
+            cursor: "default",
             "background-color": getBgColor(), 
             "border-left": getBorderColor(),
             "opacity": props.diffState === "removed" ? 0.6 : 1,
@@ -190,10 +189,10 @@ const TrieBranch: Component<{
       >
         <Show when={!isLeaf()} fallback={<div style={{ width: "16px" }} />}>
           <div onClick={toggleOpen}>
-            {isOpen() ? <VsChevronDown size={14} /> : <VsChevronRight size={14} />}
+            {isOpen() ? <VsChevronDown size={18} /> : <VsChevronRight size={18} />}
           </div>
         </Show>
-        <VsSymbolEnum size={14} class={isLeaf() ? styles.TrieLeafIcon : styles.TrieBranchIcon} />
+        <VsSymbolEnum size={16} class={isLeaf() ? styles.TrieLeafIcon : styles.TrieBranchIcon} />
         <span class={isLeaf() ? styles.TrieLeafText : styles.TrieBranchText}>{props.name}</span>
         
         <Show when={props.selectionCount > 0}>
@@ -204,39 +203,39 @@ const TrieBranch: Component<{
 
         <div class={styles.TrieActions}>
             <Show when={!isLeaf()}>
-                <button 
-                    class={styles.TrieActionBtn} 
+                <button
+                    class={styles.TrieActionBtn}
                     onClick={handleAdd}
                     title="Add to selection"
                 >
-                    <VsAdd size={12} />
+                    <VsAdd size={14} />
                 </button>
                 <Show when={props.selectionCount > 0}>
-                    <button 
-                        class={styles.TrieActionBtn} 
+                    <button
+                        class={styles.TrieActionBtn}
                         onClick={handleRemove}
                         title="Remove from selection"
                     >
-                        <VsRemove size={12} />
+                        <VsRemove size={14} />
                     </button>
                 </Show>
             </Show>
             <Show when={props.onOpenSubspace && !isLeaf()}>
-                <button 
-                    class={styles.TrieActionBtn} 
+                <button
+                    class={styles.TrieActionBtn}
                     onClick={handleOpen}
                     title="Open subspace in new tab"
                 >
-                    <VsFolderOpened size={12} />
+                    <VsFolderOpened size={14} />
                 </button>
             </Show>
             <Show when={props.onDelete && props.node.isDeletable}>
-                <button 
-                    class={`${styles.TrieActionBtn} ${styles.TrieDeleteBtn}`} 
+                <button
+                    class={`${styles.TrieActionBtn} ${styles.TrieDeleteBtn}`}
                     onClick={handleDelete}
                     title="Delete subspace"
                 >
-                    <VsTrash size={12} />
+                    <VsTrash size={14} />
                 </button>
             </Show>
         </div>
