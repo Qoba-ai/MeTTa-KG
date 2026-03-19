@@ -1,10 +1,12 @@
 use crate::db::establish_connection;
 use crate::events::{EventBus, SpaceEvent};
+use crate::routes::path_to_metta_sexpr;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use futures::{SinkExt, StreamExt};
 use rocket::http::Status;
 use rocket::State;
 use rocket_ws as ws;
+use std::path::PathBuf;
 use tokio::sync::broadcast;
 
 fn validate_token_code(token_code: &str) -> Option<crate::model::Token> {
@@ -121,4 +123,101 @@ pub fn ws_events(
             Ok(())
         })
     }))
+}
+
+// ---------------------------------------------------------------------------
+// Status-stream WebSocket — proxies MORK SSE to the client
+// ---------------------------------------------------------------------------
+
+async fn ws_status_inner(
+    ws: ws::WebSocket,
+    path: PathBuf,
+    token_code: String,
+) -> Result<ws::Channel<'static>, Status> {
+    let token = validate_token_code(&token_code).ok_or(Status::Unauthorized)?;
+    if !token.permission_read {
+        return Err(Status::Unauthorized);
+    }
+
+    // Check the requested path is within the token's namespace
+    let token_ns = token.namespace.strip_prefix('/').unwrap_or(&token.namespace).to_string();
+    if !token_ns.is_empty() && !path.starts_with(&token_ns) {
+        return Err(Status::Unauthorized);
+    }
+
+    let expr = path_to_metta_sexpr(&path);
+    let encoded = urlencoding::encode(&expr).into_owned();
+
+    let mork_base = std::env::var("METTA_KG_MORK_URL")
+        .unwrap_or_else(|_| "http://localhost:8001".to_string());
+    let mork_base = mork_base.trim_end_matches('/').to_string();
+    let status_url  = format!("{}/status/{}", mork_base, encoded);
+    let stream_url  = format!("{}/status_stream/{}", mork_base, encoded);
+
+    Ok(ws.channel(move |stream| {
+        Box::pin(async move {
+            let (mut sink, mut source) = stream.split();
+            let client = reqwest::Client::new();
+
+            // Send the current status immediately so the client has an initial value
+            if let Ok(resp) = client.get(&status_url).send().await {
+                if let Ok(text) = resp.text().await {
+                    let _ = sink.send(ws::Message::Text(text)).await;
+                }
+            }
+
+            // Connect to MORK SSE stream and forward events
+            let sse_resp = match client.get(&stream_url).send().await {
+                Ok(r)  => r,
+                Err(_) => return Ok(()),
+            };
+            let mut sse_stream = sse_resp.bytes_stream();
+            let mut buf = String::new();
+
+            loop {
+                tokio::select! {
+                    chunk = sse_stream.next() => {
+                        match chunk {
+                            Some(Ok(bytes)) => {
+                                buf.push_str(&String::from_utf8_lossy(&bytes));
+                                // SSE events are delimited by a blank line (\n\n)
+                                while let Some(pos) = buf.find("\n\n") {
+                                    let event = buf[..pos].to_string();
+                                    buf = buf[pos + 2..].to_string();
+                                    for line in event.lines() {
+                                        if let Some(data) = line.strip_prefix("data: ") {
+                                            if sink.send(ws::Message::Text(data.to_string())).await.is_err() {
+                                                return Ok(());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+                    msg = source.next() => {
+                        match msg {
+                            Some(Ok(ws::Message::Close(_))) | None => break,
+                            Some(Err(_)) => break,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
+    }))
+}
+
+/// Status-stream WebSocket for the root namespace.
+#[rocket::get("/ws/status?<token_code>")]
+pub async fn ws_status_root(ws: ws::WebSocket, token_code: String) -> Result<ws::Channel<'static>, Status> {
+    ws_status_inner(ws, PathBuf::new(), token_code).await
+}
+
+/// Status-stream WebSocket for a specific namespace path.
+#[rocket::get("/ws/status/<path..>?<token_code>")]
+pub async fn ws_status(ws: ws::WebSocket, path: PathBuf, token_code: String) -> Result<ws::Channel<'static>, Status> {
+    ws_status_inner(ws, path, token_code).await
 }

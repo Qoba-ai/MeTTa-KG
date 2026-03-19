@@ -81,6 +81,7 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
       }
       setIsExploring(false);
       setExploreFocusIndex(-1);
+      props.onCommit?.();
     }
   };
 

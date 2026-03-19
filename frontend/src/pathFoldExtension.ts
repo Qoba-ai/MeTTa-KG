@@ -27,6 +27,19 @@ export const collapsedKeysField = StateField.define<Set<string>>({
     },
 })
 
+// Deep collapsed paths — relative paths like "csv/0" or "transformed/csv/0"
+export const setDeepCollapsedKeysEffect = StateEffect.define<Set<string>>()
+
+export const deepCollapsedKeysField = StateField.define<Set<string>>({
+    create: () => new Set(),
+    update(value, tr) {
+        for (const e of tr.effects) {
+            if (e.is(setDeepCollapsedKeysEffect)) return e.value
+        }
+        return value
+    },
+})
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -43,6 +56,21 @@ export function lineFirstSymbol(text: string): string | null {
 
 export function getFoldedTopLevelKeys(state: EditorState): Set<string> {
     return state.field(collapsedKeysField)
+}
+
+/** Convert a relative path like "transformed/csv/0" to the line prefix "(transformed (csv (0 " */
+export function pathToLinePrefix(relPath: string): string {
+    return relPath.split('/').filter(Boolean).map(s => `(${s} `).join('')
+}
+
+/**
+ * Return the visible prefix that should remain on screen when a deep path is folded.
+ * For "transformed/csv/0" this is "(transformed (csv " — everything up to the last segment.
+ */
+function parentLinePrefix(relPath: string): string {
+    const segments = relPath.split('/').filter(Boolean)
+    if (segments.length <= 1) return ''
+    return segments.slice(0, -1).map(s => `(${s} `).join('')
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +112,8 @@ const pathFoldPlugin = ViewPlugin.fromClass(
         update(u: ViewUpdate) {
             if (
                 u.docChanged ||
-                u.startState.field(collapsedKeysField) !== u.state.field(collapsedKeysField)
+                u.startState.field(collapsedKeysField) !== u.state.field(collapsedKeysField) ||
+                u.startState.field(deepCollapsedKeysField) !== u.state.field(deepCollapsedKeysField)
             ) {
                 this.decorations = this.compute(u.view)
             }
@@ -92,42 +121,68 @@ const pathFoldPlugin = ViewPlugin.fromClass(
 
         compute(view: EditorView): DecorationSet {
             const collapsed = view.state.field(collapsedKeysField)
-            if (collapsed.size === 0) return Decoration.none
+            const deepCollapsed = view.state.field(deepCollapsedKeysField)
+            if (collapsed.size === 0 && deepCollapsed.size === 0) return Decoration.none
+
+            // Sort deep paths longest-first so more-specific paths match before less-specific ones
+            const sortedDeep = [...deepCollapsed].sort((a, b) => b.length - a.length)
 
             const doc = view.state.doc
             const builder = new RangeSetBuilder<Decoration>()
 
-            // First pass: count atoms per collapsed key, record first line number
-            const counts = new Map<string, number>()
-            const firstLineNum = new Map<string, number>()
+            // First pass: count atoms per collapsed key/path, record first line number
+            const topCounts = new Map<string, number>()
+            const topFirstLine = new Map<string, number>()
+            const deepCounts = new Map<string, number>()
+            const deepFirstLine = new Map<string, number>()
+
             for (let i = 1; i <= doc.lines; i++) {
-                const sym = lineFirstSymbol(doc.line(i).text)
+                const text = doc.line(i).text
+                const sym = lineFirstSymbol(text)
                 if (sym && collapsed.has(sym)) {
-                    counts.set(sym, (counts.get(sym) ?? 0) + 1)
-                    if (!firstLineNum.has(sym)) firstLineNum.set(sym, i)
+                    topCounts.set(sym, (topCounts.get(sym) ?? 0) + 1)
+                    if (!topFirstLine.has(sym)) topFirstLine.set(sym, i)
+                    continue // top-level fold supersedes deep fold
+                }
+                for (const relPath of sortedDeep) {
+                    if (text.startsWith(pathToLinePrefix(relPath))) {
+                        deepCounts.set(relPath, (deepCounts.get(relPath) ?? 0) + 1)
+                        if (!deepFirstLine.has(relPath)) deepFirstLine.set(relPath, i)
+                        break
+                    }
                 }
             }
 
             // Second pass: emit decorations in document order
             for (let i = 1; i <= doc.lines; i++) {
                 const line = doc.line(i)
-                const sym = lineFirstSymbol(line.text)
-                if (!sym || !collapsed.has(sym)) continue
-
-                // Range: entire line content (excluding trailing \n to stay on the same line)
+                const text = line.text
+                const sym = lineFirstSymbol(text)
                 const from = line.from
                 const to = line.to
 
-                if (firstLineNum.get(sym) === i) {
-                    // Replace first occurrence's content with a summary widget
-                    builder.add(
-                        from,
-                        to,
-                        Decoration.replace({ widget: new CollapsedWidget(sym, counts.get(sym)!) }),
-                    )
-                } else {
-                    // Hide subsequent occurrences entirely (replace with empty span)
-                    builder.add(from, to, Decoration.replace({}))
+                // Top-level collapsed key
+                if (sym && collapsed.has(sym)) {
+                    if (topFirstLine.get(sym) === i) {
+                        builder.add(from, to, Decoration.replace({ widget: new CollapsedWidget(sym, topCounts.get(sym)!) }))
+                    } else {
+                        builder.add(from, to, Decoration.replace({}))
+                    }
+                    continue
+                }
+
+                // Deep collapsed path — keep the parent prefix visible, fold from the last segment
+                for (const relPath of sortedDeep) {
+                    if (text.startsWith(pathToLinePrefix(relPath))) {
+                        const label = relPath.split('/').filter(Boolean).at(-1)!
+                        if (deepFirstLine.get(relPath) === i) {
+                            const foldFrom = from + parentLinePrefix(relPath).length
+                            builder.add(foldFrom, to, Decoration.replace({ widget: new CollapsedWidget(label, deepCounts.get(relPath)!) }))
+                        } else {
+                            builder.add(from, to, Decoration.replace({}))
+                        }
+                        break
+                    }
                 }
             }
 
@@ -198,15 +253,21 @@ const pathFoldGutter = gutter({
  */
 export function createPathFoldExtension(
     onCollapsedKeysChange: (keys: Set<string>) => void,
+    onDeepCollapsedKeysChange: (keys: Set<string>) => void,
 ) {
     return [
         collapsedKeysField,
+        deepCollapsedKeysField,
         pathFoldPlugin,
         pathFoldGutter,
         EditorView.updateListener.of(update => {
             const prev = update.startState.field(collapsedKeysField)
             const next = update.state.field(collapsedKeysField)
             if (prev !== next) onCollapsedKeysChange(next)
+
+            const prevDeep = update.startState.field(deepCollapsedKeysField)
+            const nextDeep = update.state.field(deepCollapsedKeysField)
+            if (prevDeep !== nextDeep) onDeepCollapsedKeysChange(nextDeep)
         }),
     ]
 }

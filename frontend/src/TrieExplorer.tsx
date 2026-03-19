@@ -202,24 +202,6 @@ const TrieBranch: Component<{
         </Show>
 
         <div class={styles.TrieActions}>
-            <Show when={!isLeaf()}>
-                <div style={{width: "60px", display: "flex", "align-items": "center", "justify-content": "flex-start"}}>
-                    <button
-                        class={styles.TrieActionBtn}
-                        onClick={handleAdd}
-                        title="Add to selection"
-                    >
-                        <VsAdd size={14} />
-                    </button>
-                    <button
-                        class={`${styles.TrieActionBtn} ${props.selectionCount === 0 ? styles.Hidden : ''}`}
-                        onClick={handleRemove}
-                        title="Remove from selection"
-                    >
-                        <VsRemove size={14} />
-                    </button>
-                </div>
-            </Show>
             <Show when={props.onOpenSubspace && !isLeaf()}>
                 <button
                     class={styles.TrieActionBtn}
@@ -227,6 +209,22 @@ const TrieBranch: Component<{
                     title="Open subspace in new tab"
                 >
                     <VsFolderOpened size={14} />
+                </button>
+            </Show>
+            <Show when={!isLeaf()}>
+                <button
+                    class={styles.TrieActionBtn}
+                    onClick={handleAdd}
+                    title="Add to selection"
+                >
+                    <VsAdd size={14} />
+                </button>
+                <button
+                    class={`${styles.TrieActionBtn} ${props.selectionCount === 0 ? styles.Hidden : ''}`}
+                    onClick={handleRemove}
+                    title="Remove from selection"
+                >
+                    <VsRemove size={14} />
                 </button>
             </Show>
             <Show when={props.onDelete && props.node.isDeletable}>

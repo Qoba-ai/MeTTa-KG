@@ -68,6 +68,8 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::import_url_n3,
                 routes::events::ws_ping,
                 routes::events::ws_events,
+                routes::events::ws_status_root,
+                routes::events::ws_status,
             ],
         )
         .mount("/public", FileServer::from("static"))

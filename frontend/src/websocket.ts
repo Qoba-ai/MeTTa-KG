@@ -4,6 +4,13 @@ export type SpaceEvent =
     | { type: 'locked'; path: string }
     | { type: 'unlocked'; path: string }
 
+export type StatusEvent = {
+    status: 'pathClear' | 'pathReadOnly' | 'pathReadOnlyTemporary' |
+            'pathForbidden' | 'pathForbiddenTemporary' |
+            'countResult' | 'fetchError' | 'parseError' | 'execError'
+    [key: string]: unknown
+}
+
 type PingMessage = { type: 'ping' }
 type WsMessage = SpaceEvent | PingMessage
 
@@ -96,6 +103,46 @@ class WebSocketService {
             this.eventsRetryTimer = null
             this.connectEvents(tokenCode)
         }, 4000)
+    }
+
+    // ── Status stream ──────────────────────────────────────────────────────────
+
+    /**
+     * Open a WebSocket that streams MORK status events for `namespacePath`.
+     * The server sends the current status immediately, then pushes updates.
+     * Returns an unsubscribe function that closes the connection.
+     */
+    subscribeStatus(
+        namespacePath: string,
+        tokenCode: string,
+        onStatus: (event: StatusEvent) => void,
+    ): () => void {
+        // Strip leading/trailing slashes to build the URL path segment
+        const seg = namespacePath.replace(/^\/|\/$/g, '')
+        const url = seg
+            ? `${WS_BASE}/ws/status/${seg}?token_code=${encodeURIComponent(tokenCode)}`
+            : `${WS_BASE}/ws/status?token_code=${encodeURIComponent(tokenCode)}`
+
+        const socket = new WebSocket(url)
+        let closed = false
+
+        socket.onmessage = (e) => {
+            try {
+                const event: StatusEvent = JSON.parse(e.data)
+                onStatus(event)
+            } catch {
+                // ignore malformed messages
+            }
+        }
+
+        socket.onerror = () => {
+            if (!closed) socket.close()
+        }
+
+        return () => {
+            closed = true
+            socket.close()
+        }
     }
 
     // ── Subscriptions ──────────────────────────────────────────────────────────

@@ -332,6 +332,23 @@
     padding: 6px 12px;
     box-sizing: border-box;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.SpaceStatusBadge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: var(--rp-subtle);
+    white-space: nowrap;
+    flex-shrink: 0;
+
+    span {
+        font-variant-numeric: tabular-nums;
+    }
 }
 
 .MettaInput {

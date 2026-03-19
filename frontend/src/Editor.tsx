@@ -13,6 +13,8 @@ import {
     VsClose,
     VsAdd,
     VsLock,
+    VsCheck,
+    VsWarning,
     VsChevronLeft,
     VsChevronRight,
 } from 'solid-icons/vs'
@@ -23,7 +25,7 @@ import { Toaster } from 'solid-toast'
 import { notify } from './notify'
 import { useTheme } from './ThemeContext'
 import { BACKEND_URL, TOKEN } from './urls'
-import { wsService } from './websocket'
+import { wsService, StatusEvent } from './websocket'
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/panda-syntax-dark.css'
 
@@ -101,7 +103,7 @@ import {
 } from './mettaLanguageSupport'
 import { Expression, Symbol, Variable } from './parser/parser.terms'
 import { diffExtension, setOriginalContentEffect } from './diffExtension'
-import { setCollapsedKeysEffect, collapsedKeysField, createPathFoldExtension, getFoldedTopLevelKeys } from './pathFoldExtension'
+import { setCollapsedKeysEffect, collapsedKeysField, setDeepCollapsedKeysEffect, deepCollapsedKeysField, createPathFoldExtension, getFoldedTopLevelKeys } from './pathFoldExtension'
 import { NamespaceSelector } from './NamespaceSelector'
 import { TrieExplorer, buildTrie, TrieNode } from './TrieExplorer'
 
@@ -213,12 +215,15 @@ const App: Component = () => {
 
     // Trie/Editor fold sync state — full paths like "/key/" that are collapsed
     const [collapsedPaths, setCollapsedPaths] = createSignal<Set<string>>(new Set())
+    // Independent collapse state for paths deeper than top-level (not synced to CodeMirror)
+    const [deepCollapsedPaths, setDeepCollapsedPaths] = createSignal<Set<string>>(new Set())
 
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false)
 
     // WebSocket: set of space paths currently locked (import in progress)
     const [lockedPaths, setLockedPaths] = createSignal<Set<string>>(new Set())
+    const [spaceStatus, setSpaceStatus] = createSignal<StatusEvent | null>(null)
 
     // Confirmation State
     const [confirmData, setConfirmData] = createSignal({
@@ -295,12 +300,20 @@ const App: Component = () => {
                         }
                     },
                 }),
-                createPathFoldExtension((foldedKeys) => {
-                    const p = activePanel()
-                    if (!p) return
-                    const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
-                    setCollapsedPaths(new Set(Array.from(foldedKeys).map(k => `${ns}${k}/`)))
-                }),
+                createPathFoldExtension(
+                    (foldedKeys) => {
+                        const p = activePanel()
+                        if (!p) return
+                        const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+                        setCollapsedPaths(new Set(Array.from(foldedKeys).map(k => `${ns}${k}/`)))
+                    },
+                    (deepKeys) => {
+                        const p = activePanel()
+                        if (!p) return
+                        const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+                        setDeepCollapsedPaths(new Set(Array.from(deepKeys).map(k => `${ns}${k}/`)))
+                    },
+                ),
             ],
         })
     }
@@ -337,12 +350,15 @@ const App: Component = () => {
                     })
                     setPanels(prev => prev.map(item => item.id === p.id ? { ...item, view } : item))
                     setCollapsedPaths(new Set())
+                    setDeepCollapsedPaths(new Set())
                 } else {
                     mettaInput.appendChild(p.view.dom)
                     // Restore collapsed paths from this panel's current fold state
-                    const foldedKeys = getFoldedTopLevelKeys(p.view.state)
                     const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+                    const foldedKeys = getFoldedTopLevelKeys(p.view.state)
                     setCollapsedPaths(new Set(Array.from(foldedKeys).map(k => `${ns}${k}/`)))
+                    const deepFoldedKeys = p.view.state.field(deepCollapsedKeysField)
+                    setDeepCollapsedPaths(new Set(Array.from(deepFoldedKeys).map(k => `${ns}${k}/`)))
                 }
             }
         }
@@ -366,6 +382,16 @@ const App: Component = () => {
             unsub()
             wsService.disconnectEvents()
         })
+    })
+
+    // Subscribe to MORK status stream for the active panel's namespace
+    createEffect(() => {
+        const t = token()
+        const ns = activePanel()?.namespace
+        if (!t || !ns) { setSpaceStatus(null); return }
+        setSpaceStatus(null)
+        const unsub = wsService.subscribeStatus(ns, t.code, (event) => setSpaceStatus(event))
+        onCleanup(unsub)
     })
 
     let isMounted = false
@@ -424,12 +450,43 @@ const App: Component = () => {
         if (!p?.view) return
         const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
         if (!path.startsWith(activeNs)) return
-        const key = path.slice(activeNs.length).split('/')[0]
-        if (!key) return
-        const current = p.view.state.field(collapsedKeysField)
-        if (current.has(key)) return
-        p.view.dispatch({ effects: setCollapsedKeysEffect.of(new Set([...current, key])) })
-        // collapsedPaths is updated via the onCollapsedKeysChange callback in createPathFoldExtension
+        const segments = path.slice(activeNs.length).split('/').filter(Boolean)
+        if (!segments.length) return
+
+        // Navigate to the trie node at this path so we can collect all descendants
+        const trie = buildTrie(p.content)
+        let node: TrieNode | undefined = trie
+        for (const seg of segments) {
+            node = node?.children[seg]
+            if (!node) break
+        }
+
+        const newTopCollapsed = new Set(p.view.state.field(collapsedKeysField))
+        const newDeepCollapsed = new Set(p.view.state.field(deepCollapsedKeysField))
+
+        const addRelPath = (rel: string) => {
+            const segs = rel.split('/').filter(Boolean)
+            if (segs.length === 1) newTopCollapsed.add(segs[0])
+            else newDeepCollapsed.add(rel)
+        }
+
+        const addDescendants = (n: TrieNode, relBase: string) => {
+            for (const [key, child] of Object.entries(n.children)) {
+                const childRel = `${relBase}${key}`
+                addRelPath(childRel)
+                addDescendants(child, `${childRel}/`)
+            }
+        }
+
+        // Fold the clicked path itself and every descendant
+        addRelPath(path.slice(activeNs.length).replace(/\/$/, ''))
+        if (node) addDescendants(node, path.slice(activeNs.length))
+
+        p.view.dispatch({ effects: [
+            setCollapsedKeysEffect.of(newTopCollapsed),
+            setDeepCollapsedKeysEffect.of(newDeepCollapsed),
+        ]})
+        // collapsedPaths / deepCollapsedPaths updated via callbacks in createPathFoldExtension
     }
 
     const handleTrieExpand = (path: string) => {
@@ -437,11 +494,18 @@ const App: Component = () => {
         if (!p?.view) return
         const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
         if (!path.startsWith(activeNs)) return
-        const key = path.slice(activeNs.length).split('/')[0]
-        if (!key) return
-        const current = new Set(p.view.state.field(collapsedKeysField))
-        current.delete(key)
-        p.view.dispatch({ effects: setCollapsedKeysEffect.of(current) })
+        const segments = path.slice(activeNs.length).split('/').filter(Boolean)
+        if (!segments.length) return
+        if (segments.length === 1) {
+            const newTopCollapsed = new Set(p.view.state.field(collapsedKeysField))
+            newTopCollapsed.delete(segments[0])
+            p.view.dispatch({ effects: setCollapsedKeysEffect.of(newTopCollapsed) })
+        } else {
+            const relPath = path.slice(activeNs.length).replace(/\/$/, '')
+            const newDeepCollapsed = new Set(p.view.state.field(deepCollapsedKeysField))
+            newDeepCollapsed.delete(relPath)
+            p.view.dispatch({ effects: setDeepCollapsedKeysEffect.of(newDeepCollapsed) })
+        }
     }
 
     const getParserParameters = (): any => {
@@ -961,6 +1025,34 @@ const App: Component = () => {
 
                                 {/* Full-width namespace / address bar */}
                                 <div class={styles.MettaInputActionsWrapper}>
+                                    <Show when={spaceStatus()}>
+                                        {(status) => {
+                                            const s = status().status
+                                            const isError = s === 'fetchError' || s === 'parseError' || s === 'execError'
+                                            const isLocked = s === 'pathReadOnly' || s === 'pathReadOnlyTemporary' || s === 'pathForbidden' || s === 'pathForbiddenTemporary'
+                                            const isCount = s === 'countResult'
+                                            return (
+                                                <div class={styles.SpaceStatusBadge} title={s}>
+                                                    <Show when={isError}>
+                                                        <VsWarning size={14} style={{ color: 'var(--rp-love)' }} />
+                                                        <span>{s}</span>
+                                                    </Show>
+                                                    <Show when={isLocked}>
+                                                        <VsLock size={14} style={{ color: 'var(--rp-gold)' }} />
+                                                        <span>{s}</span>
+                                                    </Show>
+                                                    <Show when={isCount}>
+                                                        <VsCheck size={14} style={{ color: 'var(--rp-foam)' }} />
+                                                        <span>{String(status().count ?? '')} atoms</span>
+                                                    </Show>
+                                                    <Show when={s === 'pathClear'}>
+                                                        <VsCheck size={14} style={{ color: 'var(--rp-foam)' }} />
+                                                        <span>ready</span>
+                                                    </Show>
+                                                </div>
+                                            )
+                                        }}
+                                    </Show>
                                     <NamespaceSelector
                                         value={activePanel()?.namespace || '/'}
                                         onInput={(ns) => {
@@ -1062,7 +1154,7 @@ const App: Component = () => {
                                 })));
                                 transformModal.showModal();
                             }}
-                            collapsedPaths={collapsedPaths}
+                            collapsedPaths={() => new Set([...collapsedPaths(), ...deepCollapsedPaths()])}
                             onCollapse={handleTrieCollapse}
                             onExpand={handleTrieExpand}
                         />
