@@ -33,10 +33,45 @@ hljs.registerLanguage('metta', (hljs) => ({
     name: 'MeTTa',
     case_insensitive: false,
     keywords: {
-        $pattern: /[A-Za-z_0-9,!=:?\-]+/,
-        keyword: 'if match empty case let let* get-type get-metatype : -> = unify import! bind! new-space add-atom remove-atom pragma! println! trace! nop new-state get-state change-state car-atom cdr-atom cons-atom assertEqual assertEqualToResult collapse superpose load-ascii call regex quote add-reduct !',
+        $pattern: /[A-Za-z_0-9,!=:?\-<>+*\/%@]+/,
+        keyword: [
+            // Special forms
+            '= : -> !',
+            // Control / pattern matching
+            'if case switch match unify let let* if-equal if-decons-expr if-error return-on-error',
+            // Evaluation
+            'eval evalc chain function return collapse collapse-bind superpose superpose-bind metta quote unquote noeval empty',
+            // Type system
+            'get-type get-type-space get-metatype is-function type-cast match-type-or match-types =alpha noreduce-eq',
+            // Atom manipulation
+            'car-atom cdr-atom cons-atom decons-atom index-atom size-atom atom-subst sealed capture id nop',
+            // Functional
+            'map-atom filter-atom foldl-atom for-each-in-atom first-from-pair',
+            // Set operations
+            'intersection intersection-atom union union-atom subtraction subtraction-atom unique unique-atom',
+            // Space
+            'new-space add-atom add-atoms add-reduct add-reducts remove-atom get-atoms context-space mod-space! module-space-no-deps',
+            // State
+            'new-state change-state! get-state',
+            // Output
+            'format-args println! print-mods! trace! sort-strings',
+            // Modules
+            'import! include register-module! git-module! bind! pragma!',
+            // Assertions
+            'assertEqual assertEqualMsg assertEqualToResult assertEqualToResultMsg assertAlphaEqual assertAlphaEqualMsg assertAlphaEqualToResult assertAlphaEqualToResultMsg assertIncludes',
+            // Arithmetic
+            '+ - * / % abs-math acos-math asin-math atan-math ceil-math cos-math floor-math isinf-math isnan-math log-math pow-math round-math sin-math sqrt-math tan-math trunc-math max-atom min-atom',
+            // Comparison
+            '< <= > >= == =alpha noreduce-eq',
+            // Logic
+            'and or not xor',
+            // Docs
+            '@doc @doc-formal @desc @param @params @return @item @type get-doc help! help-param! help-space!',
+            // Legacy
+            'load-ascii call regex',
+        ].join(' '),
         literal: 'True False',
-        type: 'Number Bool String'
+        type: 'Number Bool String Type Atom Symbol Variable Expression Grounded SpaceType %Undefined% Empty NotReducible ErrorType StateMonad'
     },
     contains: [
         hljs.COMMENT(';', '$'),
@@ -204,6 +239,7 @@ const App: Component = () => {
     const [activeImportFile, setActiveImportFile] = createSignal<File>()
     const [importUrl, setImportUrl] = createSignal<string>('')
     const [importText, setImportText] = createSignal<string>('')
+    const [importExamplePath, setImportExamplePath] = createSignal<string>('')
     const [isDraggingOver, setIsDraggingOver] = createSignal(false)
     const [manualImportFormat, setManualImportFormat] = createSignal<ImportFormat>()
     const [isTranslating, setIsTranslating] = createSignal(false)
@@ -239,6 +275,7 @@ const App: Component = () => {
             if (file) return manualImportFormat() || extensionToImportFormat(file)
             return undefined
         }
+        if (src === ImportSource.EXAMPLES) return ImportFormat.METTA
         // URL and Text: default to MeTTa if not manually overridden
         return manualImportFormat() ?? ImportFormat.METTA
     })
@@ -588,6 +625,14 @@ const App: Component = () => {
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 }
+            } else if (src === ImportSource.EXAMPLES) {
+                const exPath = importExamplePath()
+                if (!exPath) return
+                const rawUrl = `https://raw.githubusercontent.com/trueagi-io/metta-examples/main/${exPath}`
+                const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta${encodedPath}?url=${encodeURIComponent(rawUrl)}`, {
+                    headers: { Authorization: token()?.code ?? '' },
+                })
+                if (!resp.ok) throw new Error(`Status ${resp.status}`)
             }
 
             if (targetNs === activePanel()?.namespace) {
@@ -601,6 +646,7 @@ const App: Component = () => {
             setActiveImportFile(undefined)
             setImportUrl('')
             setImportText('')
+            setImportExamplePath('')
             setManualImportFormat(undefined)
             importFileModal.close()
         } catch (e) {
@@ -864,12 +910,16 @@ const App: Component = () => {
                 if (currentLevel.children[part]) {
                     currentLevel = currentLevel.children[part]
                 } else {
-                    currentLevel = { children: {}, isDeletable: false }
+                    currentLevel = { children: {}, terminals: [], isDeletable: false }
                     break
                 }
             }
 
             for (const [name, node] of Object.entries(currentLevel.children)) {
+                // Only suggest namespaces that have further sub-namespace children
+                // (non-leaf nodes). Leaf nodes (only terminals, no children) are
+                // terminal namespaces and should not appear in the selector.
+                if (Object.keys(node.children).length === 0) continue
                 const nextPath = '/' + [...currentParts, name].join('/') + '/'
                 const nextSexpr = pathToSexpr(nextPath)
                 if (!uniqueNextLevelPaths.has(nextSexpr)) {
@@ -1175,11 +1225,14 @@ const App: Component = () => {
                 setImportUrl={setImportUrl}
                 importText={importText}
                 setImportText={setImportText}
+                importExamplePath={importExamplePath}
+                setImportExamplePath={setImportExamplePath}
                 onCancel={() => {
                     importFileModal.close()
                     setActiveImportFile(undefined)
                     setImportUrl('')
                     setImportText('')
+                    setImportExamplePath('')
                     setManualImportFormat(undefined)
                     setImportNamespace(activePanel()?.namespace || '/')
                 }}

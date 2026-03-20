@@ -161,10 +161,14 @@ const pathFoldPlugin = ViewPlugin.fromClass(
                 const from = line.from
                 const to = line.to
 
+                // Include the trailing newline in the widget decoration so that
+                // the next visible content appears immediately after with no gap.
+                const lineEnd = i < doc.lines ? to + 1 : to
+
                 // Top-level collapsed key
                 if (sym && collapsed.has(sym)) {
                     if (topFirstLine.get(sym) === i) {
-                        builder.add(from, to, Decoration.replace({ widget: new CollapsedWidget(sym, topCounts.get(sym)!) }))
+                        builder.add(from, lineEnd, Decoration.replace({ widget: new CollapsedWidget(sym, topCounts.get(sym)!) }))
                     } else {
                         builder.add(from, to, Decoration.replace({}))
                     }
@@ -177,7 +181,7 @@ const pathFoldPlugin = ViewPlugin.fromClass(
                         const label = relPath.split('/').filter(Boolean).at(-1)!
                         if (deepFirstLine.get(relPath) === i) {
                             const foldFrom = from + parentLinePrefix(relPath).length
-                            builder.add(foldFrom, to, Decoration.replace({ widget: new CollapsedWidget(label, deepCounts.get(relPath)!) }))
+                            builder.add(foldFrom, lineEnd, Decoration.replace({ widget: new CollapsedWidget(label, deepCounts.get(relPath)!) }))
                         } else {
                             builder.add(from, to, Decoration.replace({}))
                         }

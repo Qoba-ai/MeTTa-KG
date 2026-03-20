@@ -998,3 +998,94 @@
         }
     }
 }
+
+.ExampleBrowser {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ExampleTree {
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--rp-base);
+    border-radius: 6px;
+    border: 1px solid var(--rp-highlight-low);
+    padding: 6px;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.85rem;
+}
+
+.ExampleTreeLoading {
+    color: var(--rp-subtle);
+    font-size: 0.85rem;
+    padding: 20px;
+    text-align: center;
+}
+
+.ExampleTreeError {
+    color: var(--rp-love);
+    font-size: 0.85rem;
+    padding: 12px;
+    text-align: center;
+}
+
+.ExampleTreeDir {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 6px;
+    cursor: pointer;
+    color: var(--rp-gold);
+    border-radius: 4px;
+    user-select: none;
+
+    &:hover {
+        background: var(--rp-highlight-low);
+    }
+}
+
+.ExampleTreeFile {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 6px;
+    cursor: pointer;
+    color: var(--rp-subtle);
+    border-radius: 4px;
+
+    &:hover {
+        background: var(--rp-highlight-low);
+        color: var(--rp-text);
+    }
+
+    &.ExampleTreeFileSelected {
+        background: var(--rp-overlay);
+        color: var(--rp-love);
+    }
+}
+
+.ExampleTreeChildren {
+    padding-left: 14px;
+    border-left: 1px solid var(--rp-highlight-low);
+    margin-left: 10px;
+}
+
+.ExampleSelectedFile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--rp-base);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: var(--rp-foam);
+    border: 1px solid var(--rp-highlight-low);
+    font-family: 'Fira Code', monospace;
+
+    span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}

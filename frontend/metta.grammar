@@ -10,7 +10,7 @@ Symbol {
     BooleanLiteral |
     IntegerLiteral |
     FloatLiteral |
-    Identifier | 
+    Identifier |
     SpaceReference |
     GroundedFunction |
     GroundedType
@@ -28,8 +28,8 @@ Identifier {
     IDENTIFIER
 }
 
-SpaceReference { 
-    SPACE_REFERENCE 
+SpaceReference {
+    SPACE_REFERENCE
 }
 
 GroundedFunction {
@@ -37,17 +37,36 @@ GroundedFunction {
 }
 
 GroundedArithmeticFunction {
-    @specialize<IDENTIFIER, "*"> | 
+    @specialize<IDENTIFIER, "*"> |
     @specialize<IDENTIFIER, "/"> |
     @specialize<IDENTIFIER, "+"> |
     @specialize<IDENTIFIER, "-"> |
-    @specialize<IDENTIFIER, "%">
+    @specialize<IDENTIFIER, "%"> |
+    @specialize<IDENTIFIER, "abs-math"> |
+    @specialize<IDENTIFIER, "acos-math"> |
+    @specialize<IDENTIFIER, "asin-math"> |
+    @specialize<IDENTIFIER, "atan-math"> |
+    @specialize<IDENTIFIER, "ceil-math"> |
+    @specialize<IDENTIFIER, "cos-math"> |
+    @specialize<IDENTIFIER, "floor-math"> |
+    @specialize<IDENTIFIER, "isinf-math"> |
+    @specialize<IDENTIFIER, "isnan-math"> |
+    @specialize<IDENTIFIER, "log-math"> |
+    @specialize<IDENTIFIER, "pow-math"> |
+    @specialize<IDENTIFIER, "round-math"> |
+    @specialize<IDENTIFIER, "sin-math"> |
+    @specialize<IDENTIFIER, "sqrt-math"> |
+    @specialize<IDENTIFIER, "tan-math"> |
+    @specialize<IDENTIFIER, "trunc-math"> |
+    @specialize<IDENTIFIER, "max-atom"> |
+    @specialize<IDENTIFIER, "min-atom">
 }
 
 GroundedBooleanFunction {
     @specialize<IDENTIFIER, "and"> |
     @specialize<IDENTIFIER, "or"> |
-    @specialize<IDENTIFIER, "not">
+    @specialize<IDENTIFIER, "not"> |
+    @specialize<IDENTIFIER, "xor">
 }
 
 GroundedComparisonFunction {
@@ -55,61 +74,175 @@ GroundedComparisonFunction {
     @specialize<IDENTIFIER, ">"> |
     @specialize<IDENTIFIER, "<="> |
     @specialize<IDENTIFIER, ">="> |
-    @specialize<IDENTIFIER, "==">
+    @specialize<IDENTIFIER, "=="> |
+    @specialize<IDENTIFIER, "=alpha"> |
+    @specialize<IDENTIFIER, "noreduce-eq">
 }
 
 OtherGroundedFunction {
-    @specialize<IDENTIFIER, "if"> |
-    @specialize<IDENTIFIER, "match"> |
-    @specialize<IDENTIFIER, "empty"> |
-    @specialize<IDENTIFIER, "case"> |
-    @specialize<IDENTIFIER, "let"> |
-    @specialize<IDENTIFIER, "let*"> |
-    @specialize<IDENTIFIER, "get-type"> |
-    @specialize<IDENTIFIER, "get-metatype"> |
+    // Special forms
+    @specialize<IDENTIFIER, "="> |
     @specialize<IDENTIFIER, ":"> |
     @specialize<IDENTIFIER, "->"> |
-    @specialize<IDENTIFIER, "="> |
+    @specialize<IDENTIFIER, "!"> |
+
+    // Control flow
+    @specialize<IDENTIFIER, "if"> |
     @specialize<IDENTIFIER, "case"> |
+    @specialize<IDENTIFIER, "switch"> |
+    @specialize<IDENTIFIER, "switch-internal"> |
+
+    // Pattern matching / unification
+    @specialize<IDENTIFIER, "match"> |
     @specialize<IDENTIFIER, "unify"> |
-    @specialize<IDENTIFIER, "import!"> |
-    @specialize<IDENTIFIER, "bind!"> |
-    @specialize<IDENTIFIER, "new-space"> |
-    @specialize<IDENTIFIER, "add-atom"> |
-    @specialize<IDENTIFIER, "remove-atom"> |
-    @specialize<IDENTIFIER, "pragma!"> |
-    @specialize<IDENTIFIER, "println!"> |
-    @specialize<IDENTIFIER, "trace!"> |
-    @specialize<IDENTIFIER, "nop"> |
-    @specialize<IDENTIFIER, "new-state"> |
-    @specialize<IDENTIFIER, "get-state"> |
-    @specialize<IDENTIFIER, "change-state"> |
+    @specialize<IDENTIFIER, "let"> |
+    @specialize<IDENTIFIER, "let*"> |
+    @specialize<IDENTIFIER, "if-equal"> |
+    @specialize<IDENTIFIER, "if-decons-expr"> |
+    @specialize<IDENTIFIER, "if-error"> |
+    @specialize<IDENTIFIER, "return-on-error"> |
+
+    // Evaluation / minimal MeTTa
+    @specialize<IDENTIFIER, "eval"> |
+    @specialize<IDENTIFIER, "evalc"> |
+    @specialize<IDENTIFIER, "chain"> |
+    @specialize<IDENTIFIER, "function"> |
+    @specialize<IDENTIFIER, "return"> |
+    @specialize<IDENTIFIER, "collapse"> |
+    @specialize<IDENTIFIER, "collapse-bind"> |
+    @specialize<IDENTIFIER, "superpose"> |
+    @specialize<IDENTIFIER, "superpose-bind"> |
+    @specialize<IDENTIFIER, "metta"> |
+    @specialize<IDENTIFIER, "quote"> |
+    @specialize<IDENTIFIER, "unquote"> |
+    @specialize<IDENTIFIER, "noeval"> |
+    @specialize<IDENTIFIER, "empty"> |
+
+    // Type system
+    @specialize<IDENTIFIER, "get-type"> |
+    @specialize<IDENTIFIER, "get-type-space"> |
+    @specialize<IDENTIFIER, "get-metatype"> |
+    @specialize<IDENTIFIER, "is-function"> |
+    @specialize<IDENTIFIER, "type-cast"> |
+    @specialize<IDENTIFIER, "match-type-or"> |
+    @specialize<IDENTIFIER, "match-types"> |
+
+    // Atom / expression manipulation
     @specialize<IDENTIFIER, "car-atom"> |
     @specialize<IDENTIFIER, "cdr-atom"> |
     @specialize<IDENTIFIER, "cons-atom"> |
+    @specialize<IDENTIFIER, "decons-atom"> |
+    @specialize<IDENTIFIER, "index-atom"> |
+    @specialize<IDENTIFIER, "size-atom"> |
+    @specialize<IDENTIFIER, "atom-subst"> |
+    @specialize<IDENTIFIER, "sealed"> |
+    @specialize<IDENTIFIER, "capture"> |
+    @specialize<IDENTIFIER, "id"> |
+    @specialize<IDENTIFIER, "nop"> |
+
+    // Functional programming
+    @specialize<IDENTIFIER, "map-atom"> |
+    @specialize<IDENTIFIER, "filter-atom"> |
+    @specialize<IDENTIFIER, "foldl-atom"> |
+    @specialize<IDENTIFIER, "for-each-in-atom"> |
+    @specialize<IDENTIFIER, "first-from-pair"> |
+
+    // Set operations
+    @specialize<IDENTIFIER, "intersection"> |
+    @specialize<IDENTIFIER, "intersection-atom"> |
+    @specialize<IDENTIFIER, "union"> |
+    @specialize<IDENTIFIER, "union-atom"> |
+    @specialize<IDENTIFIER, "subtraction"> |
+    @specialize<IDENTIFIER, "subtraction-atom"> |
+    @specialize<IDENTIFIER, "unique"> |
+    @specialize<IDENTIFIER, "unique-atom"> |
+
+    // Space management
+    @specialize<IDENTIFIER, "new-space"> |
+    @specialize<IDENTIFIER, "add-atom"> |
+    @specialize<IDENTIFIER, "add-atoms"> |
+    @specialize<IDENTIFIER, "add-reduct"> |
+    @specialize<IDENTIFIER, "add-reducts"> |
+    @specialize<IDENTIFIER, "remove-atom"> |
+    @specialize<IDENTIFIER, "get-atoms"> |
+    @specialize<IDENTIFIER, "context-space"> |
+    @specialize<IDENTIFIER, "mod-space!"> |
+    @specialize<IDENTIFIER, "module-space-no-deps"> |
+
+    // State
+    @specialize<IDENTIFIER, "new-state"> |
+    @specialize<IDENTIFIER, "change-state!"> |
+    @specialize<IDENTIFIER, "get-state"> |
+
+    // String / output
+    @specialize<IDENTIFIER, "format-args"> |
+    @specialize<IDENTIFIER, "println!"> |
+    @specialize<IDENTIFIER, "print-mods!"> |
+    @specialize<IDENTIFIER, "trace!"> |
+    @specialize<IDENTIFIER, "sort-strings"> |
+
+    // Modules
+    @specialize<IDENTIFIER, "import!"> |
+    @specialize<IDENTIFIER, "include"> |
+    @specialize<IDENTIFIER, "register-module!"> |
+    @specialize<IDENTIFIER, "git-module!"> |
+    @specialize<IDENTIFIER, "bind!"> |
+    @specialize<IDENTIFIER, "pragma!"> |
+
+    // Assertions
     @specialize<IDENTIFIER, "assertEqual"> |
+    @specialize<IDENTIFIER, "assertEqualMsg"> |
     @specialize<IDENTIFIER, "assertEqualToResult"> |
-    @specialize<IDENTIFIER, "collapse"> |
-    @specialize<IDENTIFIER, "superpose"> |
+    @specialize<IDENTIFIER, "assertEqualToResultMsg"> |
+    @specialize<IDENTIFIER, "assertAlphaEqual"> |
+    @specialize<IDENTIFIER, "assertAlphaEqualMsg"> |
+    @specialize<IDENTIFIER, "assertAlphaEqualToResult"> |
+    @specialize<IDENTIFIER, "assertAlphaEqualToResultMsg"> |
+    @specialize<IDENTIFIER, "assertIncludes"> |
+
+    // Documentation
+    @specialize<IDENTIFIER, "@doc"> |
+    @specialize<IDENTIFIER, "@doc-formal"> |
+    @specialize<IDENTIFIER, "@desc"> |
+    @specialize<IDENTIFIER, "@param"> |
+    @specialize<IDENTIFIER, "@params"> |
+    @specialize<IDENTIFIER, "@return"> |
+    @specialize<IDENTIFIER, "@item"> |
+    @specialize<IDENTIFIER, "@type"> |
+    @specialize<IDENTIFIER, "get-doc"> |
+    @specialize<IDENTIFIER, "help!"> |
+    @specialize<IDENTIFIER, "help-param!"> |
+    @specialize<IDENTIFIER, "help-space!"> |
+
+    // Legacy
     @specialize<IDENTIFIER, "load-ascii"> |
     @specialize<IDENTIFIER, "call"> |
-    @specialize<IDENTIFIER, "regex"> |
-    @specialize<IDENTIFIER, "quote"> |
-    @specialize<IDENTIFIER, "add-reduct"> |
-    @specialize<IDENTIFIER, "!">
+    @specialize<IDENTIFIER, "regex">
 }
 
 GroundedType {
     @specialize<IDENTIFIER, "Number"> |
     @specialize<IDENTIFIER, "Bool"> |
-    @specialize<IDENTIFIER, "String">
+    @specialize<IDENTIFIER, "String"> |
+    @specialize<IDENTIFIER, "Type"> |
+    @specialize<IDENTIFIER, "Atom"> |
+    @specialize<IDENTIFIER, "Symbol"> |
+    @specialize<IDENTIFIER, "Variable"> |
+    @specialize<IDENTIFIER, "Expression"> |
+    @specialize<IDENTIFIER, "Grounded"> |
+    @specialize<IDENTIFIER, "SpaceType"> |
+    @specialize<IDENTIFIER, "%Undefined%"> |
+    @specialize<IDENTIFIER, "Empty"> |
+    @specialize<IDENTIFIER, "NotReducible"> |
+    @specialize<IDENTIFIER, "ErrorType"> |
+    @specialize<IDENTIFIER, "StateMonad">
 }
 
-Expression { 
+Expression {
     OPENING_PARENTHESIS Atom* CLOSING_PARENTHESIS
 }
 
-Variable { 
+Variable {
     VARIABLE
 }
 
@@ -119,7 +252,7 @@ Variable {
     FLOAT_LITERAL { "-"? ($[0-9])+ "." ($[0-9])+ }
     STRING_LITERAL { '"' !["]* '"' }
 
-    IDENTIFIER { $[A-Za-z_\-0-9,\!=:?]+ }
+    IDENTIFIER { $[A-Za-z_\-0-9,\!=:?<>+*\/%@]+ }
 
     SPACE_REFERENCE { "&" IDENTIFIER }
 
@@ -132,10 +265,10 @@ Variable {
 
     ws { $[ \t]+ }
 
-    @precedence { 
+    @precedence {
         BOOLEAN_LITERAL,
-        FLOAT_LITERAL,         
-        INTEGER_LITERAL, 
+        FLOAT_LITERAL,
+        INTEGER_LITERAL,
         IDENTIFIER
     }
 }

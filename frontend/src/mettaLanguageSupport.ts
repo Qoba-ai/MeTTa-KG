@@ -4,7 +4,7 @@ import { styleTags, tags as t } from '@lezer/highlight'
 import { tags } from '@lezer/highlight'
 import { SyntaxNodeRef } from "@lezer/common"
 import { EditorView } from '@codemirror/view'
-import { CompletionContext } from '@codemirror/autocomplete'
+import { CompletionContext, Completion } from '@codemirror/autocomplete'
 import { linter } from '@codemirror/lint'
 import { Compartment } from '@codemirror/state'
 import { CLOSING_PARENTHESIS, Expression, Identifier, OPENING_PARENTHESIS, Space, Symbol, Variable } from './parser/parser.terms'
@@ -22,7 +22,8 @@ const parserWithMetadata = parser.configure({
             GroundedArithmeticFunction: t.arithmeticOperator,
             GroundedBooleanFunction: t.logicOperator,
             GroundedComparisonFunction: t.compareOperator,
-            OtherGroundedFunction: t.keyword
+            OtherGroundedFunction: t.keyword,
+            GroundedType: t.typeName,
         }),
         indentNodeProp.add({
             Expression: (ctx) => {
@@ -48,50 +49,229 @@ const mettaLanguage = LRLanguage.define({
     },
 })
 
+// ── Autocomplete entries ───────────────────────────────────────────────────
+
+type Entry = Completion & { section: string }
+
+const fn = (label: string, detail: string, section: string): Entry =>
+    ({ label, type: 'function', detail, section })
+const kw = (label: string, detail: string, section: string): Entry =>
+    ({ label, type: 'keyword', detail, section })
+const ty = (label: string, section: string): Entry =>
+    ({ label, type: 'type', detail: 'type', section })
+
+const completions: Entry[] = [
+    // ── Special forms ──────────────────────────────────────────────────────
+    kw('=',  '(= <pattern> <body>)',          'special'),
+    kw(':',  '(: <atom> <type>)',             'special'),
+    kw('->', '(-> arg... ret)',               'special'),
+
+    // ── Control flow ───────────────────────────────────────────────────────
+    fn('if',              '(-> Bool Atom Atom $t)',              'control'),
+    fn('case',            '(-> Atom Expression %Undefined%)',    'control'),
+    fn('switch',          '(-> %Undefined% Expression %Undefined%)', 'control'),
+
+    // ── Pattern matching ───────────────────────────────────────────────────
+    fn('match',           '(-> SpaceType Atom Atom %Undefined%)', 'pattern'),
+    fn('unify',           '(-> Atom Atom Atom Atom %Undefined%)', 'pattern'),
+    fn('let',             '(-> Atom %Undefined% Atom %Undefined%)', 'pattern'),
+    fn('let*',            '(-> Expression Atom %Undefined%)',    'pattern'),
+    fn('if-equal',        '(-> Atom Atom Atom Atom %Undefined%)', 'pattern'),
+    fn('if-decons-expr',  '(-> Expression Variable Variable Atom Atom %Undefined%)', 'pattern'),
+    fn('if-error',        '(-> Atom Atom Atom %Undefined%)',     'pattern'),
+    fn('return-on-error', '(-> Atom Atom %Undefined%)',          'pattern'),
+
+    // ── Evaluation ─────────────────────────────────────────────────────────
+    fn('eval',            '(-> Atom Atom)',                      'eval'),
+    fn('evalc',           '(-> Atom SpaceType Atom)',            'eval'),
+    fn('chain',           '(-> Atom Variable Atom %Undefined%)', 'eval'),
+    fn('function',        '(-> Atom Atom)',                      'eval'),
+    fn('return',          '(-> $t $t)',                          'eval'),
+    fn('collapse',        '(-> Atom Atom)',                      'eval'),
+    fn('collapse-bind',   '(-> Atom Expression)',                'eval'),
+    fn('superpose',       '(-> Expression %Undefined%)',         'eval'),
+    fn('superpose-bind',  '(-> Expression Atom)',                'eval'),
+    fn('metta',           '(-> Atom Type SpaceType Atom)',       'eval'),
+    fn('quote',           '(-> Atom Atom)',                      'eval'),
+    fn('unquote',         '(-> %Undefined% %Undefined%)',        'eval'),
+    fn('noeval',          '(-> Atom Atom)',                      'eval'),
+    fn('empty',           '%Undefined%',                         'eval'),
+
+    // ── Arithmetic ─────────────────────────────────────────────────────────
+    fn('+',         '(-> Number Number Number)',  'arithmetic'),
+    fn('-',         '(-> Number Number Number)',  'arithmetic'),
+    fn('*',         '(-> Number Number Number)',  'arithmetic'),
+    fn('/',         '(-> Number Number Number)',  'arithmetic'),
+    fn('%',         '(-> Number Number Number)',  'arithmetic'),
+    fn('abs-math',   '(-> Number Number)',        'arithmetic'),
+    fn('ceil-math',  '(-> Number Number)',        'arithmetic'),
+    fn('floor-math', '(-> Number Number)',        'arithmetic'),
+    fn('round-math', '(-> Number Number)',        'arithmetic'),
+    fn('trunc-math', '(-> Number Number)',        'arithmetic'),
+    fn('sqrt-math',  '(-> Number Number)',        'arithmetic'),
+    fn('pow-math',   '(-> Number Number Number)', 'arithmetic'),
+    fn('log-math',   '(-> Number Number Number)', 'arithmetic'),
+    fn('sin-math',   '(-> Number Number)',        'arithmetic'),
+    fn('cos-math',   '(-> Number Number)',        'arithmetic'),
+    fn('tan-math',   '(-> Number Number)',        'arithmetic'),
+    fn('asin-math',  '(-> Number Number)',        'arithmetic'),
+    fn('acos-math',  '(-> Number Number)',        'arithmetic'),
+    fn('atan-math',  '(-> Number Number)',        'arithmetic'),
+    fn('isinf-math', '(-> Number Bool)',          'arithmetic'),
+    fn('isnan-math', '(-> Number Bool)',          'arithmetic'),
+    fn('max-atom',   '(-> %Undefined% Number)',   'arithmetic'),
+    fn('min-atom',   '(-> %Undefined% Number)',   'arithmetic'),
+
+    // ── Comparison ─────────────────────────────────────────────────────────
+    fn('<',           '(-> Number Number Bool)',  'comparison'),
+    fn('>',           '(-> Number Number Bool)',  'comparison'),
+    fn('<=',          '(-> Number Number Bool)',  'comparison'),
+    fn('>=',          '(-> Number Number Bool)',  'comparison'),
+    fn('==',          '(-> $t $t Bool)',          'comparison'),
+    fn('=alpha',      '(-> Atom Atom Bool)',       'comparison'),
+    fn('noreduce-eq', '(-> Atom Atom Bool)',       'comparison'),
+
+    // ── Logic ──────────────────────────────────────────────────────────────
+    fn('and', '(-> Bool Bool Bool)', 'logic'),
+    fn('or',  '(-> Bool Bool Bool)', 'logic'),
+    fn('not', '(-> Bool Bool)',      'logic'),
+    fn('xor', '(-> Bool Bool Bool)', 'logic'),
+
+    // ── Atom manipulation ──────────────────────────────────────────────────
+    fn('car-atom',    '(-> Expression %Undefined%)',          'atoms'),
+    fn('cdr-atom',    '(-> Expression Expression)',           'atoms'),
+    fn('cons-atom',   '(-> Atom Expression Atom)',            'atoms'),
+    fn('decons-atom', '(-> Expression Atom)',                 'atoms'),
+    fn('index-atom',  '(-> Expression Number Atom)',          'atoms'),
+    fn('size-atom',   '(-> Expression Number)',               'atoms'),
+    fn('atom-subst',  '(-> Atom Variable Atom Atom)',         'atoms'),
+    fn('get-type',    '(-> Atom %Undefined%)',                'atoms'),
+    fn('get-type-space', '(-> SpaceType Atom Atom)',          'atoms'),
+    fn('get-metatype','(-> Atom Atom)',                       'atoms'),
+    fn('is-function', '(-> Type Bool)',                       'atoms'),
+    fn('type-cast',   '%Undefined%',                         'atoms'),
+    fn('sealed',      '(-> Expression Atom Atom)',            'atoms'),
+    fn('capture',     '(-> Atom Atom)',                       'atoms'),
+    fn('id',          '(-> $t $t)',                           'atoms'),
+    fn('nop',         '%Undefined%',                         'atoms'),
+
+    // ── Functional ─────────────────────────────────────────────────────────
+    fn('map-atom',         '(-> Expression Variable Atom Expression)', 'functional'),
+    fn('filter-atom',      '(-> Expression Variable Atom Expression)', 'functional'),
+    fn('foldl-atom',       '(-> Expression Atom Variable Variable Atom %Undefined%)', 'functional'),
+    fn('for-each-in-atom', '(-> Expression Atom (->))',                'functional'),
+    fn('first-from-pair',  '%Undefined%',                              'functional'),
+
+    // ── Set operations ─────────────────────────────────────────────────────
+    fn('intersection',      '(-> Atom Atom %Undefined%)',       'sets'),
+    fn('intersection-atom', '(-> Expression Expression Atom)',  'sets'),
+    fn('union',             '(-> Atom Atom %Undefined%)',       'sets'),
+    fn('union-atom',        '(-> Expression Expression Atom)',  'sets'),
+    fn('subtraction',       '(-> Atom Atom %Undefined%)',       'sets'),
+    fn('subtraction-atom',  '(-> Expression Expression Atom)',  'sets'),
+    fn('unique',            '(-> Atom %Undefined%)',            'sets'),
+    fn('unique-atom',       '(-> Expression Atom)',             'sets'),
+
+    // ── Space ──────────────────────────────────────────────────────────────
+    fn('new-space',            '(-> SpaceType)',                'space'),
+    fn('add-atom',             '(-> SpaceType Atom (->))',      'space'),
+    fn('add-atoms',            '(-> SpaceType Expression (->))','space'),
+    fn('add-reduct',           '(-> SpaceType %Undefined% (->))', 'space'),
+    fn('add-reducts',          '(-> SpaceType %Undefined% (->))', 'space'),
+    fn('remove-atom',          '(-> SpaceType Atom (->))',      'space'),
+    fn('get-atoms',            '(-> SpaceType Atom)',           'space'),
+    fn('context-space',        '(-> SpaceType)',                'space'),
+    fn('mod-space!',           '(-> Atom SpaceType)',           'space'),
+    fn('module-space-no-deps', '(-> SpaceType SpaceType)',      'space'),
+
+    // ── State ──────────────────────────────────────────────────────────────
+    fn('new-state',     '(-> $t (StateMonad $t))',              'state'),
+    fn('change-state!', '(-> (StateMonad $t) $t (StateMonad $t))', 'state'),
+    fn('get-state',     '(-> (StateMonad $t) $t)',              'state'),
+
+    // ── String / output ────────────────────────────────────────────────────
+    fn('format-args',  '(-> String Expression String)',         'output'),
+    fn('println!',     '(-> %Undefined% (->))',                 'output'),
+    fn('print-mods!',  '(-> (->))',                            'output'),
+    fn('trace!',       '(-> %Undefined% Atom %Undefined%)',     'output'),
+    fn('sort-strings', '(-> Expression Expression)',            'output'),
+
+    // ── Modules ────────────────────────────────────────────────────────────
+    fn('import!',          '(-> Atom Atom (->))',  'modules'),
+    fn('include',          '(-> Atom %Undefined%)', 'modules'),
+    fn('register-module!', '(-> Atom (->))',       'modules'),
+    fn('git-module!',      '(-> Atom (->))',       'modules'),
+    fn('bind!',            '(-> Symbol %Undefined% (->))', 'modules'),
+    fn('pragma!',          '%Undefined%',          'modules'),
+
+    // ── Assertions ─────────────────────────────────────────────────────────
+    fn('assertEqual',                    '(-> Atom Atom (->))',       'assert'),
+    fn('assertEqualMsg',                 '(-> Atom Atom Atom (->))',  'assert'),
+    fn('assertEqualToResult',            '(-> Atom Atom (->))',       'assert'),
+    fn('assertEqualToResultMsg',         '(-> Atom Atom Atom (->))',  'assert'),
+    fn('assertAlphaEqual',               '(-> Atom Atom (->))',       'assert'),
+    fn('assertAlphaEqualMsg',            '(-> Atom Atom Atom (->))',  'assert'),
+    fn('assertAlphaEqualToResult',       '(-> Atom Atom (->))',       'assert'),
+    fn('assertAlphaEqualToResultMsg',    '(-> Atom Atom Atom (->))',  'assert'),
+    fn('assertIncludes',                 '(-> Atom Expression (->))', 'assert'),
+
+    // ── Documentation ──────────────────────────────────────────────────────
+    fn('@doc',         '(-> Atom DocDescription DocParameters DocReturnInformal DocInformal)', 'docs'),
+    fn('@doc-formal',  '(-> DocItem DocKindFunction DocType DocDescription DocParameters DocReturn DocFormal)', 'docs'),
+    fn('@desc',        '(-> String DocDescription)',  'docs'),
+    fn('@param',       '(-> DocType DocDescription DocParameter)', 'docs'),
+    fn('@params',      '(-> Expression DocParameters)', 'docs'),
+    fn('@return',      '(-> DocType DocDescription DocReturn)', 'docs'),
+    fn('@item',        '(-> Atom DocItem)',            'docs'),
+    fn('@type',        '(-> Type DocType)',            'docs'),
+    fn('get-doc',      '(-> SpaceType Atom %Undefined%)', 'docs'),
+    fn('help!',        '(-> Atom (->))',              'docs'),
+    fn('help-space!',  '(-> SpaceType (->))',         'docs'),
+
+    // ── Types ──────────────────────────────────────────────────────────────
+    ty('Number',      'types'),
+    ty('Bool',        'types'),
+    ty('String',      'types'),
+    ty('Type',        'types'),
+    ty('Atom',        'types'),
+    ty('Symbol',      'types'),
+    ty('Variable',    'types'),
+    ty('Expression',  'types'),
+    ty('Grounded',    'types'),
+    ty('SpaceType',   'types'),
+    ty('%Undefined%', 'types'),
+    ty('Empty',       'types'),
+    ty('NotReducible','types'),
+    ty('ErrorType',   'types'),
+    ty('StateMonad',  'types'),
+]
+
 const languageSupport = new LanguageSupport(mettaLanguage, [
     mettaLanguage.data.of({
         autocomplete: (context: CompletionContext) => {
-            const word = context.matchBefore(/\w*/)
-            if (!context.explicit) return null;
+            const word = context.matchBefore(/[\w\-!?:=<>+*\/%@]+/)
+            if (!word || (word.from === word.to && !context.explicit)) return null
             return {
                 from: word.from,
-                options: [
-                    {
-                        label: "match",
-                        type: "text",
-                        detail: 'macro',
-                        section: "macro",
-                        apply: () => {
-                            context.view.dispatch(context.view.state.update({
-                                changes: {
-                                    from: word.from,
-                                    to: word.to,
-                                    insert: `match &self () ()`,
-                                },
-                                selection: {
-                                    anchor: word.from + "match &self (".length,
-                                    head: word.from + "match &self (".length
-                                }
-                            }))
-                        }
-                    }
-                ]
+                options: completions,
             }
         }
     })
 ])
 
 const highlightStyle = HighlightStyle.define([
-    { tag: tags.lineComment, color: 'var(--rp-muted)' },
-    { tag: tags.bool, color: 'var(--rp-rose)' },
-    { tag: tags.number, color: 'var(--rp-rose)' },
-    { tag: tags.string, color: 'var(--rp-foam)' },
-    { tag: tags.name, color: 'var(--rp-text)' },
-    { tag: tags.variableName, color: 'var(--rp-gold)' },
-    { tag: tags.keyword, color: 'var(--rp-love)' },
-    { tag: tags.arithmeticOperator, color: 'var(--rp-love)' },
-    { tag: tags.logicOperator, color: 'var(--rp-love)' },
-    { tag: tags.compareOperator, color: 'var(--rp-love)' },
+    { tag: tags.lineComment,         color: 'var(--rp-muted)' },
+    { tag: tags.bool,                color: 'var(--rp-rose)' },
+    { tag: tags.number,              color: 'var(--rp-rose)' },
+    { tag: tags.float,               color: 'var(--rp-rose)' },
+    { tag: tags.string,              color: 'var(--rp-foam)' },
+    { tag: tags.name,                color: 'var(--rp-text)' },
+    { tag: tags.variableName,        color: 'var(--rp-gold)' },
+    { tag: tags.keyword,             color: 'var(--rp-love)' },
+    { tag: tags.typeName,            color: 'var(--rp-iris)' },
+    { tag: tags.arithmeticOperator,  color: 'var(--rp-love)' },
+    { tag: tags.logicOperator,       color: 'var(--rp-love)' },
+    { tag: tags.compareOperator,     color: 'var(--rp-love)' },
 ])
 
 const themeCompartment = new Compartment();

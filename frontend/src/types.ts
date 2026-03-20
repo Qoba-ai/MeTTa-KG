@@ -30,6 +30,7 @@ enum ImportSource {
     FILE = 'file',
     URL = 'url',
     TEXT = 'text',
+    EXAMPLES = 'examples',
 }
 
 enum ImportCSVDirection {
