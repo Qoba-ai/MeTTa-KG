@@ -138,9 +138,11 @@ import {
 } from './mettaLanguageSupport'
 import { Expression, Symbol, Variable } from './parser/parser.terms'
 import { diffExtension, setOriginalContentEffect } from './diffExtension'
-import { setCollapsedKeysEffect, collapsedKeysField, setDeepCollapsedKeysEffect, deepCollapsedKeysField, createPathFoldExtension, getFoldedTopLevelKeys } from './pathFoldExtension'
+import { setCollapsedPathsEffect, collapsedPathsField, createPathFoldExtension, getFoldedPaths, extractLinePathTokens } from './pathFoldExtension'
 import { NamespaceSelector } from './NamespaceSelector'
 import { TrieExplorer, buildTrie, TrieNode } from './TrieExplorer'
+import { EditorASTState, astToString, initializeEditorState, emptyEditorState, parseMeTTaString, buildASTFromTokens, mergeTokensIntoAST, unexpandFringe, toggleFold, computeDiff, ASTNode } from './ast'
+import { getDisplayContent, getOriginalContent, createASTStateFromTokens, stripNamespacePrefix } from './editorASTUtils'
 
 // Components
 import { Header } from './components/Header'
@@ -172,18 +174,29 @@ const extensionToImportFormat = (file: File): ImportFormat | undefined => {
 }
 
 const sexprToPath = (sexpr: string): string => {
-    if (!sexpr || sexpr.trim() === '' || sexpr.trim() === '$x') return '/';
-    const cleaned = sexpr.replace(/[()]/g, '').replace(/\$x$/, '').trim();
+    if (!sexpr || sexpr.trim() === '' || sexpr.trim() === '$') return '/';
+    const cleaned = sexpr.replace(/[()]/g, '').replace(/\$$/, '').trim();
     const parts = cleaned.split(/\s+/).filter(p => p.length > 0);
     if (parts.length === 0) return '/';
     return '/' + parts.join('/') + '/';
 }
 
+const tokensToSexpr = (tokens: string[]): string => {
+    if (tokens.length === 0) return '$';
+    // If the last token is $, use it as the inner base.
+    // Otherwise, it's a terminal atom path, so just build the nested structure.
+    let sexpr = tokens[tokens.length - 1];
+    for (let i = tokens.length - 2; i >= 0; i--) {
+        sexpr = `(${tokens[i]} ${sexpr})`;
+    }
+    return sexpr;
+}
+
 const pathToSexpr = (path: string): string => {
-    if (!path || path === '/') return '$x';
+    if (!path || path === '/') return '$';
     const parts = path.split('/').filter(p => p.length > 0);
-    if (parts.length === 0) return '$x';
-    let sexpr = '$x';
+    if (parts.length === 0) return '$';
+    let sexpr = '$';
     for (let i = parts.length - 1; i >= 0; i--) {
         sexpr = `(${parts[i]} ${sexpr})`;
     }
@@ -193,8 +206,7 @@ const pathToSexpr = (path: string): string => {
 interface EditorPanel {
     id: string;
     namespace: string;
-    content: string;
-    originalContent: string;
+    astState: EditorASTState;  // AST is the source of truth
     view?: EditorView;
 }
 
@@ -249,10 +261,8 @@ const App: Component = () => {
     // Transform State
     const [transformConfigs, setTransformConfigs] = createSignal<SpaceConfig[]>([])
 
-    // Trie/Editor fold sync state — full paths like "/key/" that are collapsed
+    // Trie/Editor fold sync state — full paths like "/key/" or "/key/sub/" that are collapsed
     const [collapsedPaths, setCollapsedPaths] = createSignal<Set<string>>(new Set())
-    // Independent collapse state for paths deeper than top-level (not synced to CodeMirror)
-    const [deepCollapsedPaths, setDeepCollapsedPaths] = createSignal<Set<string>>(new Set())
 
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false)
@@ -289,7 +299,7 @@ const App: Component = () => {
 
     const { theme: currentTheme } = useTheme()
 
-    const createEditorState = (initialDoc: string) => {
+    const createEditorState = (initialDoc: string, astState: EditorASTState) => {
         return EditorState.create({
             doc: initialDoc,
             extensions: [
@@ -321,8 +331,9 @@ const App: Component = () => {
                 EditorView.updateListener.of((update) => {
                     if (update.docChanged) {
                         const content = update.state.doc.toString()
+                        const newAST = parseMeTTaString(content, 'manual')
                         untrack(() => {
-                            setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, content } : p))
+                            setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, astState: { ...p.astState, ast: newAST } } : p))
                         })
                     }
                 }),
@@ -338,17 +349,18 @@ const App: Component = () => {
                     },
                 }),
                 createPathFoldExtension(
-                    (foldedKeys) => {
+                    (foldedPaths) => {
                         const p = activePanel()
                         if (!p) return
                         const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
-                        setCollapsedPaths(new Set(Array.from(foldedKeys).map(k => `${ns}${k}/`)))
+                        setCollapsedPaths(new Set(Array.from(foldedPaths).map(k => `${ns}${k}/`)))
                     },
-                    (deepKeys) => {
+                    (fringePath) => {
+                        // Handle $ click — expand fringe
                         const p = activePanel()
                         if (!p) return
                         const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
-                        setDeepCollapsedPaths(new Set(Array.from(deepKeys).map(k => `${ns}${k}/`)))
+                        handleTrieExpand(`${ns}${fringePath}/`)
                     },
                 ),
             ],
@@ -360,7 +372,8 @@ const App: Component = () => {
         const activeId = activePanelId()
         const p = panelsList.find(item => item.id === activeId)
         if (p && p.view) {
-            p.view.dispatch({ effects: setOriginalContentEffect.of(p.originalContent) })
+            const originalContent = getOriginalContent(p.astState)
+            p.view.dispatch({ effects: setOriginalContentEffect.of(originalContent) })
         }
     })
 
@@ -381,21 +394,19 @@ const App: Component = () => {
             const p = untrack(panels).find(item => item.id === id)
             if (p) {
                 if (!p.view) {
+                    const displayContent = getDisplayContent(p.astState)
                     const view = new EditorView({
-                        state: createEditorState(p.content),
+                        state: createEditorState(displayContent, p.astState),
                         parent: mettaInput
                     })
                     setPanels(prev => prev.map(item => item.id === p.id ? { ...item, view } : item))
-                    setCollapsedPaths(new Set())
-                    setDeepCollapsedPaths(new Set())
+                    setCollapsedPaths(new Set<string>())
                 } else {
                     mettaInput.appendChild(p.view.dom)
                     // Restore collapsed paths from this panel's current fold state
                     const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
-                    const foldedKeys = getFoldedTopLevelKeys(p.view.state)
-                    setCollapsedPaths(new Set(Array.from(foldedKeys).map(k => `${ns}${k}/`)))
-                    const deepFoldedKeys = p.view.state.field(deepCollapsedKeysField)
-                    setDeepCollapsedPaths(new Set(Array.from(deepFoldedKeys).map(k => `${ns}${k}/`)))
+                    const foldedPaths = getFoldedPaths(p.view.state)
+                    setCollapsedPaths(new Set(Array.from(foldedPaths).map(k => `${ns}${k}/`)))
                 }
             }
         }
@@ -487,62 +498,103 @@ const App: Component = () => {
         if (!p?.view) return
         const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
         if (!path.startsWith(activeNs)) return
-        const segments = path.slice(activeNs.length).split('/').filter(Boolean)
+        const relPath = path.slice(activeNs.length).replace(/\/$/, '')
+        const segments = relPath.split('/').filter(Boolean)
         if (!segments.length) return
 
-        // Navigate to the trie node at this path so we can collect all descendants
-        const trie = buildTrie(p.content)
-        let node: TrieNode | undefined = trie
-        for (const seg of segments) {
-            node = node?.children[seg]
-            if (!node) break
-        }
+        const astState = p.astState
 
-        const newTopCollapsed = new Set(p.view.state.field(collapsedKeysField))
-        const newDeepCollapsed = new Set(p.view.state.field(deepCollapsedKeysField))
+        // If this path was expanded (fringe expand), unexpand it instead of folding
+        if (astState.expandedPaths.has(relPath)) {
+            unexpandFringe(astState.ast, astState.nodeMap, relPath)
+            unexpandFringe(astState.originalAST, astState.originalNodeMap, relPath)
+            astState.expandedPaths.delete(relPath)
+        } else {
+            // Toggle fold state on AST node
+            let nodeToFold: ASTNode | null = null
+            let searchLevel = astState.ast
 
-        const addRelPath = (rel: string) => {
-            const segs = rel.split('/').filter(Boolean)
-            if (segs.length === 1) newTopCollapsed.add(segs[0])
-            else newDeepCollapsed.add(rel)
-        }
+            for (const seg of segments) {
+                const found = searchLevel.find((n: ASTNode) => n.type === 'expr' && (n as any).key === seg)
+                if (!found) return
+                nodeToFold = found
+                if (nodeToFold.type === 'expr') {
+                  searchLevel = (nodeToFold as any).children
+                }
+            }
 
-        const addDescendants = (n: TrieNode, relBase: string) => {
-            for (const [key, child] of Object.entries(n.children)) {
-                const childRel = `${relBase}${key}`
-                addRelPath(childRel)
-                addDescendants(child, `${childRel}/`)
+            if (nodeToFold && nodeToFold.type === 'expr') {
+              (nodeToFold as any).folded = true
+
+              function foldDescendants(node: ASTNode): void {
+                if (node.type === 'expr') {
+                  const expr = node as any
+                  for (const child of expr.children) {
+                    if (child.type === 'expr') {
+                      child.folded = true
+                      foldDescendants(child)
+                    }
+                  }
+                }
+              }
+              foldDescendants(nodeToFold)
             }
         }
 
-        // Fold the clicked path itself and every descendant
-        addRelPath(path.slice(activeNs.length).replace(/\/$/, ''))
-        if (node) addDescendants(node, path.slice(activeNs.length))
+        // Re-render
+        const displayContent = getDisplayContent(astState)
+        setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+        p.view.dispatch(p.view.state.update({
+            changes: { from: 0, to: p.view.state.doc.length, insert: displayContent }
+        }))
 
-        p.view.dispatch({ effects: [
-            setCollapsedKeysEffect.of(newTopCollapsed),
-            setDeepCollapsedKeysEffect.of(newDeepCollapsed),
-        ]})
-        // collapsedPaths / deepCollapsedPaths updated via callbacks in createPathFoldExtension
+        // Update CodeMirror fold state
+        const newCollapsed = new Set(p.view.state.field(collapsedPathsField))
+        newCollapsed.add(relPath)
+        p.view.dispatch({ effects: setCollapsedPathsEffect.of(newCollapsed) })
     }
 
-    const handleTrieExpand = (path: string) => {
+    const handleTrieExpand = async (path: string) => {
         const p = activePanel()
         if (!p?.view) return
         const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
         if (!path.startsWith(activeNs)) return
+
+        try {
+            const relPath = path.slice(activeNs.length).replace(/\/$/, '')
+            const tokens = await loadFringeAsTokens(path)
+
+            // Merge tokens into AST
+            const astState = p.astState
+            const pathKey = relPath.split('/').filter(Boolean).join('/')
+
+            // Strip namespace prefix from tokens before merging
+            const strippedTokens = stripNamespacePrefix(tokens, activeNs)
+
+            // Find and update the fringe node in the AST (and originalAST to avoid diff)
+            mergeTokensIntoAST(astState.ast, astState.nodeMap, pathKey, strippedTokens)
+            mergeTokensIntoAST(astState.originalAST, astState.originalNodeMap, pathKey, strippedTokens)
+            astState.expandedPaths.add(pathKey)
+
+            // Re-render
+            const displayContent = getDisplayContent(astState)
+            setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+            p.view.dispatch(p.view.state.update({
+                changes: { from: 0, to: p.view.state.doc.length, insert: displayContent }
+            }))
+
+            notify.success(`Explored fringe at '${path}'`)
+        } catch (e) {
+            console.error("Expand exploration failed:", e)
+        }
+
+        // Remove this path from the collapsed set (children remain folded)
         const segments = path.slice(activeNs.length).split('/').filter(Boolean)
         if (!segments.length) return
-        if (segments.length === 1) {
-            const newTopCollapsed = new Set(p.view.state.field(collapsedKeysField))
-            newTopCollapsed.delete(segments[0])
-            p.view.dispatch({ effects: setCollapsedKeysEffect.of(newTopCollapsed) })
-        } else {
-            const relPath = path.slice(activeNs.length).replace(/\/$/, '')
-            const newDeepCollapsed = new Set(p.view.state.field(deepCollapsedKeysField))
-            newDeepCollapsed.delete(relPath)
-            p.view.dispatch({ effects: setDeepCollapsedKeysEffect.of(newDeepCollapsed) })
-        }
+        const relPath = path.slice(activeNs.length).replace(/\/$/, '')
+        const newCollapsed = new Set(p.view.state.field(collapsedPathsField))
+        newCollapsed.delete(relPath)
+        p.view.dispatch({ effects: setCollapsedPathsEffect.of(newCollapsed) })
     }
 
     const getParserParameters = (): any => {
@@ -660,7 +712,8 @@ const App: Component = () => {
     const exportMetta = (): void => {
         const p = activePanel()
         if (!p) return
-        const blob = URL.createObjectURL(new Blob([p.content]))
+        const content = getDisplayContent(p.astState)
+        const blob = URL.createObjectURL(new Blob([content]))
         const anchor = document.createElement('a')
         anchor.setAttribute('download', `$metta-${Date.now()}.metta`)
         anchor.setAttribute('href', blob)
@@ -673,10 +726,11 @@ const App: Component = () => {
         const p = activePanel()
         if (!p) return
         try {
+            const content = getDisplayContent(p.astState)
             const resp = await fetch('https://inter.metta-lang.dev/api/v1/codes', {
                 headers: { accept: '*/*', 'content-type': 'application/json' },
                 referrer: 'https://metta-lang.dev/',
-                body: JSON.stringify({ code: p.content, language: 'metta' }),
+                body: JSON.stringify({ code: content, language: 'metta' }),
                 method: 'POST',
             })
             const data = await resp.json()
@@ -713,6 +767,25 @@ const App: Component = () => {
         }
     }
 
+    const loadFringeAsTokens = async (path: string): Promise<string[][]> => {
+        let ns = path
+        if (ns.startsWith('/')) ns = ns.substring(1)
+        const encodedNs = ns.split('/').map(encodeURIComponent).join('/')
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/explore/${encodedNs}`, {
+                headers: { Authorization: token()?.code ?? '' }
+            })
+            if (!res.ok) throw new Error(`Status ${res.status}`)
+            const data = await res.json()
+            const parsed: any[] = typeof data === 'string' ? (data.trim() === '' ? [] : JSON.parse(data)) : data
+            return parsed.filter((p: any) => Array.isArray(p)) as string[][]
+        } catch (e) {
+            console.error("Explore API failed:", e)
+            throw e
+        }
+    }
+
     const addPanel = async (ns: string) => {
         const existing = panels().find(p => p.namespace === ns)
         if (existing) {
@@ -721,32 +794,27 @@ const App: Component = () => {
         }
 
         const id = Math.random().toString(36).substring(7)
-        const encodedPath = ns.split('/').map(encodeURIComponent).join('/')
-        
+
         try {
-            const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
-                headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
-            })
-            if (!resp.ok) throw new Error(`Status ${resp.status}`)
-            const metta: string = await resp.json()
-            
+            const tokens = await loadFringeAsTokens(ns)
+            const astState = createASTStateFromTokens(tokens, ns)
+
             const newPanel: EditorPanel = {
                 id,
                 namespace: ns,
-                content: metta,
-                originalContent: metta
+                astState,
             }
-            
+
             batch(() => {
                 setPanels(prev => [...prev, newPanel])
                 setActivePanelId(id)
                 setEditorMode(EditorMode.EDIT)
             })
-            
-            notify.success(`Loaded space '${ns}'`)
+
+            notify.success(`Loaded space fringe '${ns}'`)
         } catch (e) {
             console.error(e)
-            notify.error(`Failed to load space '${ns}'`)
+            notify.error(`Failed to load space fringe '${ns}'`)
         }
     }
 
@@ -776,23 +844,31 @@ const App: Component = () => {
         const path = p.namespace
         const encodedPath = path.split('/').map(encodeURIComponent).join('/')
 
-        const originalLines = new Set(
-            p.originalContent.split('\n').map(l => l.trim()).filter(l => l.length > 0)
-        )
-        const newLines = p.content.split('\n').filter(l => {
-            const trimmed = l.trim()
-            return trimmed.length > 0 && !originalLines.has(trimmed)
-        })
-        const diffContent = newLines.join('\n')
+        // Filter AST to only manually entered nodes
+        const manualNodes: typeof p.astState.ast = []
+        function filterManualNodes(nodes: ASTNode[]): ASTNode[] {
+          return nodes.filter(n => {
+            if (n.source !== 'manual') return false
+            if (n.type === 'expr') {
+              const expr = n as any
+              expr.children = filterManualNodes(expr.children)
+            }
+            return true
+          })
+        }
+        const manualAST = filterManualNodes(JSON.parse(JSON.stringify(p.astState.ast)))
+        const diffContent = astToString(manualAST).trim()
 
         if (!diffContent) {
             notify.success(`No new content to save to space '${path}'`)
             return
         }
 
+        const lineCount = diffContent.split('\n').length
+
         setConfirmData({
             title: 'Save to Space',
-            message: `Are you sure you want to save ${newLines.length} new line(s) to space '${path}'?`,
+            message: `Are you sure you want to save ${lineCount} new line(s) to space '${path}'?`,
             onConfirm: async () => {
                 try {
                     const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
@@ -802,7 +878,21 @@ const App: Component = () => {
                     })
                     if (resp.ok) {
                         notify.success(`Successfully saved to space '${path}'`)
-                        setPanels(prev => prev.map(item => item.id === p.id ? { ...item, originalContent: p.content } : item))
+                        // Mark all manual nodes as loaded (sync original)
+                        const updatedAST = JSON.parse(JSON.stringify(p.astState.ast))
+                        function markLoaded(nodes: ASTNode[]): void {
+                          for (const node of nodes) {
+                            node.source = 'loaded'
+                            if (node.type === 'expr') {
+                              const expr = node as any
+                              markLoaded(expr.children)
+                            }
+                          }
+                        }
+                        markLoaded(updatedAST)
+                        setPanels(prev => prev.map(item => item.id === p.id
+                          ? { ...item, astState: { ...item.astState, originalAST: updatedAST } }
+                          : item))
                     } else notify.error(`Failed to save to space '${path}' (Status: ${resp.status})`)
                 } catch (e) {
                     console.error(e)
@@ -817,25 +907,22 @@ const App: Component = () => {
     const read = async (ns?: string) => {
         const p = activePanel()
         const path = ns || p?.namespace || '/'
-        const encodedPath = path.split('/').map(encodeURIComponent).join('/')
         try {
-            const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
-                headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
-            })
-            if (!resp.ok) throw new Error(`Status ${resp.status}`)
-            const metta: string = await resp.json()
-            
+            const tokens = await loadFringeAsTokens(path)
+
             if (p && !ns) {
                 // Update current panel
-                setPanels(prev => prev.map(item => item.id === p.id ? { ...item, content: metta, originalContent: metta } : item))
-                p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: metta } }))
-                notify.success(`Reloaded space '${path}'`)
+                const astState = createASTStateFromTokens(tokens, path)
+                const displayContent = getDisplayContent(astState)
+                setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+                p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: displayContent } }))
+                notify.success(`Reloaded space fringe '${path}'`)
             } else {
                 addPanel(path)
             }
         } catch (e) {
             console.error(e)
-            notify.error(`Failed to load space '${path}'`)
+            notify.error(`Failed to load space fringe '${path}'`)
         }
     }
 
@@ -858,7 +945,7 @@ const App: Component = () => {
         } catch (e) { console.error(e); notify.error('Error during transformation') }
     }
 
-    const fetchExploreResults = async (path: string, focusToken: string = '') => {
+    const fetchExploreResults = async (path: string) => {
         if (!token()) return []
         let ns = path
         if (ns.startsWith('/')) ns = ns.substring(1)
@@ -868,32 +955,22 @@ const App: Component = () => {
         const uniqueNextLevelPaths = new Set<string>()
 
         try {
-            const res = await fetch(`${BACKEND_URL}/explore/${encodedNs}?focus_token=${encodeURIComponent(focusToken)}`, {
+            const res = await fetch(`${BACKEND_URL}/explore/${encodedNs}`, {
                 headers: { Authorization: token()?.code ?? '' }
             })
             if (res.ok) {
                 const data = await res.json()
                 const parsed: any[] = typeof data === 'string' ? (data.trim() === '' ? [] : JSON.parse(data)) : data
-                const currentParts = path.split('/').filter(p => p.length > 0)
                 
-                for (const item of parsed) {
-                    const samplePath = sexprToPath(item.expr)
-                    const sampleParts = samplePath.split('/').filter(p => p.length > 0)
+                for (const pathTokens of parsed) {
+                    if (!Array.isArray(pathTokens)) continue; // skip invalid formats
                     
-                    if (sampleParts.length <= currentParts.length) continue
-                    
-                    // Pick the segment that comes immediately after our current depth
-                    const nextSegment = sampleParts[currentParts.length]
-                    const nextParts = [...currentParts, nextSegment]
-                    const nextPath = '/' + nextParts.join('/') + '/'
+                    const nextPath = '/' + pathTokens.join('/') + '/'
                     const nextSexpr = pathToSexpr(nextPath)
                     
                     if (!uniqueNextLevelPaths.has(nextSexpr)) {
                         uniqueNextLevelPaths.add(nextSexpr)
-                        // results.push({ token: item.token, expr: nextSexpr, path: nextPath }) // This line was missing in the original, added here.
-                        // The original code had a typo: nextLevelResults instead of results
-                        // Corrected to push to results array
-                        results.push({ token: item.token, expr: nextSexpr, path: nextPath });
+                        results.push({ token: '', expr: nextSexpr, path: nextPath });
                     }
                 }
             }
@@ -902,7 +979,8 @@ const App: Component = () => {
         // Local fallback: use current editor content to find sub-namespaces
         const p = activePanel()
         if (p) {
-            const trie = buildTrie(p.content)
+            const displayContent = getDisplayContent(p.astState)
+            const trie = buildTrie(displayContent)
             const currentParts = path.split('/').filter(p => p.length > 0)
             
             let currentLevel = trie
@@ -1191,8 +1269,8 @@ const App: Component = () => {
                     <Show when={editorMode() !== EditorMode.DEFAULT}>
                         <div class={`${styles.Resizer} ${isResizing() ? styles.Resizing : ''}`} onMouseDown={startResizing} />
                         <TrieExplorer
-                            content={activePanel()?.content || ''}
-                            originalContent={activePanel()?.originalContent}
+                            content={activePanel() ? getDisplayContent(activePanel()!.astState) : ''}
+                            originalContent={activePanel() ? getOriginalContent(activePanel()!.astState) : ''}
                             onDelete={deleteSubspace}
                             rootPath={activePanel()?.namespace || '/'}
                             onOpenSubspace={(path) => addPanel(path)}
@@ -1204,7 +1282,7 @@ const App: Component = () => {
                                 })));
                                 transformModal.showModal();
                             }}
-                            collapsedPaths={() => new Set([...collapsedPaths(), ...deepCollapsedPaths()])}
+                            collapsedPaths={() => collapsedPaths()}
                             onCollapse={handleTrieCollapse}
                             onExpand={handleTrieExpand}
                         />

@@ -6,6 +6,7 @@ export interface TrieNode {
   children: { [key: string]: TrieNode };
   terminals: string[];
   isDeletable: boolean;
+  isFringe?: boolean;
 }
 
 interface TrieExplorerProps {
@@ -63,7 +64,12 @@ const addToTrie = (node: TrieNode, expr: any) => {
     }
     addToTrie(node.children[key], expr[1]);
   } else {
-    node.terminals.push(exprToString(expr));
+    const val = exprToString(expr);
+    if (val === "$") {
+      node.isFringe = true;
+    } else {
+      node.terminals.push(val);
+    }
   }
 };
 
@@ -107,8 +113,14 @@ const TrieBranch: Component<{
     onExpand?: (path: string) => void;
 }> = (props) => {
 
-  const [localOpen, setLocalOpen] = createSignal(props.depth <= 0);
-  const isOpen = () => props.collapsedPaths ? !props.collapsedPaths().has(props.path) : localOpen();
+  const [localOpen, setLocalOpen] = createSignal(false);
+  const isOpen = () => {
+    // If it's a fringe node with no actual children (unexplored), it should appear closed
+    if (props.node.isFringe && Object.keys(props.node.children).length === 0 && props.node.terminals.length === 0) {
+      return false;
+    }
+    return props.collapsedPaths ? !props.collapsedPaths().has(props.path) : localOpen();
+  };
 
   const toggleOpen = (e: MouseEvent) => {
     e.stopPropagation();
@@ -120,10 +132,11 @@ const TrieBranch: Component<{
     }
   };
 
-  // A node is a leaf only if it has no navigable children AND no terminals.
+  // A node is a leaf only if it has no navigable children AND no terminals, and is not a fringe boundary.
   const isLeaf = () =>
     Object.keys(props.node.children).length === 0 &&
-    props.node.terminals.length === 0;
+    props.node.terminals.length === 0 &&
+    !props.node.isFringe;
 
   const handleDelete = (e: MouseEvent) => {
     e.stopPropagation();
@@ -231,30 +244,23 @@ const TrieBranch: Component<{
         }>
           {(childName) => {
             const childPath = `${props.path}${childName}/`;
-            const currChild = props.node.children[childName];
-            const origChild = props.originalNode?.children?.[childName];
-
-            let diffState: "added" | "removed" | "unchanged" | "modified" = "unchanged";
-            if (currChild && !origChild) diffState = "added";
-            else if (!currChild && origChild) diffState = "removed";
-            else if (currChild && origChild && (
-              Object.keys(currChild.children).length !== Object.keys(origChild.children).length ||
-              currChild.terminals.length !== origChild.terminals.length
-            )) {
-              diffState = "modified";
-            }
-
-            if (!currChild && !origChild) return null;
-
             return (
-              <TrieBranch
-                name={childName}
-                node={currChild || origChild!}
-                originalNode={origChild}
-                diffState={diffState}
-                depth={props.depth + 1}
-                path={childPath}
-                onDelete={props.onDelete}
+              <Show when={props.node.children[childName] || props.originalNode?.children?.[childName]}>
+                <TrieBranch
+                  name={childName}
+                  node={props.node.children[childName] || props.originalNode!.children[childName]}
+                  originalNode={props.originalNode?.children?.[childName]}
+                  diffState={
+                    (props.node.children[childName] && !props.originalNode?.children?.[childName]) ? "added" :
+                    (!props.node.children[childName] && props.originalNode?.children?.[childName]) ? "removed" :
+                    (props.node.children[childName] && props.originalNode?.children?.[childName] && (
+                      Object.keys(props.node.children[childName].children).length !== Object.keys(props.originalNode!.children[childName].children).length ||
+                      props.node.children[childName].terminals.length !== props.originalNode!.children[childName].terminals.length
+                    )) ? "modified" : "unchanged"
+                  }
+                  depth={props.depth + 1}
+                  path={childPath}
+                  onDelete={props.onDelete}
                 onOpenSubspace={props.onOpenSubspace}
                 isSelected={props.onIsSelected(childPath)}
                 selectionCount={props.onGetSelectionCount(childPath)}
@@ -266,6 +272,7 @@ const TrieBranch: Component<{
                 onCollapse={props.onCollapse}
                 onExpand={props.onExpand}
               />
+              </Show>
             );
           }}
         </For>

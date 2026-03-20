@@ -459,6 +459,7 @@
 .TrieContent {
     flex: 1;
     overflow-y: auto;
+    overflow-x: auto;
     font-family: 'Fira Code', monospace;
     font-size: 0.8rem;
     display: flex;

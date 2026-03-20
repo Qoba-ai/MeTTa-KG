@@ -12,29 +12,20 @@ import {
 import { EditorState } from '@codemirror/state'
 
 // ---------------------------------------------------------------------------
-// State
+// State — single unified collapsed paths set
 // ---------------------------------------------------------------------------
 
-export const setCollapsedKeysEffect = StateEffect.define<Set<string>>()
+export const setCollapsedPathsEffect = StateEffect.define<Set<string>>()
 
-export const collapsedKeysField = StateField.define<Set<string>>({
+/**
+ * Tracks relative paths that are folded, e.g. "a", "a/b", "a/b/c".
+ * A path is effectively folded if it or any ancestor is in this set.
+ */
+export const collapsedPathsField = StateField.define<Set<string>>({
     create: () => new Set(),
     update(value, tr) {
         for (const e of tr.effects) {
-            if (e.is(setCollapsedKeysEffect)) return e.value
-        }
-        return value
-    },
-})
-
-// Deep collapsed paths — relative paths like "csv/0" or "transformed/csv/0"
-export const setDeepCollapsedKeysEffect = StateEffect.define<Set<string>>()
-
-export const deepCollapsedKeysField = StateField.define<Set<string>>({
-    create: () => new Set(),
-    update(value, tr) {
-        for (const e of tr.effects) {
-            if (e.is(setDeepCollapsedKeysEffect)) return e.value
+            if (e.is(setCollapsedPathsEffect)) return e.value
         }
         return value
     },
@@ -45,8 +36,41 @@ export const deepCollapsedKeysField = StateField.define<Set<string>>({
 // ---------------------------------------------------------------------------
 
 /**
+ * Extract the path tokens from a MeTTa line.
+ * For `(a (b (c value)))`, returns ["a", "b", "c"].
+ * For `(a (b $))`, returns ["a", "b"].
+ * Stops at non-2-ary expressions or terminal values.
+ */
+export function extractLinePathTokens(text: string): string[] {
+    const trimmed = text.trimStart()
+    if (!trimmed.startsWith('(')) return []
+
+    const tokens: string[] = []
+    let pos = 0
+    const s = trimmed
+
+    while (pos < s.length) {
+        if (s[pos] !== '(') break
+        pos++ // skip '('
+        // skip whitespace
+        while (pos < s.length && s[pos] === ' ') pos++
+        // read symbol
+        const start = pos
+        while (pos < s.length && s[pos] !== ' ' && s[pos] !== '(' && s[pos] !== ')') pos++
+        if (pos === start) break
+        const sym = s.slice(start, pos)
+        if (sym === '$') break // fringe marker, stop
+        tokens.push(sym)
+        // skip whitespace
+        while (pos < s.length && s[pos] === ' ') pos++
+        // next char should be '(' for continuation, or something else for terminal
+    }
+
+    return tokens
+}
+
+/**
  * Return the first symbol of a top-level MeTTa atom on this line, or null.
- * A top-level atom starts at column 0 and looks like `(symbol ...)`.
  */
 export function lineFirstSymbol(text: string): string | null {
     if (text.startsWith(' ') || text.startsWith('\t')) return null
@@ -54,18 +78,31 @@ export function lineFirstSymbol(text: string): string | null {
     return m ? m[1] : null
 }
 
-export function getFoldedTopLevelKeys(state: EditorState): Set<string> {
-    return state.field(collapsedKeysField)
+export function getFoldedPaths(state: EditorState): Set<string> {
+    return state.field(collapsedPathsField)
 }
 
-/** Convert a relative path like "transformed/csv/0" to the line prefix "(transformed (csv (0 " */
+/** Convert a relative path like "a/b/c" to the line prefix "(a (b (c " */
 export function pathToLinePrefix(relPath: string): string {
     return relPath.split('/').filter(Boolean).map(s => `(${s} `).join('')
 }
 
 /**
- * Return the visible prefix that should remain on screen when a deep path is folded.
- * For "transformed/csv/0" this is "(transformed (csv " — everything up to the last segment.
+ * Check if a line matches a collapsed path. Returns the matched path or null.
+ * Checks longest paths first for specificity.
+ */
+function findMatchingCollapsedPath(text: string, sortedPaths: string[]): string | null {
+    for (const relPath of sortedPaths) {
+        if (text.startsWith(pathToLinePrefix(relPath))) {
+            return relPath
+        }
+    }
+    return null
+}
+
+/**
+ * Return the visible prefix that should remain on screen when a path is folded.
+ * For "a/b/c" this is "(a (b " — everything up to the last segment.
  */
 function parentLinePrefix(relPath: string): string {
     const segments = relPath.split('/').filter(Boolean)
@@ -73,8 +110,14 @@ function parentLinePrefix(relPath: string): string {
     return segments.slice(0, -1).map(s => `(${s} `).join('')
 }
 
+/** Get the last segment of a path */
+function lastSegment(relPath: string): string {
+    const segments = relPath.split('/').filter(Boolean)
+    return segments[segments.length - 1] || relPath
+}
+
 // ---------------------------------------------------------------------------
-// Widget shown on the first line of a collapsed group
+// Widgets
 // ---------------------------------------------------------------------------
 
 class CollapsedWidget extends WidgetType {
@@ -89,8 +132,27 @@ class CollapsedWidget extends WidgetType {
         el.style.cssText =
             'color:var(--rp-muted);font-style:italic;cursor:pointer;' +
             'padding:0 6px;border-radius:3px;background:var(--rp-highlight-low);'
-        el.textContent = `▸ (${this.key} …) ×${this.count}`
-        el.title = `${this.count} atom${this.count !== 1 ? 's' : ''} hidden — click to expand`
+        el.textContent = `\u25B8 (${this.key} \u2026) \u00D7${this.count}`
+        el.title = `${this.count} atom${this.count !== 1 ? 's' : ''} hidden \u2014 click to expand`
+        return el
+    }
+
+    ignoreEvent() { return false }
+}
+
+class FringeWidget extends WidgetType {
+    constructor(readonly path: string) { super() }
+
+    eq(other: FringeWidget) { return other.path === this.path }
+
+    toDOM() {
+        const el = document.createElement('span')
+        el.style.cssText =
+            'color:var(--rp-iris);cursor:pointer;font-weight:bold;' +
+            'padding:0 4px;border-radius:3px;background:var(--rp-highlight-low);'
+        el.textContent = '$'
+        el.title = `Click to expand fringe at ${this.path}`
+        el.dataset.fringePath = this.path
         return el
     }
 
@@ -98,7 +160,7 @@ class CollapsedWidget extends WidgetType {
 }
 
 // ---------------------------------------------------------------------------
-// ViewPlugin — replaces collapsed-key lines with decorations
+// ViewPlugin — replaces collapsed-path lines with decorations + fringe markers
 // ---------------------------------------------------------------------------
 
 const pathFoldPlugin = ViewPlugin.fromClass(
@@ -112,44 +174,32 @@ const pathFoldPlugin = ViewPlugin.fromClass(
         update(u: ViewUpdate) {
             if (
                 u.docChanged ||
-                u.startState.field(collapsedKeysField) !== u.state.field(collapsedKeysField) ||
-                u.startState.field(deepCollapsedKeysField) !== u.state.field(deepCollapsedKeysField)
+                u.startState.field(collapsedPathsField) !== u.state.field(collapsedPathsField)
             ) {
                 this.decorations = this.compute(u.view)
             }
         }
 
         compute(view: EditorView): DecorationSet {
-            const collapsed = view.state.field(collapsedKeysField)
-            const deepCollapsed = view.state.field(deepCollapsedKeysField)
-            if (collapsed.size === 0 && deepCollapsed.size === 0) return Decoration.none
-
-            // Sort deep paths longest-first so more-specific paths match before less-specific ones
-            const sortedDeep = [...deepCollapsed].sort((a, b) => b.length - a.length)
-
+            const collapsed = view.state.field(collapsedPathsField)
             const doc = view.state.doc
             const builder = new RangeSetBuilder<Decoration>()
 
-            // First pass: count atoms per collapsed key/path, record first line number
-            const topCounts = new Map<string, number>()
-            const topFirstLine = new Map<string, number>()
-            const deepCounts = new Map<string, number>()
-            const deepFirstLine = new Map<string, number>()
+            // Sort collapsed paths longest-first so more-specific paths match first
+            const sortedPaths = [...collapsed].sort((a, b) => b.length - a.length)
+
+            // First pass: count atoms per collapsed path, record first line number
+            const pathCounts = new Map<string, number>()
+            const pathFirstLine = new Map<string, number>()
 
             for (let i = 1; i <= doc.lines; i++) {
                 const text = doc.line(i).text
-                const sym = lineFirstSymbol(text)
-                if (sym && collapsed.has(sym)) {
-                    topCounts.set(sym, (topCounts.get(sym) ?? 0) + 1)
-                    if (!topFirstLine.has(sym)) topFirstLine.set(sym, i)
-                    continue // top-level fold supersedes deep fold
-                }
-                for (const relPath of sortedDeep) {
-                    if (text.startsWith(pathToLinePrefix(relPath))) {
-                        deepCounts.set(relPath, (deepCounts.get(relPath) ?? 0) + 1)
-                        if (!deepFirstLine.has(relPath)) deepFirstLine.set(relPath, i)
-                        break
-                    }
+                if (text.trim() === '') continue
+
+                const matchedPath = findMatchingCollapsedPath(text, sortedPaths)
+                if (matchedPath) {
+                    pathCounts.set(matchedPath, (pathCounts.get(matchedPath) ?? 0) + 1)
+                    if (!pathFirstLine.has(matchedPath)) pathFirstLine.set(matchedPath, i)
                 }
             }
 
@@ -157,35 +207,48 @@ const pathFoldPlugin = ViewPlugin.fromClass(
             for (let i = 1; i <= doc.lines; i++) {
                 const line = doc.line(i)
                 const text = line.text
-                const sym = lineFirstSymbol(text)
+                if (text.trim() === '') continue
                 const from = line.from
                 const to = line.to
-
-                // Include the trailing newline in the widget decoration so that
-                // the next visible content appears immediately after with no gap.
                 const lineEnd = i < doc.lines ? to + 1 : to
 
-                // Top-level collapsed key
-                if (sym && collapsed.has(sym)) {
-                    if (topFirstLine.get(sym) === i) {
-                        builder.add(from, lineEnd, Decoration.replace({ widget: new CollapsedWidget(sym, topCounts.get(sym)!) }))
+                const matchedPath = findMatchingCollapsedPath(text, sortedPaths)
+                if (matchedPath) {
+                    const label = lastSegment(matchedPath)
+                    const parentPrefix = parentLinePrefix(matchedPath)
+
+                    if (pathFirstLine.get(matchedPath) === i) {
+                        if (parentPrefix.length === 0) {
+                            // Top-level fold: replace entire line with widget
+                            builder.add(from, lineEnd, Decoration.replace({
+                                widget: new CollapsedWidget(label, pathCounts.get(matchedPath)!)
+                            }))
+                        } else {
+                            // Deep fold: keep parent prefix visible, fold from the matched segment
+                            const foldFrom = from + parentPrefix.length
+                            builder.add(foldFrom, lineEnd, Decoration.replace({
+                                widget: new CollapsedWidget(label, pathCounts.get(matchedPath)!)
+                            }))
+                        }
                     } else {
+                        // Subsequent lines: hide completely
                         builder.add(from, to, Decoration.replace({}))
                     }
                     continue
                 }
 
-                // Deep collapsed path — keep the parent prefix visible, fold from the last segment
-                for (const relPath of sortedDeep) {
-                    if (text.startsWith(pathToLinePrefix(relPath))) {
-                        const label = relPath.split('/').filter(Boolean).at(-1)!
-                        if (deepFirstLine.get(relPath) === i) {
-                            const foldFrom = from + parentLinePrefix(relPath).length
-                            builder.add(foldFrom, lineEnd, Decoration.replace({ widget: new CollapsedWidget(label, deepCounts.get(relPath)!) }))
-                        } else {
-                            builder.add(from, to, Decoration.replace({}))
-                        }
-                        break
+                // Check for fringe markers ($) in unfoldable positions
+                // Match $ at the end of a 2-ary expression like (a (b $))
+                const fringeMatch = /\$\)/.exec(text)
+                if (fringeMatch) {
+                    const dollarPos = from + text.indexOf('$')
+                    // Extract the path context for this $
+                    const pathTokens = extractLinePathTokens(text)
+                    if (pathTokens.length > 0) {
+                        const fringePath = pathTokens.join('/')
+                        builder.add(dollarPos, dollarPos + 1, Decoration.replace({
+                            widget: new FringeWidget(fringePath)
+                        }))
                     }
                 }
             }
@@ -197,7 +260,7 @@ const pathFoldPlugin = ViewPlugin.fromClass(
 )
 
 // ---------------------------------------------------------------------------
-// Custom gutter — collapse / expand icons on the first occurrence of each key
+// Custom gutter — fold/unfold icons on the first occurrence of each key
 // ---------------------------------------------------------------------------
 
 class PathFoldMarker extends GutterMarker {
@@ -206,7 +269,7 @@ class PathFoldMarker extends GutterMarker {
     toDOM() {
         const el = document.createElement('span')
         el.style.cssText = 'cursor:pointer;font-size:14px;opacity:0.8;line-height:1;'
-        el.textContent = this.collapsed ? '▸' : '▾'
+        el.textContent = this.collapsed ? '\u25B8' : '\u25BE'
         el.title = this.collapsed ? `Expand ${this.sym}` : `Collapse ${this.sym}`
         return el
     }
@@ -215,7 +278,7 @@ class PathFoldMarker extends GutterMarker {
 const pathFoldGutter = gutter({
     class: 'cm-path-fold-gutter',
     markers(view) {
-        const collapsed = view.state.field(collapsedKeysField)
+        const collapsed = view.state.field(collapsedPathsField)
         const doc = view.state.doc
         const builder = new RangeSetBuilder<GutterMarker>()
         const seen = new Set<string>()
@@ -224,7 +287,6 @@ const pathFoldGutter = gutter({
             const line = doc.line(i)
             const sym = lineFirstSymbol(line.text)
             if (!sym) continue
-            // Show marker only on the first occurrence of each symbol
             if (!seen.has(sym)) {
                 seen.add(sym)
                 builder.add(line.from, line.from, new PathFoldMarker(sym, collapsed.has(sym)))
@@ -236,11 +298,25 @@ const pathFoldGutter = gutter({
         click(view, line) {
             const sym = lineFirstSymbol(view.state.doc.lineAt(line.from).text)
             if (!sym) return false
-            const collapsed = view.state.field(collapsedKeysField)
+            const collapsed = view.state.field(collapsedPathsField)
             const next = new Set(collapsed)
-            if (next.has(sym)) next.delete(sym)
-            else next.add(sym)
-            view.dispatch({ effects: setCollapsedKeysEffect.of(next) })
+            if (next.has(sym)) {
+                next.delete(sym)
+            } else {
+                // Fold this key and cascade: find all sub-paths under this key
+                next.add(sym)
+                const doc = view.state.doc
+                for (let i = 1; i <= doc.lines; i++) {
+                    const text = doc.line(i).text
+                    if (!text.startsWith(`(${sym} `)) continue
+                    const tokens = extractLinePathTokens(text)
+                    // Add all intermediate sub-paths
+                    for (let depth = 2; depth <= tokens.length; depth++) {
+                        next.add(tokens.slice(0, depth).join('/'))
+                    }
+                }
+            }
+            view.dispatch({ effects: setCollapsedPathsEffect.of(next) })
             return true
         },
     },
@@ -252,26 +328,32 @@ const pathFoldGutter = gutter({
 
 /**
  * Build the full path-fold extension.
- * `onCollapsedKeysChange` is called whenever the set of collapsed keys changes
- * (whether from the gutter or from an external dispatch).
+ * `onCollapsedPathsChange` is called whenever the set of collapsed paths changes.
+ * `onFringeClick` is called when a user clicks a $ fringe marker in the editor.
  */
 export function createPathFoldExtension(
-    onCollapsedKeysChange: (keys: Set<string>) => void,
-    onDeepCollapsedKeysChange: (keys: Set<string>) => void,
+    onCollapsedPathsChange: (paths: Set<string>) => void,
+    onFringeClick?: (path: string) => void,
 ) {
     return [
-        collapsedKeysField,
-        deepCollapsedKeysField,
+        collapsedPathsField,
         pathFoldPlugin,
         pathFoldGutter,
         EditorView.updateListener.of(update => {
-            const prev = update.startState.field(collapsedKeysField)
-            const next = update.state.field(collapsedKeysField)
-            if (prev !== next) onCollapsedKeysChange(next)
-
-            const prevDeep = update.startState.field(deepCollapsedKeysField)
-            const nextDeep = update.state.field(deepCollapsedKeysField)
-            if (prevDeep !== nextDeep) onDeepCollapsedKeysChange(nextDeep)
+            const prev = update.startState.field(collapsedPathsField)
+            const next = update.state.field(collapsedPathsField)
+            if (prev !== next) onCollapsedPathsChange(next)
+        }),
+        // Handle clicks on fringe $ widgets
+        EditorView.domEventHandlers({
+            click(event, view) {
+                const target = event.target as HTMLElement
+                if (target.dataset?.fringePath && onFringeClick) {
+                    onFringeClick(target.dataset.fringePath)
+                    return true
+                }
+                return false
+            },
         }),
     ]
 }

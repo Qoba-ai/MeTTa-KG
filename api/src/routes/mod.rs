@@ -22,7 +22,7 @@ pub enum AuthError {
 }
 
 pub fn path_to_metta_sexpr(path: &Path) -> String {
-    let mut sexpr = String::from("$x");
+    let mut sexpr = String::from("$");
 
     for component in path.components().rev() {
         if let Component::Normal(name) = component {
