@@ -67,7 +67,8 @@ const TextFieldInput = <T extends ValidComponent = "input">(
     <TextFieldPrimitive.Input
       type={local.type}
       class={cn(
-        "flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[invalid]:border-error-foreground data-[invalid]:text-error-foreground",
+        "flex h-9 w-full rounded-md border bg-[rgba(0,212,255,0.03)] px-3 py-2 text-sm text-[#c4cfdf] placeholder:text-[#4a5568] focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50 data-[invalid]:border-red-500 data-[invalid]:text-red-400 transition-colors",
+        "border-[rgba(0,212,255,0.2)] focus-visible:border-[#00d4ff] focus-visible:ring-[rgba(0,212,255,0.2)]",
         local.class
       )}
       {...others}
@@ -98,7 +99,8 @@ const TextFieldTextArea = <T extends ValidComponent = "textarea">(
 };
 
 const labelVariants = cva(
-  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+  "text-xs font-semibold uppercase tracking-wider leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+  { color: "#8892a4" },
   {
     variants: {
       variant: {
