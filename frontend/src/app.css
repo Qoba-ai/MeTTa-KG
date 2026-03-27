@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Geist+Mono:wght@100..900&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,95 +6,86 @@
 
 @layer base {
   :root {
-    --background: 40 25% 97%; /* Warm off-white */
-    --foreground: 240 6% 10%;
-
-    --muted: 45 20% 92%;
-    --muted-foreground: 240 4% 46%;
-
-    --popover: 0 0% 99%;
-    --popover-foreground: 240 6% 10%;
-
-    --border: 45 15% 85%;
-    --input: 45 15% 85%;
-
+    /* Light mode - keeping for compatibility but app is primarily dark */
+    --background: 222 47% 97%;
+    --foreground: 222 47% 8%;
+    --muted: 220 20% 92%;
+    --muted-foreground: 220 10% 46%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 8%;
+    --border: 220 15% 85%;
+    --input: 220 15% 85%;
     --card: 0 0% 100%;
-    --card-foreground: 240 6% 10%;
-
-    /* ✅ Vibrant emerald green for buttons, links, active states */
-    --primary: 142 71% 45%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 45 30% 92%;
-    --secondary-foreground: 240 6% 10%;
-
-    --accent: 162 45% 85%; /* Softer teal-green accent */
-    --accent-foreground: 162 70% 20%;
-
+    --card-foreground: 222 47% 8%;
+    --primary: 189 100% 50%;
+    --primary-foreground: 222 47% 5%;
+    --secondary: 220 20% 92%;
+    --secondary-foreground: 222 47% 8%;
+    --accent: 173 77% 40%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-
-    /* ✅ Informational colors */
     --info: 204 94% 94%;
     --info-foreground: 199 89% 48%;
-
-    --success: 142 60% 90%; /* Green-tinted success */
-    --success-foreground: 142 70% 25%;
-
-    --warning: 38 96% 89%; /* Warm amber warning */
+    --success: 173 77% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 96% 89%;
     --warning-foreground: 32 95% 44%;
-
     --error: 0 93% 94%;
     --error-foreground: 0 84% 60%;
-
-    --ring: 142 71% 45%;
-
+    --ring: 189 100% 50%;
     --radius: 0.5rem;
   }
 
+  /* ============================================================
+     DARK THEME — Premium Navy/Cyan Design
+  ============================================================ */
   .dark,
   [data-kb-theme="dark"] {
-    --background: 0 0% 0%; /* Black */
-    --foreground: 0 0% 100%; /* White */
+    /* Backgrounds — deep navy layering */
+    --background: 222 47% 6%;      /* #0a0e1a – main bg */
+    --foreground: 210 20% 88%;     /* #dde4ef – soft white text */
 
-    --muted: 0 0% 15%; /* Neutral-800 */
-    --muted-foreground: 0 0% 45%; /* Neutral-500 */
+    --muted: 220 35% 11%;          /* #111827 – muted panels */
+    --muted-foreground: 215 16% 55%; /* #8892a4 – cool gray */
 
-    --popover: 0 0% 10%; /* Neutral-900 */
-    --popover-foreground: 0 0% 100%;
+    --popover: 220 40% 8%;         /* #0d1120 – popup bg */
+    --popover-foreground: 210 20% 88%;
 
-    --border: 0 0% 25%; /* Neutral-700 */
-    --input: 0 0% 25%;
+    --border: 189 100% 50% / 0.12; /* faint cyan border */
+    --input: 220 35% 14%;
 
-    --card: 0 0% 10%; /* Neutral-900 */
-    --card-foreground: 0 0% 100%;
+    --card: 220 38% 9%;            /* #0f1623 – card bg */
+    --card-foreground: 210 20% 88%;
 
-    --primary: 142 71% 45%;
-    --primary-foreground: 0 0% 0%;
+    /* Primary — vivid cyan */
+    --primary: 189 100% 50%;       /* #00d4ff */
+    --primary-foreground: 222 47% 5%;
 
-    --secondary: 0 0% 20%; /* Neutral-800 approx */
-    --secondary-foreground: 0 0% 100%;
+    /* Secondary */
+    --secondary: 220 35% 14%;
+    --secondary-foreground: 210 20% 88%;
 
-    --accent: 142 71% 45%;
-    --accent-foreground: 0 0% 0%;
+    /* Accent — teal */
+    --accent: 173 77% 40%;         /* #00b894 */
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%; /* Red-500 */
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
 
-    --info: 204 94% 94%;
-    --info-foreground: 199 89% 48%;
+    --info: 204 94% 20%;
+    --info-foreground: 199 89% 70%;
 
-    --success: 142 60% 90%;
-    --success-foreground: 142 70% 25%;
+    --success: 173 77% 40%;
+    --success-foreground: 0 0% 100%;
 
-    --warning: 38 96% 89%;
-    --warning-foreground: 32 95% 44%;
+    --warning: 38 96% 45%;
+    --warning-foreground: 0 0% 10%;
 
-    --error: 0 93% 94%;
-    --error-foreground: 0 84% 60%;
+    --error: 0 72% 20%;
+    --error-foreground: 0 84% 70%;
 
-    --ring: 142 71% 45%;
-
+    --ring: 189 100% 50%;
     --radius: 0.5rem;
   }
 }
@@ -104,44 +95,111 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground font-mono;
-    font-feature-settings:
-      "rlig" 1,
-      "calt" 1;
+    @apply bg-background text-foreground;
+    font-family: 'Inter', 'Geist Mono', sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  code, pre, .font-mono {
+    font-family: 'Geist Mono', monospace;
   }
 }
 
+/* ============================================================
+   GLASSMORPHISM UTILITIES
+============================================================ */
 @layer utilities {
-  .step {
-    counter-increment: step;
+  .glass {
+    background: rgba(13, 17, 32, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 212, 255, 0.12);
   }
 
-  .step:before {
-    @apply absolute w-9 h-9 bg-muted rounded-full font-mono font-medium text-center text-base inline-flex items-center justify-center -indent-px border-4 border-background;
-    @apply ml-[-50px] mt-[-4px];
-    content: counter(step);
+  .glass-card {
+    background: rgba(15, 22, 35, 0.8);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(0, 212, 255, 0.15);
+    box-shadow:
+      0 0 0 1px rgba(0, 212, 255, 0.05),
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(0, 212, 255, 0.08);
   }
 
-  /* Add scrollbar utilities for namespace tabs */
+  .neon-glow {
+    box-shadow:
+      0 0 8px rgba(0, 212, 255, 0.3),
+      0 0 24px rgba(0, 212, 255, 0.15),
+      0 0 48px rgba(0, 184, 148, 0.08);
+  }
+
+  .neon-glow-sm {
+    box-shadow:
+      0 0 4px rgba(0, 212, 255, 0.25),
+      0 0 12px rgba(0, 212, 255, 0.1);
+  }
+
+  .neon-border {
+    border: 1px solid rgba(0, 212, 255, 0.35);
+  }
+
+  .neon-text {
+    background: linear-gradient(135deg, #00d4ff 0%, #00b894 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .sidebar-nav-active {
+    border-left: 2px solid #00d4ff;
+    background: rgba(0, 212, 255, 0.07);
+    box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.05);
+    color: #00d4ff;
+  }
+
+  .sidebar-nav-active:hover {
+    background: rgba(0, 212, 255, 0.1);
+  }
+
+  .tab-active {
+    border-top: 2px solid #00d4ff;
+    background: rgba(0, 212, 255, 0.06);
+    box-shadow: 0 -1px 0 rgba(0, 212, 255, 0.3);
+    color: #e2e8f0;
+  }
+
+  /* Scrollbar utilities */
   .scrollbar-thin::-webkit-scrollbar {
     height: 4px;
     width: 4px;
   }
 
+  .scrollbar-track-transparent::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  .scrollbar-thumb-navy::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 212, 255, 0.2);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-thumb-navy::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 212, 255, 0.4);
+  }
+
   .scrollbar-track-neutral-800::-webkit-scrollbar-track {
-    background-color: rgb(38 38 38); /* neutral-800 */
+    background-color: #1c2436;
   }
 
   .scrollbar-thumb-neutral-600::-webkit-scrollbar-thumb {
-    background-color: rgb(82 82 82); /* neutral-600 */
+    background-color: rgba(0, 212, 255, 0.2);
     border-radius: 9999px;
   }
 
   .scrollbar-thumb-neutral-600::-webkit-scrollbar-thumb:hover {
-    background-color: rgb(115 115 115); /* neutral-500 */
+    background-color: rgba(0, 212, 255, 0.4);
   }
 
-  /* Enhanced scrollbar utilities */
   .scrollbar-hide::-webkit-scrollbar {
     height: 0;
     width: 0;
@@ -154,46 +212,76 @@
     display: block;
   }
 
-  .scrollbar-track-transparent::-webkit-scrollbar-track {
-    background-color: transparent;
-  }
-
   .scrollbar-thumb-neutral-600\/50::-webkit-scrollbar-thumb {
-    background-color: rgb(82 82 82 / 0.5); /* neutral-600 with 50% opacity */
+    background-color: rgba(0, 212, 255, 0.15);
     border-radius: 9999px;
   }
 
   .hover\:scrollbar-thumb-neutral-500\/70:hover::-webkit-scrollbar-thumb {
-    background-color: rgb(115 115 115 / 0.7); /* neutral-500 with 70% opacity */
+    background-color: rgba(0, 212, 255, 0.35);
   }
 
-  /* Firefox compatibility */
-  .scrollbar-hide {
-    scrollbar-width: none;
+  /* Firefox */
+  .scrollbar-hide { scrollbar-width: none; }
+  .hover\:scrollbar-thin:hover { scrollbar-width: thin; }
+
+  /* Step counter */
+  .step { counter-increment: step; }
+  .step:before {
+    @apply absolute w-9 h-9 bg-muted rounded-full font-mono font-medium text-center text-base inline-flex items-center justify-center -indent-px border-4 border-background;
+    @apply ml-[-50px] mt-[-4px];
+    content: counter(step);
   }
 
-  .hover\:scrollbar-thin:hover {
-    scrollbar-width: thin;
+  /* Dot grid background pattern for sidebar */
+  .dot-grid {
+    background-image: radial-gradient(circle, rgba(0, 212, 255, 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
   }
 }
+
+/* ============================================================
+   ANIMATIONS
+============================================================ */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(0, 212, 255, 0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 18px rgba(0, 212, 255, 0.7); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+.animate-fade-in { animation: fade-in 0.2s ease-out forwards; }
+.animate-slide-in-left { animation: slide-in-left 0.25s ease-out forwards; }
+.animate-status-pulse { animation: status-pulse 2s ease-in-out infinite; }
+
+/* ============================================================
+   GLOBAL SCROLLBAR
+============================================================ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.4);
+}
+::-webkit-scrollbar-corner { display: none; }
 
 @media (max-width: 640px) {
-  .container {
-    @apply px-4;
-  }
-}
-
-::-webkit-scrollbar {
-  width: 16px;
-}
-
-::-webkit-scrollbar-thumb {
-  border-radius: 9999px;
-  border: 4px solid transparent;
-  background-clip: content-box;
-  @apply bg-accent;
-}
-
-::-webkit-scrollbar-corner {
-  display: none;
+  .container { @apply px-4; }
 }
