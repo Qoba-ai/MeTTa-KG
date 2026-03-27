@@ -37,7 +37,7 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
     title: string;
   }> = (hProps) => (
     <th
-      class="p-3 text-left font-medium cursor-pointer"
+      class="p-3 text-left font-semibold cursor-pointer text-[#00d4ff] uppercase tracking-widest text-xs hover:text-[#e2e8f0] transition-colors"
       onClick={() => props.onSort(hProps.column)}
     >
       {hProps.title}{" "}
@@ -52,11 +52,11 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
   );
 
   return (
-    <div class="border rounded-lg overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="bg-muted">
-          <tr class="border-b">
-            <th class="p-3 w-10 text-left">
+    <div class="rounded-xl border border-[rgba(0,212,255,0.15)] overflow-x-auto bg-[#07091a]/40 shadow-[0_0_20px_rgba(0,212,255,0.05)]">
+      <table class="w-full text-sm text-[#c4cfdf]">
+        <thead class="bg-[rgba(0,212,255,0.04)]">
+          <tr class="border-b border-[rgba(0,212,255,0.15)]">
+            <th class="p-4 w-10 text-left">
               <input
                 type="checkbox"
                 class="rounded"
@@ -67,22 +67,34 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
               column={SortableColumns.TIMESTAMP}
               title="Created"
             />
-            <th class="p-3 text-left font-medium">Code</th>
+            <th class="p-3 text-left font-semibold text-[#00d4ff] uppercase tracking-widest text-xs">
+              Code
+            </th>
             <SortableHeader
               column={SortableColumns.NAMESPACE}
               title="Namespace"
             />
-            <th class="p-3 text-left font-medium">Description</th>
-            <th class="p-3 text-center font-medium">R</th>
-            <th class="p-3 text-center font-medium">W</th>
-            <th class="p-3 text-center font-medium">SR</th>
-            <th class="p-3 text-center font-medium">SW</th>
+            <th class="p-3 text-left font-semibold text-[#00d4ff] uppercase tracking-widest text-xs">
+              Description
+            </th>
+            <th class="p-3 text-center font-semibold text-[#00d4ff] uppercase tracking-widest text-xs">
+              R
+            </th>
+            <th class="p-3 text-center font-semibold text-[#00d4ff] uppercase tracking-widest text-xs">
+              W
+            </th>
+            <th class="p-3 text-center font-semibold text-[#00d4ff] uppercase tracking-widest text-xs">
+              SR
+            </th>
+            <th class="p-3 text-center font-semibold text-[#00d4ff] uppercase tracking-widest text-xs">
+              SW
+            </th>
           </tr>
         </thead>
         <tbody>
           <For each={props.tokens}>
             {(token) => (
-              <tr class="border-b last:border-none hover:bg-muted/50">
+              <tr class="border-b border-[rgba(0,212,255,0.08)] last:border-none hover:bg-[rgba(0,212,255,0.06)] transition-colors">
                 <td class="p-3">
                   <input
                     type="checkbox"
@@ -93,7 +105,7 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
                     }
                   />
                 </td>
-                <td class="p-3 text-muted-foreground">
+                <td class="p-4 text-[#8892a4] whitespace-nowrap text-xs">
                   {new Date(token.creation_timestamp).toLocaleString()}
                 </td>
                 <td class="p-3">
@@ -106,9 +118,9 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
                     >
                       <Show
                         when={copiedTokenId() === token.id}
-                        fallback={<Copy size={16} />}
+                        fallback={<Copy size={16} class="text-[#00d4ff]" />}
                       >
-                        <Check class="text-green-500" size={16} />
+                        <Check class="text-[#00b894]" size={16} />
                       </Show>
                     </Button>
                   </div>
@@ -157,7 +169,7 @@ export const TokenTable: Component<TokenTableProps> = (props) => {
         </tbody>
       </table>
       <Show when={props.tokens.length === 0}>
-        <div class="p-6 text-center text-muted-foreground">
+        <div class="p-8 text-center text-[#8892a4] font-medium tracking-wide">
           No tokens found.
         </div>
       </Show>
