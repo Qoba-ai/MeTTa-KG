@@ -7,13 +7,24 @@ import {
   setNamespace,
   tokenRootNamespace,
 } from "~/lib/state";
+import ExternalLink from "lucide-solid/icons/external-link";
 
 export default function Header() {
   return (
     <>
       {/* Header */}
-      <header class="bg-neutral-800 border-b border-neutral-700 flex items-center justify-between px-6">
-        <div class="h-14 flex items-center">
+      <header
+        class="flex items-center justify-between px-4"
+        style={{
+          background: "var(--header-bg, #0d1120)",
+          "border-bottom":
+            "1px solid var(--header-border, rgba(0,212,255,0.1))",
+          height: "52px",
+          "min-height": "52px",
+        }}
+      >
+        {/* Left: Namespace breadcrumb */}
+        <div class="flex items-center h-full">
           <NameSpace
             namespace={namespace()}
             setNamespace={setNamespace}
@@ -22,40 +33,55 @@ export default function Header() {
             getAllTokens={getAllTokens}
           />
         </div>
-        {/* Links Section */}
-        <div class="flex items-center gap-4 px-6 flex-shrink-0">
-          <a
-            href="https://github.com/trueagi-io/MORK"
-            class="uppercase text-neutral-400 hover:text-primary hover:underline text-sm"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            MORK
-          </a>
-          <span class="text-primary">·</span>
-          <a
-            href="https://github.com/trueagi-io/MORK/wiki"
-            class="uppercase text-neutral-400 hover:text-primary hover:underline text-sm"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            DOCS
-          </a>
-          <span class="text-primary">·</span>
-          <a
-            href="https://chat.singularitynet.io/chat/channels/mork"
-            class="uppercase text-neutral-400 hover:text-primary hover:underline text-sm"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            COMMUNITY
-          </a>
+
+        {/* Right: External links */}
+        <div class="flex items-center gap-1 flex-shrink-0">
+          {[
+            { label: "MORK", href: "https://github.com/trueagi-io/MORK" },
+            { label: "DOCS", href: "https://github.com/trueagi-io/MORK/wiki" },
+            {
+              label: "COMMUNITY",
+              href: "https://chat.singularitynet.io/chat/channels/mork",
+            },
+          ].map((link, i, arr) => (
+            <>
+              <a
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="group flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold uppercase tracking-widest transition-all duration-200"
+                style={{
+                  color: "#8892a4",
+                  "letter-spacing": "0.1em",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "#00d4ff";
+                  (e.currentTarget as HTMLElement).style.background =
+                    "rgba(0,212,255,0.06)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "#8892a4";
+                  (e.currentTarget as HTMLElement).style.background =
+                    "transparent";
+                }}
+              >
+                {link.label}
+                <ExternalLink class="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </a>
+              {i < arr.length - 1 && (
+                <span
+                  style={{ color: "rgba(0,212,255,0.25)", "font-size": "10px" }}
+                >
+                  ·
+                </span>
+              )}
+            </>
+          ))}
         </div>
       </header>
 
-      {/* Tabs */}
-
-      <NamespaceTabs class="h-10 flex items-stretch" />
+      {/* Namespace Tabs */}
+      <NamespaceTabs class="flex items-stretch" />
     </>
   );
 }
