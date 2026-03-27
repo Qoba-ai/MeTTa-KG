@@ -1,7 +1,7 @@
-import tailwindcssAnimate from "tailwindcss-animate";
+const tailwindcssAnimate = require("tailwindcss-animate");
 
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   darkMode: ["variant", [".dark &", '[data-kb-theme="dark"] &']],
   content: ["./src/**/*.{ts,tsx}"],
   prefix: "",
