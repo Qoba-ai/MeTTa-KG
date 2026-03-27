@@ -159,7 +159,10 @@ const AppLayout = (
                 </div> */}
           <Header />
 
-          <div class="flex-1 w-full pl-4 pt-2 overflow-y-scroll">
+          <div
+            class="flex-1 w-full overflow-y-auto relative"
+            style={{ background: "var(--bg-primary, #0a0e1a)" }}
+          >
             {props.children}
           </div>
         </div>
