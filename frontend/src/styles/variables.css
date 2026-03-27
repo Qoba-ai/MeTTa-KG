@@ -1,28 +1,44 @@
-/* CSS Variables that work with Tailwind dark mode */
+/* CSS Variables - Navy/Cyan Design System */
 :root {
-  /* Light theme variables */
-  --bg-primary: theme("colors.gray.50");
-  --bg-secondary: theme("colors.white");
-  --border-light: theme("colors.gray.200");
-  --text-primary: theme("colors.gray.800");
-  --text-secondary: theme("colors.gray.600");
-
-  /* Card styling */
-  --card-bg: theme("colors.white");
-  --card-shadow: theme("boxShadow.lg");
-  --card-border: theme("colors.gray.200");
+  --bg-primary: #f0f4ff;
+  --bg-secondary: #ffffff;
+  --border-light: #dde4ef;
+  --text-primary: #1a2236;
+  --text-secondary: #5a6a85;
+  --card-bg: #ffffff;
+  --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  --card-border: #dde4ef;
 }
 
-:root.dark {
-  /* Dark theme variables */
-  --bg-primary: theme("colors.black");
-  --bg-secondary: theme("colors.neutral.900");
-  --border-light: theme("colors.neutral.700");
-  --text-primary: theme("colors.white");
-  --text-secondary: theme("colors.neutral.300");
+:root.dark,
+[data-kb-theme="dark"] {
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #0d1120;
+  --border-light: rgba(0, 212, 255, 0.12);
+  --text-primary: #e2e8f0;
+  --text-secondary: #8892a4;
+  --card-bg: #0f1623;
+  --card-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --card-border: rgba(0, 212, 255, 0.15);
 
-  /* Card styling */
-  --card-bg: theme("colors.neutral.900");
-  --card-shadow: none;
-  --card-border: theme("colors.neutral.700");
+  /* Sidebar */
+  --sidebar-bg: #080c18;
+  --sidebar-border: rgba(0, 212, 255, 0.1);
+  --sidebar-item-active-bg: rgba(0, 212, 255, 0.08);
+  --sidebar-item-active-border: #00d4ff;
+  --sidebar-item-hover-bg: rgba(0, 212, 255, 0.04);
+
+  /* Header */
+  --header-bg: #0d1120;
+  --header-border: rgba(0, 212, 255, 0.1);
+
+  /* Tabs */
+  --tab-bg: #080c18;
+  --tab-active-border: #00d4ff;
+  --tab-active-bg: rgba(0, 212, 255, 0.06);
+
+  /* Accents */
+  --cyan: #00d4ff;
+  --teal: #00b894;
+  --purple-accent: #a78bfa;
 }
