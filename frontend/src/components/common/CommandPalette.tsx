@@ -95,7 +95,7 @@ const highlight = (text: string, query: string) => {
       {parts.map((part) =>
         part.toLowerCase() === query.toLowerCase() ? (
           <mark
-            class="bg-primary/20 text-primary font-semibold rounded px-0.5"
+            class="bg-[rgba(0,212,255,0.15)] text-[#00d4ff] font-bold rounded px-0.5 shadow-[0_0_8px_rgba(0,212,255,0.2)]"
             data-highlighted
             part="match"
           >
@@ -142,50 +142,52 @@ export default function CommandPalette() {
     <>
       {/* Command Search Dialog */}
       <CommandDialog open={isOpen()} onOpenChange={closeCommandDialog}>
-        <div class="rounded-xl ring-1 ring-white/10 bg-neutral-900/95 backdrop-blur-xl overflow-hidden">
+        <div class="rounded-xl border border-[rgba(0,212,255,0.15)] bg-[#07091a]/95 backdrop-blur-xl overflow-hidden shadow-[0_0_40px_rgba(0,212,255,0.1)]">
           {/* Compact Search Row */}
-          <div class="flex items-center gap-2 px-3 py-3 border-b border-neutral-800/80 bg-neutral-950/40">
-            <Database class="h-4 w-4 shrink-0 text-neutral-400" />
+          <div class="flex items-center gap-3 px-4 py-3 border-b border-[rgba(0,212,255,0.1)] bg-[#0a0e1a]/60">
+            <Database class="h-4 w-4 shrink-0 text-[#00d4ff] animate-pulse" />
             <CommandInput
-              placeholder="Search commands..."
-              class="border-0 focus:ring-0 shadow-none bg-transparent placeholder:text-neutral-500"
+              placeholder="Search MeTTa-KG commands..."
+              class="border-0 focus:ring-0 shadow-none bg-transparent placeholder:text-[#5a6a85] text-[#e2e8f0] text-sm"
               onInput={(e) => setQuery(e.currentTarget.value)}
             />
-            <div class="ml-auto text-[11px] text-neutral-500 flex items-center gap-1">
-              <kbd class="px-1.5 py-0.5 bg-neutral-800 rounded text-[10px]">
+            <div class="ml-auto text-[11px] text-[#5a6a85] flex items-center gap-2 font-mono">
+              <kbd class="px-2 py-0.5 bg-[rgba(0,212,255,0.05)] border border-[rgba(0,212,255,0.15)] rounded text-[#00d4ff]">
                 ↵
               </kbd>
-              <kbd class="px-1.5 py-0.5 bg-neutral-800 rounded text-[10px]">
+              <kbd class="px-2 py-0.5 bg-[rgba(0,212,255,0.05)] border border-[rgba(0,212,255,0.15)] rounded text-[#00d4ff]">
                 Esc
               </kbd>
             </div>
           </div>
 
           {/* List */}
-          <CommandList class="max-h-[360px] overflow-y-auto">
-            <CommandEmpty class="py-8 text-center text-sm text-neutral-400">
-              No commands found.
+          <CommandList class="max-h-[360px] overflow-y-auto scrollbar-thin scrollbar-thumb-navy scrollbar-track-transparent">
+            <CommandEmpty class="py-10 text-center text-sm text-[#8892a4]">
+              No commands found. Try another search.
             </CommandEmpty>
-            <div class="p-2">
+            <div class="p-2 space-y-0.5">
               <For each={commands}>
                 {(command) => (
                   <CommandItem
                     value={`${command.label} ${command.description} ${command.keywords.join(" ")}`.toLowerCase()}
                     onSelect={() => handleSelectCommand(command)}
-                    class="group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-neutral-800/70 focus:bg-neutral-800/70"
+                    class="group flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 outline-none hover:bg-[rgba(0,212,255,0.08)] focus:bg-[rgba(0,212,255,0.08)] aria-selected:bg-[rgba(0,212,255,0.08)]"
                   >
-                    <div class="flex items-center justify-center w-8 h-8 rounded bg-neutral-800 text-neutral-300 group-hover:text-white transition-colors">
+                    <div class="flex items-center justify-center w-8 h-8 rounded-md bg-[#0d1120] text-[#00b894] border border-[rgba(0,212,255,0.1)] group-hover:border-[rgba(0,212,255,0.3)] group-hover:shadow-[0_0_12px_rgba(0,212,255,0.2)] group-hover:text-[#00d4ff] transition-all">
                       {command.icon()}
                     </div>
                     <div class="flex flex-col flex-1 min-w-0">
-                      <div class="font-medium text-white truncate">
+                      <div class="font-medium text-[#c4cfdf] truncate group-hover:text-[#00d4ff] transition-colors">
                         {highlight(command.label, query())}
                       </div>
-                      <div class="text-xs text-neutral-200 truncate">
+                      <div class="text-[11px] text-[#5a6a85] truncate">
                         {highlight(command.description, query())}
                       </div>
                     </div>
-                    <div class="text-[11px] text-neutral-500 font-mono">↵</div>
+                    <div class="text-[11px] text-[#00d4ff] opacity-0 group-hover:opacity-100 transition-opacity font-mono">
+                      ↵
+                    </div>
                   </CommandItem>
                 )}
               </For>
@@ -197,22 +199,23 @@ export default function CommandPalette() {
       {/* Page Dialog - Adaptive sizing */}
       <Show when={selectedCommand()}>
         <Dialog open={true} onOpenChange={closeComponentDialog}>
-          <DialogContent class="w-[90vw] md:w-[75vw] max-w-[900px] h-[86vh] bg-neutral-950 backdrop-blur-xl border border-neutral-800 ring-1 ring-white/10 shadow-2xl rounded-2xl overflow-hidden flex flex-col">
+          <DialogContent class="w-[90vw] md:w-[75vw] max-w-[900px] h-[86vh] bg-[#07091a] backdrop-blur-3xl border border-[rgba(0,212,255,0.2)] shadow-[0_0_60px_rgba(0,212,255,0.1)] rounded-2xl overflow-hidden flex flex-col p-0">
             {/* Compact Header */}
-            <DialogHeader class="border-b border-neutral-800 px-5 py-3 bg-gradient-to-b from-neutral-950 to-neutral-950/80 flex-shrink-0">
-              <div class="flex items-center gap-3">
-                <div class="flex items-center justify-center w-8 h-8 rounded bg-primary/10 text-primary flex-shrink-0">
+            <DialogHeader class="border-b border-[rgba(0,212,255,0.15)] px-6 py-4 bg-gradient-to-b from-[#0a0e1a] to-[#07091a] flex-shrink-0">
+              <div class="flex items-center gap-4">
+                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-[rgba(0,212,255,0.08)] text-[#00d4ff] border border-[rgba(0,212,255,0.2)] shadow-[0_0_15px_rgba(0,212,255,0.15)] flex-shrink-0 animate-glow-pulse">
                   {selectedCommand()?.icon()}
                 </div>
                 <div class="flex-1 min-w-0">
-                  <DialogTitle class="text-base font-medium text-white m-0 leading-tight">
+                  <DialogTitle class="text-base font-bold text-[#e2e8f0] m-0 mb-1 leading-tight tracking-widest uppercase">
                     {selectedCommand()?.label}
                   </DialogTitle>
-                  <div class="text-xs text-neutral-400 leading-tight">
+                  <div class="text-xs text-[#8892a4] leading-tight flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-[#00b894] animate-pulse"></span>
                     {selectedCommand()?.description}
                   </div>
                 </div>
-                <kbd class="px-2 py-1 bg-neutral-800 rounded text-[10px] text-neutral-500 font-mono flex-shrink-0">
+                <kbd class="px-2 py-1 bg-[rgba(0,212,255,0.05)] border border-[rgba(0,212,255,0.15)] shadow-[0_0_8px_rgba(0,212,255,0.1)] rounded text-[10px] text-[#00d4ff] font-mono flex-shrink-0">
                   Esc
                 </kbd>
               </div>
@@ -223,7 +226,7 @@ export default function CommandPalette() {
               <Show
                 when={selectedCommand()?.id === "load"}
                 fallback={
-                  <div class="absolute inset-0 overflow-y-auto scrollbar-thin scrollbar-track-neutral-950 scrollbar-thumb-neutral-700">
+                  <div class="absolute inset-0 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-navy">
                     <div class="p-4 md:p-6 min-h-full flex justify-center">
                       <div class="w-full max-w-3xl">
                         {selectedCommand()?.component()}
