@@ -43,23 +43,23 @@
   .dark,
   [data-kb-theme="dark"] {
     /* Backgrounds — deep navy layering */
-    --background: 222 47% 6%;      /* #0a0e1a – main bg */
-    --foreground: 210 20% 88%;     /* #dde4ef – soft white text */
+    --background: 222 47% 6%; /* #0a0e1a – main bg */
+    --foreground: 210 20% 88%; /* #dde4ef – soft white text */
 
-    --muted: 220 35% 11%;          /* #111827 – muted panels */
+    --muted: 220 35% 11%; /* #111827 – muted panels */
     --muted-foreground: 215 16% 55%; /* #8892a4 – cool gray */
 
-    --popover: 220 40% 8%;         /* #0d1120 – popup bg */
+    --popover: 220 40% 8%; /* #0d1120 – popup bg */
     --popover-foreground: 210 20% 88%;
 
     --border: 189 100% 50% / 0.12; /* faint cyan border */
     --input: 220 35% 14%;
 
-    --card: 220 38% 9%;            /* #0f1623 – card bg */
+    --card: 220 38% 9%; /* #0f1623 – card bg */
     --card-foreground: 210 20% 88%;
 
     /* Primary — vivid cyan */
-    --primary: 189 100% 50%;       /* #00d4ff */
+    --primary: 189 100% 50%; /* #00d4ff */
     --primary-foreground: 222 47% 5%;
 
     /* Secondary */
@@ -67,7 +67,7 @@
     --secondary-foreground: 210 20% 88%;
 
     /* Accent — teal */
-    --accent: 173 77% 40%;         /* #00b894 */
+    --accent: 173 77% 40%; /* #00b894 */
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
@@ -96,11 +96,15 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', 'Geist Mono', sans-serif;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: "Inter", "Geist Mono", sans-serif;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
   }
-  code, pre, .font-mono {
-    font-family: 'Geist Mono', monospace;
+  code,
+  pre,
+  .font-mono {
+    font-family: "Geist Mono", monospace;
   }
 }
 
@@ -222,11 +226,17 @@
   }
 
   /* Firefox */
-  .scrollbar-hide { scrollbar-width: none; }
-  .hover\:scrollbar-thin:hover { scrollbar-width: thin; }
+  .scrollbar-hide {
+    scrollbar-width: none;
+  }
+  .hover\:scrollbar-thin:hover {
+    scrollbar-width: thin;
+  }
 
   /* Step counter */
-  .step { counter-increment: step; }
+  .step {
+    counter-increment: step;
+  }
   .step:before {
     @apply absolute w-9 h-9 bg-muted rounded-full font-mono font-medium text-center text-base inline-flex items-center justify-center -indent-px border-4 border-background;
     @apply ml-[-50px] mt-[-4px];
@@ -235,7 +245,11 @@
 
   /* Dot grid background pattern for sidebar */
   .dot-grid {
-    background-image: radial-gradient(circle, rgba(0, 212, 255, 0.06) 1px, transparent 1px);
+    background-image: radial-gradient(
+      circle,
+      rgba(0, 212, 255, 0.06) 1px,
+      transparent 1px
+    );
     background-size: 24px 24px;
   }
 }
@@ -244,35 +258,72 @@
    ANIMATIONS
 ============================================================ */
 @keyframes glow-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(0, 212, 255, 0.4); }
-  50% { opacity: 0.8; box-shadow: 0 0 18px rgba(0, 212, 255, 0.7); }
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 18px rgba(0, 212, 255, 0.7);
+  }
 }
 
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slide-in-left {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes status-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
-.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
-.animate-fade-in { animation: fade-in 0.2s ease-out forwards; }
-.animate-slide-in-left { animation: slide-in-left 0.25s ease-out forwards; }
-.animate-status-pulse { animation: status-pulse 2s ease-in-out infinite; }
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+.animate-slide-in-left {
+  animation: slide-in-left 0.25s ease-out forwards;
+}
+.animate-status-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
 
 /* ============================================================
    GLOBAL SCROLLBAR
 ============================================================ */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
   background: rgba(0, 212, 255, 0.2);
   border-radius: 9999px;
@@ -280,8 +331,12 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 212, 255, 0.4);
 }
-::-webkit-scrollbar-corner { display: none; }
+::-webkit-scrollbar-corner {
+  display: none;
+}
 
 @media (max-width: 640px) {
-  .container { @apply px-4; }
+  .container {
+    @apply px-4;
+  }
 }
