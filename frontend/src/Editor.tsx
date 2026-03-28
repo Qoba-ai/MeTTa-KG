@@ -99,7 +99,7 @@ import {
     foldKeymap,
     syntaxHighlighting,
 } from '@codemirror/language'
-import { EditorState } from '@codemirror/state'
+import { Annotation, EditorState } from '@codemirror/state'
 import {
     drawSelection,
     dropCursor,
@@ -141,7 +141,7 @@ import { diffExtension, setOriginalContentEffect } from './diffExtension'
 import { setCollapsedPathsEffect, collapsedPathsField, createPathFoldExtension, getFoldedPaths, extractLinePathTokens } from './pathFoldExtension'
 import { NamespaceSelector } from './NamespaceSelector'
 import { TrieExplorer, buildTrie, TrieNode } from './TrieExplorer'
-import { EditorASTState, astToString, initializeEditorState, emptyEditorState, parseMeTTaString, buildASTFromTokens, mergeTokensIntoAST, unexpandFringe, toggleFold, computeDiff, ASTNode } from './ast'
+import { EditorASTState, astToString, initializeEditorState, emptyEditorState, parseMeTTaString, buildASTFromTokens, mergeTokensIntoAST, unexpandFringe, hasFringeDescendant, computeDiff, ASTNode } from './ast'
 import { getDisplayContent, getOriginalContent, createASTStateFromTokens, stripNamespacePrefix } from './editorASTUtils'
 
 // Components
@@ -225,6 +225,9 @@ const App: Component = () => {
     // Space State
     const [token, setToken] = createSignal<Token>()
     const [namespaces, setNamespaces] = createSignal<string[]>([])
+
+    // Annotation to skip AST re-parse in updateListener for programmatic edits
+    const programmaticEdit = Annotation.define<boolean>()
 
     // Panels State
     const [panels, setPanels] = createSignal<EditorPanel[]>([])
@@ -329,7 +332,7 @@ const App: Component = () => {
                     ...lintKeymap,
                 ]),
                 EditorView.updateListener.of((update) => {
-                    if (update.docChanged) {
+                    if (update.docChanged && !update.transactions.some(t => t.annotation(programmaticEdit))) {
                         const content = update.state.doc.toString()
                         const newAST = parseMeTTaString(content, 'manual')
                         untrack(() => {
@@ -499,8 +502,6 @@ const App: Component = () => {
         const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
         if (!path.startsWith(activeNs)) return
         const relPath = path.slice(activeNs.length).replace(/\/$/, '')
-        const segments = relPath.split('/').filter(Boolean)
-        if (!segments.length) return
 
         const astState = p.astState
 
@@ -509,46 +510,23 @@ const App: Component = () => {
             unexpandFringe(astState.ast, astState.nodeMap, relPath)
             unexpandFringe(astState.originalAST, astState.originalNodeMap, relPath)
             astState.expandedPaths.delete(relPath)
-        } else {
-            // Toggle fold state on AST node
-            let nodeToFold: ASTNode | null = null
-            let searchLevel = astState.ast
 
-            for (const seg of segments) {
-                const found = searchLevel.find((n: ASTNode) => n.type === 'expr' && (n as any).key === seg)
-                if (!found) return
-                nodeToFold = found
-                if (nodeToFold.type === 'expr') {
-                  searchLevel = (nodeToFold as any).children
-                }
-            }
+            // Re-render
+            const displayContent = getDisplayContent(astState)
+            setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+            p.view.dispatch(p.view.state.update({
+                changes: { from: 0, to: p.view.state.doc.length, insert: displayContent },
+                annotations: [programmaticEdit.of(true)],
+            }))
 
-            if (nodeToFold && nodeToFold.type === 'expr') {
-              (nodeToFold as any).folded = true
-
-              function foldDescendants(node: ASTNode): void {
-                if (node.type === 'expr') {
-                  const expr = node as any
-                  for (const child of expr.children) {
-                    if (child.type === 'expr') {
-                      child.folded = true
-                      foldDescendants(child)
-                    }
-                  }
-                }
-              }
-              foldDescendants(nodeToFold)
-            }
+            // Remove from collapsed set: the path is now a fringe marker, not a fold
+            const newCollapsed = new Set(p.view.state.field(collapsedPathsField))
+            newCollapsed.delete(relPath)
+            p.view.dispatch({ effects: setCollapsedPathsEffect.of(newCollapsed) })
+            return
         }
 
-        // Re-render
-        const displayContent = getDisplayContent(astState)
-        setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
-        p.view.dispatch(p.view.state.update({
-            changes: { from: 0, to: p.view.state.doc.length, insert: displayContent }
-        }))
-
-        // Update CodeMirror fold state
+        // Regular collapse (non-fringe path): add to collapsed set
         const newCollapsed = new Set(p.view.state.field(collapsedPathsField))
         newCollapsed.add(relPath)
         p.view.dispatch({ effects: setCollapsedPathsEffect.of(newCollapsed) })
@@ -559,9 +537,18 @@ const App: Component = () => {
         if (!p?.view) return
         const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
         if (!path.startsWith(activeNs)) return
+        const relPath = path.slice(activeNs.length).replace(/\/$/, '')
+
+        const currentCollapsed = new Set(p.view.state.field(collapsedPathsField))
+
+        // If this path is NOT a fringe node (no $ child in AST), just remove it from collapsed paths
+        if (!hasFringeDescendant(p.astState.ast, relPath)) {
+            currentCollapsed.delete(relPath)
+            p.view.dispatch({ effects: setCollapsedPathsEffect.of(currentCollapsed) })
+            return
+        }
 
         try {
-            const relPath = path.slice(activeNs.length).replace(/\/$/, '')
             const tokens = await loadFringeAsTokens(path)
 
             // Merge tokens into AST
@@ -580,7 +567,8 @@ const App: Component = () => {
             const displayContent = getDisplayContent(astState)
             setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
             p.view.dispatch(p.view.state.update({
-                changes: { from: 0, to: p.view.state.doc.length, insert: displayContent }
+                changes: { from: 0, to: p.view.state.doc.length, insert: displayContent },
+                annotations: [programmaticEdit.of(true)],
             }))
 
             notify.success(`Explored fringe at '${path}'`)
@@ -588,10 +576,7 @@ const App: Component = () => {
             console.error("Expand exploration failed:", e)
         }
 
-        // Remove this path from the collapsed set (children remain folded)
-        const segments = path.slice(activeNs.length).split('/').filter(Boolean)
-        if (!segments.length) return
-        const relPath = path.slice(activeNs.length).replace(/\/$/, '')
+        // Also remove from the collapsed set so CM decoration updates
         const newCollapsed = new Set(p.view.state.field(collapsedPathsField))
         newCollapsed.delete(relPath)
         p.view.dispatch({ effects: setCollapsedPathsEffect.of(newCollapsed) })

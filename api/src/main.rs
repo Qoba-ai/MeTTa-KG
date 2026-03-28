@@ -13,8 +13,10 @@ mod schema;
 fn rocket() -> Rocket<Build> {
     // TODO: move hardcoded allowed origins to database,
     // or get backend and frontend hosted under same domain
-    let allowed_origins =
-        AllowedOrigins::some_exact(&["http://localhost:3000", "https://metta-kg.vercel.app"]);
+    let allowed_origins = AllowedOrigins::some_regex(&[
+        r"^http://localhost:(3\d{3}|4000)$",
+        r"^https://metta-kg\.vercel\.app$",
+    ]);
 
     let cors = rocket_cors::CorsOptions {
         allowed_origins,

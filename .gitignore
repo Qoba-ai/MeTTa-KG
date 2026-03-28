@@ -21,3 +21,11 @@ temp/
 
 venv/
 __pycache__/
+
+static/**
+temp/**
+mork-openapi.yaml
+
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report

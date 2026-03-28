@@ -20,7 +20,6 @@ export interface ExprNode extends BaseNode {
   type: 'expr'
   key: string
   children: ASTNode[]
-  folded: boolean
   expandedFrom?: string  // fringePath this atom was added from expand, used for re-collapse
 }
 
@@ -38,7 +37,6 @@ export type ASTDocument = ASTNode[]
 export interface EditorASTState {
   ast: ASTDocument
   nodeMap: Map<string, ASTNode>
-  foldedPaths: Set<string>
   expandedPaths: Set<string>
   originalAST: ASTDocument
   originalNodeMap: Map<string, ASTNode>
@@ -118,7 +116,6 @@ export function parseTokensToAST(tokens: string[], source: 'manual' | 'loaded' =
       type: 'expr',
       key,
       children,
-      folded: false,
       id: generateId(),
       source,
     }
@@ -196,8 +193,7 @@ function tokenize(s: string): string[] {
 // ============ Serializer: AST → String ============
 
 /**
- * Convert AST back to MeTTa string, respecting fold state.
- * Folded nodes are replaced with placeholders.
+ * Convert AST back to MeTTa string.
  */
 export function astToString(ast: ASTDocument, nodeMap?: Map<string, ASTNode>): string {
   return ast.map(node => nodeToString(node, nodeMap)).filter(s => s.length > 0).join('\n')
@@ -209,10 +205,6 @@ function nodeToString(node: ASTNode, nodeMap?: Map<string, ASTNode>): string {
   } else if (node.type === 'fringe') {
     return '$'
   } else if (node.type === 'expr') {
-    if (node.folded) {
-      // Don't serialize folded subtrees
-      return ''
-    }
     const childStrs = node.children.map(c => nodeToString(c, nodeMap)).filter(s => s.length > 0)
     if (childStrs.length === 0) {
       return `(${node.key})`
@@ -243,7 +235,7 @@ export function buildASTFromTokens(tokenPaths: string[][]): { ast: ASTDocument; 
       return atom
     }
     const inner = buildAtomFromPath(tokens.slice(1))
-    const expr: ExprNode = { type: 'expr', key: tokens[0], children: [inner], folded: false, id: generateId(), source: 'loaded' }
+    const expr: ExprNode = { type: 'expr', key: tokens[0], children: [inner], id: generateId(), source: 'loaded' }
     nodeMap.set(expr.id, expr)
     return expr
   }
@@ -257,7 +249,7 @@ export function buildASTFromTokens(tokenPaths: string[][]): { ast: ASTDocument; 
     nodeMap.set(fringe.id, fringe)
     let current: ASTNode = fringe
     for (let i = tokensBeforeDollar.length - 1; i >= 0; i--) {
-      const expr: ExprNode = { type: 'expr', key: tokensBeforeDollar[i], children: [current], folded: false, id: generateId(), source: 'loaded' }
+      const expr: ExprNode = { type: 'expr', key: tokensBeforeDollar[i], children: [current], id: generateId(), source: 'loaded' }
       nodeMap.set(expr.id, expr)
       current = expr
     }
@@ -310,7 +302,12 @@ export function mergeTokensIntoAST(
 ): void {
   function hasDescendantFringe(node: ASTNode, path: string): boolean {
     if (node.type === 'fringe') return (node as FringeNode).path === path
-    if (node.type === 'expr') return (node as ExprNode).children.some(c => hasDescendantFringe(c, path))
+    if (node.type === 'expr') {
+      const exprNode = node as ExprNode
+      // After parseMeTTaString re-parses editor content, $ appears as AtomNode
+      if (exprNode.key === path && exprNode.children.some(c => c.type === 'atom' && (c as AtomNode).value === '$')) return true
+      return exprNode.children.some(c => hasDescendantFringe(c, path))
+    }
     return false
   }
 
@@ -392,52 +389,22 @@ export function unexpandFringe(
 // ============ Folding Operations ============
 
 /**
- * Toggle fold state on a node at a given path.
- * If folding, cascade: mark all descendants as folded too.
+ * Check if a node at a given path in the AST is a fringe node (contains a $ child).
  */
-export function toggleFold(ast: ASTDocument, path: string, foldedPaths: Set<string>): void {
-  const pathParts = path.split('/').filter(Boolean)
-  let node = findNodeByPath(ast, pathParts)
+export function hasFringeDescendant(nodes: ASTNode[], relPath: string): boolean {
+  const parts = relPath.split('/').filter(Boolean)
+  let current: ASTNode[] = nodes
 
-  if (!node || node.type !== 'expr') return
-
-  const exprNode = node as ExprNode
-  exprNode.folded = !exprNode.folded
-
-  if (exprNode.folded) {
-    // Cascade: fold all descendants
-    foldDescendants(exprNode, path, foldedPaths)
-  }
-
-  foldedPaths[exprNode.folded ? 'add' : 'delete'](path)
-}
-
-function findNodeByPath(ast: ASTDocument, pathParts: string[]): ASTNode | null {
-  let current: ASTNode[] = ast
-
-  for (const part of pathParts) {
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
     const found = current.find(n => n.type === 'expr' && (n as ExprNode).key === part)
-    if (!found) return null
-    if (found.type === 'expr') {
-      current = (found as ExprNode).children
-    } else {
-      return found
+    if (!found) return false
+    if (i === parts.length - 1) {
+      return (found as ExprNode).children.some(c => c.type === 'fringe' || (c.type === 'atom' && (c as AtomNode).value === '$'))
     }
+    current = (found as ExprNode).children
   }
-
-  return current.length > 0 ? current[0] : null
-}
-
-function foldDescendants(node: ExprNode, basePath: string, foldedPaths: Set<string>): void {
-  for (let i = 0; i < node.children.length; i++) {
-    const child = node.children[i]
-    if (child.type === 'expr') {
-      const childPath = `${basePath}/${(child as ExprNode).key}`
-      ;(child as ExprNode).folded = true
-      foldedPaths.add(childPath)
-      foldDescendants(child as ExprNode, childPath, foldedPaths)
-    }
-  }
+  return false
 }
 
 // ============ Diff Computation ============
@@ -486,7 +453,6 @@ export function initializeEditorState(content: string): EditorASTState {
   return {
     ast,
     nodeMap,
-    foldedPaths: new Set(),
     expandedPaths: new Set(),
     originalAST: ast,
     originalNodeMap: new Map(nodeMap),
@@ -509,7 +475,6 @@ export function emptyEditorState(): EditorASTState {
   return {
     ast: [],
     nodeMap: new Map(),
-    foldedPaths: new Set(),
     expandedPaths: new Set(),
     originalAST: [],
     originalNodeMap: new Map(),

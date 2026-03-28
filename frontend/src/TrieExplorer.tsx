@@ -183,7 +183,13 @@ const TrieBranch: Component<{
         }}
       >
         <Show when={!isLeaf()} fallback={<div style={{ width: "16px" }} />}>
-          <div onClick={toggleOpen}>
+          <div
+            onClick={toggleOpen}
+            data-testid="trie-toggle"
+            data-trie-path={props.path}
+            data-trie-open={isOpen() ? "true" : "false"}
+            data-trie-fringe={props.node.isFringe ? "true" : "false"}
+          >
             {isOpen() ? <VsChevronDown size={18} /> : <VsChevronRight size={18} />}
           </div>
         </Show>

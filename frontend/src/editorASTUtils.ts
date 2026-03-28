@@ -40,7 +40,6 @@ export function createASTStateFromTokens(tokenPaths: string[][], namespace?: str
   return {
     ast,
     nodeMap,
-    foldedPaths: new Set(),
     expandedPaths: new Set(),
     originalAST: JSON.parse(JSON.stringify(ast)) as typeof ast, // deep copy for original
     originalNodeMap: new Map(nodeMap),
