@@ -13,7 +13,7 @@ use crate::{
     events::{EventBus, SpaceEvent},
     model::Token,
 };
-use mork_client::{MorkClient, MorkError, NamespaceInfo, Permission};
+use mork_client::{ExploreResult, MorkClient, MorkError, NamespaceInfo, Permission};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -193,7 +193,7 @@ pub async fn copy(token: Token, src_path: PathBuf, dst_path: String) -> Result<J
 // ─── Explore ─────────────────────────────────────────────────────────────────
 
 #[get("/explore")]
-pub async fn explore_root(token: Token) -> Result<Json<Vec<(String, Option<String>)>>, Status> {
+pub async fn explore_root(token: Token) -> Result<Json<ExploreResult>, Status> {
     explore(token, PathBuf::new(), String::new()).await
 }
 
@@ -202,7 +202,7 @@ pub async fn explore(
     token: Token,
     path: PathBuf,
     focus_token: String,
-) -> Result<Json<Vec<(String, Option<String>)>>, Status> {
+) -> Result<Json<ExploreResult>, Status> {
     let perm = permission_from_token(&token);
 
     get_mork_client()

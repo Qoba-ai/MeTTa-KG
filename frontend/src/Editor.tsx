@@ -783,44 +783,58 @@ const App: Component = () => {
             })
             if (!res.ok) throw new Error(`Status ${res.status}`)
             const data = await res.json()
-            const parsed: any[] = typeof data === 'string' ? (data.trim() === '' ? [] : JSON.parse(data)) : data
+
+            // New format: ExploreResult struct with subspaces and metta_expressions
+            const exploreResult = data
+            const subspaces = exploreResult.subspaces || []
+            const mettaExpressions = exploreResult.metta_expressions || []
+            const resultFocusToken = exploreResult.focus_token
 
             // Store focus tokens for future expansion
             const newTokens = new Map(focusTokens())
 
-            // New format: array of [mettaString, focusToken] pairs
-            // Multiple items can have the same mettaString with different focusTokens
-            // Convert to token format using "!" marker for raw expressions
-            const result: string[][] = []
-            const seenExpressions = new Set<string>()
-
-            for (const item of parsed) {
-                if (!Array.isArray(item) || item.length < 1) continue
-                const mettaString = item[0]
-                const itemFocusToken = item[1]
-
-                // Store focus token if present
-                if (itemFocusToken) {
-                    // The MeTTa string contains the full path structure
-                    // Convert to absolute path using sexprToPath
-                    const absolutePath = sexprToPath(mettaString)
-
-                    // Append focus token to the array for this path
-                    const existingTokens = newTokens.get(absolutePath) || []
-                    if (!existingTokens.includes(itemFocusToken)) {
-                        existingTokens.push(itemFocusToken)
-                    }
-                    newTokens.set(absolutePath, existingTokens)
+            // Store the focus token for the current namespace if present
+            if (resultFocusToken) {
+                const currentPath = path.endsWith('/') ? path : path + '/'
+                const existingTokens = newTokens.get(currentPath) || []
+                if (!existingTokens.includes(resultFocusToken)) {
+                    existingTokens.push(resultFocusToken)
                 }
+                newTokens.set(currentPath, existingTokens)
+            }
 
-                // Only add unique MeTTa expressions to result (avoid duplicates)
-                if (!seenExpressions.has(mettaString)) {
-                    seenExpressions.add(mettaString)
-                    result.push(["!", mettaString])
+            // Process subspaces and store their focus tokens
+            for (const [mettaString, subspacePath] of subspaces) {
+                if (subspacePath) {
+                    const normalizedPath = subspacePath.startsWith('/') ? subspacePath : '/' + subspacePath
+                    const pathWithSlash = normalizedPath.endsWith('/') ? normalizedPath : normalizedPath + '/'
+
+                    // Store a placeholder token for subspaces (will be fetched when expanded)
+                    if (!newTokens.has(pathWithSlash)) {
+                        newTokens.set(pathWithSlash, [])
+                    }
                 }
             }
 
             setFocusTokens(newTokens)
+
+            // Convert to token format: subspaces first, then metta_expressions
+            const result: string[][] = []
+
+            // Add subspaces at the top
+            for (const [mettaString, _path] of subspaces) {
+                if (mettaString) {
+                    result.push(["!", mettaString])
+                }
+            }
+
+            // Add metta_expressions below
+            for (const expr of mettaExpressions) {
+                if (expr) {
+                    result.push(["!", expr])
+                }
+            }
+
             return result
         } catch (e) {
             console.error("Explore API failed:", e)
