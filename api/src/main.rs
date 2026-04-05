@@ -1,7 +1,9 @@
+use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
 use rocket::http::Method;
 use rocket::{self, launch, routes, Build, Rocket};
 use rocket_cors::AllowedOrigins;
+use tokio::sync::broadcast;
 
 mod db;
 mod events;
@@ -9,8 +11,32 @@ mod model;
 mod routes;
 mod schema;
 
+pub struct Shutdown(pub broadcast::Sender<()>);
+
+struct ShutdownFairing;
+
+#[rocket::async_trait]
+impl Fairing for ShutdownFairing {
+    fn info(&self) -> Info {
+        Info {
+            name: "Shutdown Signal Handler",
+            kind: Kind::Liftoff,
+        }
+    }
+
+    async fn on_liftoff(&self, rocket: &Rocket<rocket::Orbit>) {
+        let shutdown_tx = rocket.state::<Shutdown>().unwrap().0.clone();
+        tokio::spawn(async move {
+            let _ = tokio::signal::ctrl_c().await;
+            let _ = shutdown_tx.send(());
+        });
+    }
+}
+
 #[launch]
 fn rocket() -> Rocket<Build> {
+    let (shutdown_tx, _) = broadcast::channel::<()>(1);
+
     // TODO: move hardcoded allowed origins to database,
     // or get backend and frontend hosted under same domain
     let allowed_origins = AllowedOrigins::some_regex(&[
@@ -31,6 +57,7 @@ fn rocket() -> Rocket<Build> {
 
     rocket::build()
         .manage(events::EventBus::new())
+        .manage(Shutdown(shutdown_tx))
         .mount(
             "/",
             routes![
@@ -76,4 +103,5 @@ fn rocket() -> Rocket<Build> {
         )
         .mount("/public", FileServer::from("static"))
         .attach(cors)
+        .attach(ShutdownFairing)
 }

@@ -1,15 +1,11 @@
+use itertools::izip;
+use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
+use queue::Queue;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use percent_encoding::{percent_encode, NON_ALPHANUMERIC};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
-use async_stream::try_stream;
-use futures_core::stream::Stream;
-use std::pin::Pin;
-use tokio_stream::StreamExt;
-use std::collections::{VecDeque, HashSet};
-use std::path::{Path, Component, PathBuf};
-
-// ─── Explore (unchanged) ────────────────────────────────────────────────────
+use std::vec;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExploreNodeData {
@@ -21,14 +17,38 @@ pub struct ExploreNodeData {
 pub struct Explore {
     client: Arc<Client>,
     pub base_url: String,
+    pub path: PathBuf,
     pub pattern: String,
     pub token: String,
     pub data: Option<Vec<ExploreNodeData>>,
+    pub parent: Option<ExploreNodeData>,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum Arity {
+    TWO,
+    NONTWO,
+    ANY,
 }
 
 impl Explore {
-    pub fn new(client: Arc<Client>, base_url: String, pattern: String, token: String) -> Self {
-        Self { client, base_url, pattern, token, data: None }
+    pub fn new(
+        client: Arc<Client>,
+        base_url: String,
+        path: PathBuf,
+        pattern: String,
+        token: String,
+        parent: Option<ExploreNodeData>,
+    ) -> Self {
+        Self {
+            client,
+            base_url,
+            path,
+            pattern,
+            token,
+            data: None,
+            parent: parent,
+        }
     }
 
     pub async fn dispatch(&mut self) -> Result<(), reqwest::Error> {
@@ -36,101 +56,136 @@ impl Explore {
         let url = if self.token.is_empty() {
             format!("{}/explore/{}//", self.base_url, pattern_encoded)
         } else {
-            format!("{}/explore/{}/{}/", self.base_url, pattern_encoded, self.token)
+            format!(
+                "{}/explore/{}/{}/",
+                self.base_url, pattern_encoded, self.token
+            )
         };
         let res = self.client.get(&url).send().await?;
         if res.status().is_success() {
-            let data: Vec<ExploreNodeData> = res.json().await?;
+            let data = res.json().await?;
             self.data = Some(data);
         }
         Ok(())
     }
 
-    pub fn values(&self) -> Vec<String> {
-        self.data.as_ref().map_or(vec![], |d| d.iter().map(|item| item.expr.clone()).collect())
-    }
+    pub fn children(&self, aritytype: Arity) -> Vec<Explore> {
+        let mut result: Vec<Explore> = Vec::new();
 
-    pub fn descend(&self, i: usize) -> Option<Self> {
-        let data = self.data.as_ref()?;
-        let item = data.get(i)?;
-        let new_token = percent_encode(&item.token, NON_ALPHANUMERIC).to_string();
-        Some(Self::new(self.client.clone(), self.base_url.clone(), self.pattern.clone(), new_token))
-    }
-
-    pub fn children(&self) -> Vec<Self> {
-        let mut children = Vec::new();
         if let Some(data) = &self.data {
-            for item in data {
-                let new_token = percent_encode(&item.token, NON_ALPHANUMERIC).to_string();
-                children.push(Self::new(self.client.clone(), self.base_url.clone(), self.pattern.clone(), new_token));
+            for entry in data {
+                if let Some(stripped) = strip_prefix(&entry.expr, &self.path) {
+                    if aritytype == Arity::ANY
+                        || (self.arity(&stripped) != 2 && aritytype == Arity::NONTWO)
+                        || (self.arity(&stripped) == 2 && aritytype == Arity::TWO)
+                    {
+                        let token_encoded =
+                            percent_encode(&entry.token, NON_ALPHANUMERIC).to_string();
+
+                        result.push(Explore::new(
+                            self.client.clone(),
+                            self.base_url.clone(),
+                            self.path.clone(),
+                            self.pattern.clone(),
+                            token_encoded,
+                            Some(entry.clone()),
+                        ));
+                    }
+                }
             }
         }
-        children
+        result
     }
 
-    pub fn levels(self) -> impl Stream<Item = Result<Vec<Explore>, reqwest::Error>> + Send {
-        try_stream! {
-            let mut frontier = vec![self];
-            while !frontier.is_empty() {
-                for c in &mut frontier { c.dispatch().await?; }
-                yield frontier.clone();
-                let mut new_frontier = Vec::new();
-                for c in frontier { new_frontier.extend(c.children()); }
-                frontier = new_frontier;
+    pub fn values(&self, aritytype: Arity) -> Vec<String> {
+        let mut result: Vec<String> = Vec::new();
+
+        if let Some(data) = &self.data {
+            for entry in data {
+                if let Some(stripped) = strip_prefix(&entry.expr, &self.path) {
+                    if aritytype == Arity::ANY
+                        || (self.arity(&stripped) != 2 && aritytype == Arity::NONTWO)
+                        || (self.arity(&stripped) == 2 && aritytype == Arity::TWO)
+                    {
+                        result.push(entry.expr.clone());
+                    }
+                }
             }
         }
+
+        result
     }
 
-    pub fn forward(self) -> impl Stream<Item = Result<String, reqwest::Error>> + Send {
-        try_stream! {
-            let children = self.children();
-            let values = self.values();
-            for (value, child) in values.into_iter().zip(children.into_iter()) {
-                yield value;
-                let mut stream = Self::traverse_forward(child);
-                while let Some(res) = stream.next().await { yield res?; }
+    pub fn tokens(&self, aritytype: Arity) -> Vec<String> {
+        let mut result: Vec<String> = Vec::new();
+
+        if let Some(data) = &self.data {
+            for entry in data {
+                if let Some(stripped) = strip_prefix(&entry.expr, &self.path) {
+                    if aritytype == Arity::ANY
+                        || (self.arity(&stripped) != 2 && aritytype == Arity::NONTWO)
+                        || (self.arity(&stripped) == 2 && aritytype == Arity::TWO)
+                    {
+                        let encoded = percent_encode(&entry.token, NON_ALPHANUMERIC).to_string();
+
+                        result.push(encoded);
+                    }
+                }
             }
         }
+
+        result
     }
 
-    fn traverse_forward(mut n: Explore) -> Pin<Box<dyn Stream<Item = Result<String, reqwest::Error>> + Send>> {
-        Box::pin(try_stream! {
-            n.dispatch().await?;
-            let n_children = n.children();
-            let n_values = n.values();
-            for (n_idx, n_child) in n_children.into_iter().enumerate() {
-                if n_idx > 0 { yield n_values[n_idx].clone(); }
-                let mut stream = Self::traverse_forward(n_child);
-                while let Some(res) = stream.next().await { yield res?; }
-            }
-        })
-    }
+    pub fn arity(&self, expr: &String) -> usize {
+        let trimmed = expr.trim();
 
-    pub fn backward(self) -> impl Stream<Item = Result<String, reqwest::Error>> + Send {
-        try_stream! {
-            let children = self.children();
-            let values = self.values();
-            for (value, child) in values.into_iter().rev().zip(children.into_iter().rev()) {
-                let mut stream = Self::traverse_backward(child);
-                while let Some(res) = stream.next().await { yield res?; }
-                yield value;
+        // Check if it's an S-expression (must have outer parentheses)
+        if !trimmed.starts_with('(') || !trimmed.ends_with(')') {
+            return 0;
+        }
+
+        // Remove outer parentheses
+        let inner = &trimmed[1..trimmed.len() - 1];
+
+        let mut count = 0;
+        let mut depth = 0;
+        let mut in_token = false;
+
+        for ch in inner.chars() {
+            match ch {
+                '(' => {
+                    if depth == 0 && !in_token {
+                        in_token = true;
+                        count += 1;
+                    }
+                    depth += 1;
+                }
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        in_token = false;
+                    }
+                }
+                c if c.is_whitespace() => {
+                    if depth == 0 {
+                        in_token = false;
+                    }
+                }
+                _ => {
+                    if depth == 0 && !in_token {
+                        in_token = true;
+                        count += 1;
+                    }
+                }
             }
         }
-    }
 
-    fn traverse_backward(mut n: Explore) -> Pin<Box<dyn Stream<Item = Result<String, reqwest::Error>> + Send>> {
-        Box::pin(try_stream! {
-            n.dispatch().await?;
-            let n_children = n.children();
-            let n_values = n.values();
-            for (n_idx, n_child) in n_children.into_iter().rev().enumerate() {
-                let mut stream = Self::traverse_backward(n_child);
-                while let Some(res) = stream.next().await { yield res?; }
-                yield n_values[n_values.len() - n_idx - 1].clone();
-            }
-        })
+        count
     }
 }
+
+/*
 
 /// Converts a list of string tokens into a MeTTa S-expression pattern.
 /// For example, `["foo", "bar"]` becomes `"(foo (bar $))"`.
@@ -158,7 +213,12 @@ pub async fn explore_fringe_bfs_2_levels<S: AsRef<str> + Clone>(
     let mut new_fringe = Vec::new();
     let explore_base_pattern = tokens_to_sexpr(space_root_path_tokens);
     let base_len = target_path_tokens.len();
-    let explore = Explore::new(client.clone(), base_url.to_string(), explore_base_pattern.clone(), String::new());
+    let explore = Explore::new(
+        client.clone(),
+        base_url.to_string(),
+        explore_base_pattern.clone(),
+        String::new(),
+    );
     let mut next_paths = HashSet::new();
 
     let extract_path = |expr: &str| -> Vec<String> {
@@ -171,7 +231,9 @@ pub async fn explore_fringe_bfs_2_levels<S: AsRef<str> + Clone>(
     let mut processed_nodes = 0;
 
     while let Some(mut current) = mork_frontier.pop_front() {
-        if processed_nodes >= 200 { break; }
+        if processed_nodes >= 200 {
+            break;
+        }
         processed_nodes += 1;
 
         if let Err(e) = current.dispatch().await {
@@ -185,17 +247,27 @@ pub async fn explore_fringe_bfs_2_levels<S: AsRef<str> + Clone>(
                 if parsed_full_path.len() >= space_root_path_tokens.len()
                     && parsed_full_path[0..space_root_path_tokens.len()] == *space_root_path_tokens
                 {
-                    let relative_path: Vec<String> = parsed_full_path[space_root_path_tokens.len()..].to_vec();
-                    if relative_path.starts_with(&target_path_tokens.iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>()) {
+                    let relative_path: Vec<String> =
+                        parsed_full_path[space_root_path_tokens.len()..].to_vec();
+                    if relative_path.starts_with(
+                        &target_path_tokens
+                            .iter()
+                            .map(|s| s.as_ref().to_string())
+                            .collect::<Vec<String>>(),
+                    ) {
                         let relative_base_len = target_path_tokens.len();
                         let target_len = std::cmp::min(relative_path.len(), relative_base_len + 2);
                         if target_len > relative_base_len {
                             let mut sub_path = relative_path[0..target_len].to_vec();
-                            if relative_path.len() > target_len { sub_path.push("$".to_string()); }
+                            if relative_path.len() > target_len {
+                                sub_path.push("$".to_string());
+                            }
                             let mut final_path = space_root_path_tokens.to_vec();
                             final_path.extend(sub_path);
                             next_paths.insert(final_path);
-                        } else if relative_path.len() == relative_base_len && !relative_path.is_empty() {
+                        } else if relative_path.len() == relative_base_len
+                            && !relative_path.is_empty()
+                        {
                             if relative_path.len() <= relative_base_len + 2 {
                                 let mut final_path = space_root_path_tokens.to_vec();
                                 final_path.extend(relative_path);
@@ -212,11 +284,14 @@ pub async fn explore_fringe_bfs_2_levels<S: AsRef<str> + Clone>(
         }
     }
 
-    for path in next_paths { new_fringe.push(path); }
+    for path in next_paths {
+        new_fringe.push(path);
+    }
     new_fringe.sort();
     new_fringe.dedup();
     Ok(new_fringe)
 }
+*/
 
 // ─── Permission ─────────────────────────────────────────────────────────────
 
@@ -233,7 +308,11 @@ impl std::fmt::Display for PermissionError {
             PermissionError::ReadRequired => write!(f, "read permission required"),
             PermissionError::WriteRequired => write!(f, "write permission required"),
             PermissionError::NamespaceMismatch { path, namespace } => {
-                write!(f, "path '{}' is outside token namespace '{}'", path, namespace)
+                write!(
+                    f,
+                    "path '{}' is outside token namespace '{}'",
+                    path, namespace
+                )
             }
         }
     }
@@ -250,20 +329,34 @@ pub struct Permission {
 
 impl Permission {
     pub fn new(namespace: impl Into<String>, can_read: bool, can_write: bool) -> Self {
-        Self { namespace: namespace.into(), can_read, can_write }
+        Self {
+            namespace: namespace.into(),
+            can_read,
+            can_write,
+        }
     }
 
     pub fn require_read(&self) -> Result<(), PermissionError> {
-        if self.can_read { Ok(()) } else { Err(PermissionError::ReadRequired) }
+        if self.can_read {
+            Ok(())
+        } else {
+            Err(PermissionError::ReadRequired)
+        }
     }
 
     pub fn require_write(&self) -> Result<(), PermissionError> {
-        if self.can_write { Ok(()) } else { Err(PermissionError::WriteRequired) }
+        if self.can_write {
+            Ok(())
+        } else {
+            Err(PermissionError::WriteRequired)
+        }
     }
 
     /// Returns an error if `path` is not under this token's namespace.
     pub fn check_namespace(&self, path: &Path) -> Result<(), PermissionError> {
-        if self.namespace.is_empty() { return Ok(()); }
+        if self.namespace.is_empty() {
+            return Ok(());
+        }
         if !path.starts_with(&self.namespace) {
             return Err(PermissionError::NamespaceMismatch {
                 path: path.to_string_lossy().into_owned(),
@@ -285,11 +378,15 @@ pub enum MorkError {
 }
 
 impl From<PermissionError> for MorkError {
-    fn from(e: PermissionError) -> Self { MorkError::Permission(e) }
+    fn from(e: PermissionError) -> Self {
+        MorkError::Permission(e)
+    }
 }
 
 impl From<reqwest::Error> for MorkError {
-    fn from(e: reqwest::Error) -> Self { MorkError::Http(e) }
+    fn from(e: reqwest::Error) -> Self {
+        MorkError::Http(e)
+    }
 }
 
 // ─── Path helper ────────────────────────────────────────────────────────────
@@ -306,6 +403,65 @@ pub fn path_to_sexpr(path: &Path) -> String {
     sexpr
 }
 
+pub fn n_ary_pattern(n: usize) -> String {
+    let mut result = String::new();
+
+    result.push('(');
+
+    for i in 0..n {
+        result.push_str(format!("${} ", i).as_str());
+    }
+
+    result.push(')');
+
+    result
+}
+
+pub fn is_balanced(s: &str) -> bool {
+    let mut depth = 0;
+    for c in s.chars() {
+        if c == '(' {
+            depth += 1;
+        } else if c == ')' {
+            depth -= 1;
+            if depth < 0 {
+                return false;
+            }
+        }
+    }
+    depth == 0
+}
+
+pub fn parse_binary_sexp(input: &str) -> Option<(&str, &str)> {
+    let inner = input.strip_prefix('(')?.strip_suffix(')')?;
+
+    let (lhs, rhs) = inner.split_once(' ')?;
+
+    if lhs.contains('(') || lhs.contains(')') {
+        return None;
+    }
+
+    if is_balanced(rhs) {
+        Some((lhs, rhs.trim()))
+    } else {
+        None
+    }
+}
+
+pub fn strip_prefix(input: &str, path: &Path) -> Option<String> {
+    let mut inner = input;
+
+    for component in path.components() {
+        inner = inner.strip_prefix('(')?.strip_suffix(')')?.trim();
+
+        if let Some(s) = component.as_os_str().to_str() {
+            inner = inner.strip_prefix(s)?.trim();
+        }
+    }
+
+    Some(String::from(inner.trim()))
+}
+
 // ─── MorkClient ─────────────────────────────────────────────────────────────
 
 /// HTTP client for all MORK operations. Every method enforces the supplied
@@ -318,7 +474,10 @@ pub struct MorkClient {
 
 impl MorkClient {
     pub fn new(base_url: impl Into<String>) -> Self {
-        Self { client: Arc::new(Client::new()), base_url: base_url.into() }
+        Self {
+            client: Arc::new(Client::new()),
+            base_url: base_url.into(),
+        }
     }
 
     fn base(&self) -> &str {
@@ -383,7 +542,12 @@ impl MorkClient {
     }
 
     /// Copy `src_path` to `dst_path`. Requires read + write on both.
-    pub async fn copy(&self, perm: &Permission, src_path: &Path, dst_path: &Path) -> Result<(), MorkError> {
+    pub async fn copy(
+        &self,
+        perm: &Permission,
+        src_path: &Path,
+        dst_path: &Path,
+    ) -> Result<(), MorkError> {
         perm.require_read()?;
         perm.require_write()?;
         perm.check_namespace(src_path)?;
@@ -415,13 +579,19 @@ impl MorkClient {
             perm.check_namespace(path)?;
         }
 
-        let patterns: Vec<String> = input_spaces.iter()
+        let patterns: Vec<String> = input_spaces
+            .iter()
             .map(|(path, pat)| path_to_sexpr(path).replace("$", pat))
             .collect();
-        let templates: Vec<String> = output_spaces.iter()
+        let templates: Vec<String> = output_spaces
+            .iter()
             .map(|(path, tmpl)| path_to_sexpr(path).replace("$", tmpl))
             .collect();
-        let body = format!("(transform (, {}) (, {}) )", patterns.join(" "), templates.join(" "));
+        let body = format!(
+            "(transform (, {}) (, {}) )",
+            patterns.join(" "),
+            templates.join(" ")
+        );
 
         let url = format!("{}/transform", self.base());
         let resp = self.client.post(&url).body(body).send().await?;
@@ -440,20 +610,32 @@ impl MorkClient {
         is_writer: bool,
     ) -> Result<String, MorkError> {
         perm.check_namespace(path)?;
-        if is_writer { perm.require_write()? } else { perm.require_read()? };
+        if is_writer {
+            perm.require_write()?
+        } else {
+            perm.require_read()?
+        };
 
         let pattern = path_to_sexpr(path);
         let mut url = format!(
             "{}/busywait/{}/?expr1={}",
-            self.base(), millis, Self::enc(&pattern),
+            self.base(),
+            millis,
+            Self::enc(&pattern),
         );
-        if is_writer { url.push_str("&writer1"); }
+        if is_writer {
+            url.push_str("&writer1");
+        }
         let resp = self.client.get(&url).send().await?;
         Ok(resp.text().await?)
     }
 
     /// Poll the status of a space operation. Requires read.
-    pub async fn status(&self, perm: &Permission, path: &Path) -> Result<serde_json::Value, MorkError> {
+    pub async fn status(
+        &self,
+        perm: &Permission,
+        path: &Path,
+    ) -> Result<serde_json::Value, MorkError> {
         perm.require_read()?;
         perm.check_namespace(path)?;
 
@@ -502,21 +684,141 @@ impl MorkClient {
     pub async fn explore(
         &self,
         perm: &Permission,
-        space_root_tokens: &[String],
-        target_path_tokens: &[String],
-    ) -> Result<Vec<Vec<String>>, MorkError> {
+        path: &PathBuf,
+        focus_token: &String,
+    ) -> Result<Vec<(String, Option<String>)>, MorkError> {
         perm.require_read()?;
-        let space_root_path = PathBuf::from(space_root_tokens.join("/"));
-        perm.check_namespace(&space_root_path)?;
+        perm.check_namespace(path)?;
 
-        explore_fringe_bfs_2_levels(
+        let mut result: Vec<(String, Option<String>)> = vec![];
+
+        // let pattern = path_to_sexpr(path);
+
+        let pattern = String::from("$");
+
+        let mut queue = Queue::<Explore>::new();
+        let mut visited_tokens = std::collections::HashSet::new();
+
+        // Track the initial token if provided
+        if !focus_token.is_empty() {
+            visited_tokens.insert(focus_token.clone());
+        }
+
+        let mut explore = Explore::new(
             self.client.clone(),
-            &self.base_url,
-            space_root_tokens,
-            target_path_tokens,
-        )
-        .await
-        .map_err(MorkError::Http)
+            self.base_url.clone(),
+            path.clone(),
+            pattern.clone(),
+            focus_token.clone(),
+            None,
+        );
+
+        explore.dispatch().await?;
+
+        let children = explore.children(Arity::ANY);
+
+        for c2 in children {
+            if visited_tokens.insert(c2.token.clone()) {
+                queue.queue(c2).expect("FAILED TO QUEUE");
+            }
+        }
+
+        while let Some(mut e) = queue.dequeue() {
+            e.dispatch().await?;
+
+            println!("{:#?} {}", visited_tokens, e.clone().token);
+
+            let nr_children = e.children(Arity::ANY).len();
+
+            if nr_children == 0 || nr_children == 1 {
+                if let Some(parent) = e.parent {
+                    result.push((parent.expr, None));
+                }
+
+                continue;
+            }
+
+            let nary_children = e.children(Arity::NONTWO);
+
+            for c in nary_children {
+                if visited_tokens.insert(c.token.clone()) {
+                    queue.queue(c.clone()).expect("FAILED TO QUEUE");
+                }
+            }
+
+            let binary_values = e.values(Arity::TWO);
+            let binary_tokens = e.tokens(Arity::TWO);
+
+            for (v, t) in izip!(binary_values, binary_tokens) {
+                if let Some(stripped) = strip_prefix(v.as_str(), &path) {
+                    if let Some((lhs, rhs)) = parse_binary_sexp(&stripped.as_str()) {
+                        let replaced = v.replace(
+                            format!("({} {})", lhs, rhs).as_str(),
+                            format!("({} $)", lhs).as_str(),
+                        );
+
+                        println!("{} {}", replaced, v);
+
+                        result.push((replaced, Some(t)));
+                    }
+                }
+            }
+        }
+
+        /*
+        while let Some(mut explore) = queue.dequeue() {
+            explore.dispatch().await?;
+
+            println!("{} {} {:#?}", pattern, focus_token, explore.data);
+
+            let children = explore.children_non_binary();
+
+            if children.len() == 0 {
+                if let Some(parent) = explore.parent {
+                    result.push((parent.expr, None));
+                }
+            } else {
+                for c in children {
+                    queue.queue(c).expect("FAILED TO QUEUE");
+                }
+            }
+        }
+
+        let binary_nested_path = path.join(PathBuf::from("$l"));
+        let binary_nested_pattern = path_to_sexpr(&binary_nested_path);
+
+        let mut binary_explorer = Explore::new(
+            self.client.clone(),
+            self.base_url.clone(),
+            path.clone(),
+            binary_nested_pattern,
+            focus_token.clone(),
+            None,
+        );
+
+        binary_explorer.dispatch().await?;
+
+        for (expr, token) in binary_explorer
+            .binary_values()
+            .iter()
+            .zip(binary_explorer.binary_tokens())
+        {
+            if let Some(stripped) = strip_prefix(expr.as_str(), &path) {
+                if let Some((lhs, rhs)) = parse_binary_sexp(&stripped.as_str()) {
+                    let replaced = pattern
+                        .clone()
+                        .replace("$", format!("({} $)", lhs).as_str());
+
+                    result.push((replaced, Some(token)));
+                }
+            } else {
+            }
+        }
+         */
+
+        println!("{:#?}", result);
+
+        Ok(result)
     }
 }
 
@@ -533,9 +835,15 @@ mod tests {
         MorkClient::new("http://127.0.0.1:19999")
     }
 
-    fn read_only(ns: &str) -> Permission { Permission::new(ns, true, false) }
-    fn write_only(ns: &str) -> Permission { Permission::new(ns, false, true) }
-    fn read_write(ns: &str) -> Permission { Permission::new(ns, true, true) }
+    fn read_only(ns: &str) -> Permission {
+        Permission::new(ns, true, false)
+    }
+    fn write_only(ns: &str) -> Permission {
+        Permission::new(ns, false, true)
+    }
+    fn read_write(ns: &str) -> Permission {
+        Permission::new(ns, true, true)
+    }
 
     // ── import ───────────────────────────────────────────────────────────────
 
@@ -543,16 +851,28 @@ mod tests {
     async fn import_requires_write() {
         let err = client()
             .import(&read_only(""), Path::new("space/sub"), "http://x/f.metta")
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::WriteRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::WriteRequired)
+        ));
     }
 
     #[tokio::test]
     async fn import_rejects_wrong_namespace() {
         let err = client()
-            .import(&read_write("other"), Path::new("space/sub"), "http://x/f.metta")
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
+            .import(
+                &read_write("other"),
+                Path::new("space/sub"),
+                "http://x/f.metta",
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
+        ));
     }
 
     // ── export ───────────────────────────────────────────────────────────────
@@ -561,16 +881,24 @@ mod tests {
     async fn export_requires_read() {
         let err = client()
             .export(&write_only(""), Path::new("space/sub"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::ReadRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::ReadRequired)
+        ));
     }
 
     #[tokio::test]
     async fn export_rejects_wrong_namespace() {
         let err = client()
             .export(&read_write("other"), Path::new("space/sub"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
+        ));
     }
 
     // ── clear ────────────────────────────────────────────────────────────────
@@ -579,16 +907,24 @@ mod tests {
     async fn clear_requires_write() {
         let err = client()
             .clear(&read_only(""), Path::new("space/sub"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::WriteRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::WriteRequired)
+        ));
     }
 
     #[tokio::test]
     async fn clear_rejects_wrong_namespace() {
         let err = client()
             .clear(&read_write("other"), Path::new("space/sub"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
+        ));
     }
 
     // ── copy ─────────────────────────────────────────────────────────────────
@@ -597,32 +933,56 @@ mod tests {
     async fn copy_requires_read() {
         let err = client()
             .copy(&write_only(""), Path::new("a"), Path::new("b"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::ReadRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::ReadRequired)
+        ));
     }
 
     #[tokio::test]
     async fn copy_requires_write() {
         let err = client()
             .copy(&read_only(""), Path::new("a"), Path::new("b"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::WriteRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::WriteRequired)
+        ));
     }
 
     #[tokio::test]
     async fn copy_rejects_wrong_namespace_on_src() {
         let err = client()
-            .copy(&read_write("space"), Path::new("other/x"), Path::new("space/y"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
+            .copy(
+                &read_write("space"),
+                Path::new("other/x"),
+                Path::new("space/y"),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
+        ));
     }
 
     #[tokio::test]
     async fn copy_rejects_wrong_namespace_on_dst() {
         let err = client()
-            .copy(&read_write("space"), Path::new("space/x"), Path::new("other/y"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
+            .copy(
+                &read_write("space"),
+                Path::new("space/x"),
+                Path::new("other/y"),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
+        ));
     }
 
     // ── transform ────────────────────────────────────────────────────────────
@@ -633,8 +993,12 @@ mod tests {
         let output = [(Path::new("b") as &Path, "y")];
         let err = client()
             .transform(&write_only(""), &input, &output)
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::ReadRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::ReadRequired)
+        ));
     }
 
     #[tokio::test]
@@ -643,8 +1007,12 @@ mod tests {
         let output = [(Path::new("b") as &Path, "y")];
         let err = client()
             .transform(&read_only(""), &input, &output)
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::WriteRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::WriteRequired)
+        ));
     }
 
     #[tokio::test]
@@ -653,8 +1021,12 @@ mod tests {
         let output = [(Path::new("space/b") as &Path, "y")];
         let err = client()
             .transform(&read_write("space"), &input, &output)
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
+        ));
     }
 
     // ── busywait ─────────────────────────────────────────────────────────────
@@ -663,24 +1035,36 @@ mod tests {
     async fn busywait_reader_requires_read() {
         let err = client()
             .busywait(&write_only(""), Path::new("space"), 100, false)
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::ReadRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::ReadRequired)
+        ));
     }
 
     #[tokio::test]
     async fn busywait_writer_requires_write() {
         let err = client()
             .busywait(&read_only(""), Path::new("space"), 100, true)
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::WriteRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::WriteRequired)
+        ));
     }
 
     #[tokio::test]
     async fn busywait_rejects_wrong_namespace() {
         let err = client()
             .busywait(&read_write("space"), Path::new("other"), 100, false)
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
+        ));
     }
 
     // ── status ───────────────────────────────────────────────────────────────
@@ -689,16 +1073,24 @@ mod tests {
     async fn status_requires_read() {
         let err = client()
             .status(&write_only(""), Path::new("space"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::ReadRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::ReadRequired)
+        ));
     }
 
     #[tokio::test]
     async fn status_rejects_wrong_namespace() {
         let err = client()
             .status(&read_write("space"), Path::new("other"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
+        ));
     }
 
     // ── count ────────────────────────────────────────────────────────────────
@@ -707,38 +1099,24 @@ mod tests {
     async fn count_requires_read() {
         let err = client()
             .count(&write_only(""), Path::new("space"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::ReadRequired)));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::ReadRequired)
+        ));
     }
 
     #[tokio::test]
     async fn count_rejects_wrong_namespace() {
         let err = client()
             .count(&read_write("space"), Path::new("other"))
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
-    }
-
-    // ── explore ──────────────────────────────────────────────────────────────
-
-    #[tokio::test]
-    async fn explore_requires_read() {
-        let root = vec!["space".to_string()];
-        let target = vec!["space".to_string()];
-        let err = client()
-            .explore(&write_only(""), &root, &target)
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::ReadRequired)));
-    }
-
-    #[tokio::test]
-    async fn explore_rejects_wrong_namespace() {
-        let root = vec!["other".to_string()];
-        let target = vec![];
-        let err = client()
-            .explore(&read_write("space"), &root, &target)
-            .await.unwrap_err();
-        assert!(matches!(err, MorkError::Permission(PermissionError::NamespaceMismatch { .. })));
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
+        ));
     }
 
     // ── Permission unit tests ─────────────────────────────────────────────────

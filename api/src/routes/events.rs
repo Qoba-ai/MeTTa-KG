@@ -36,8 +36,10 @@ fn event_in_namespace(event: &SpaceEvent, namespace: &str) -> bool {
 /// Global health/ping WebSocket — no token required.
 /// Sends `{"type":"ping"}` every 5 seconds.
 #[rocket::get("/ws/ping")]
-pub fn ws_ping(ws: ws::WebSocket) -> ws::Channel<'static> {
+pub fn ws_ping(ws: ws::WebSocket, shutdown: &State<crate::Shutdown>) -> ws::Channel<'static> {
     use rocket::tokio::time::{interval, Duration};
+
+    let mut shutdown_rx = shutdown.inner().0.subscribe();
 
     ws.channel(move |stream| {
         Box::pin(async move {
@@ -65,6 +67,10 @@ pub fn ws_ping(ws: ws::WebSocket) -> ws::Channel<'static> {
                             _ => {}
                         }
                     }
+                    _ = shutdown_rx.recv() => {
+                        let _ = sink.send(ws::Message::Close(None)).await;
+                        break;
+                    }
                 }
             }
             Ok(())
@@ -80,6 +86,7 @@ pub fn ws_events(
     ws: ws::WebSocket,
     token_code: String,
     bus: &State<EventBus>,
+    shutdown: &State<crate::Shutdown>,
 ) -> Result<ws::Channel<'static>, Status> {
     let token = validate_token_code(&token_code).ok_or(Status::Unauthorized)?;
 
@@ -89,6 +96,7 @@ pub fn ws_events(
 
     let mut rx: broadcast::Receiver<SpaceEvent> = bus.inner().0.subscribe();
     let namespace = token.namespace.clone();
+    let mut shutdown_rx = shutdown.inner().0.subscribe();
 
     Ok(ws.channel(move |stream| {
         Box::pin(async move {
@@ -118,6 +126,10 @@ pub fn ws_events(
                             _ => {}
                         }
                     }
+                    _ = shutdown_rx.recv() => {
+                        let _ = sink.send(ws::Message::Close(None)).await;
+                        break;
+                    }
                 }
             }
             Ok(())
@@ -133,6 +145,7 @@ async fn ws_status_inner(
     ws: ws::WebSocket,
     path: PathBuf,
     token_code: String,
+    shutdown: &State<crate::Shutdown>,
 ) -> Result<ws::Channel<'static>, Status> {
     let token = validate_token_code(&token_code).ok_or(Status::Unauthorized)?;
     if !token.permission_read {
@@ -153,6 +166,8 @@ async fn ws_status_inner(
     let mork_base = mork_base.trim_end_matches('/').to_string();
     let status_url  = format!("{}/status/{}", mork_base, encoded);
     let stream_url  = format!("{}/status_stream/{}", mork_base, encoded);
+
+    let mut shutdown_rx = shutdown.inner().0.subscribe();
 
     Ok(ws.channel(move |stream| {
         Box::pin(async move {
@@ -203,6 +218,10 @@ async fn ws_status_inner(
                             _ => {}
                         }
                     }
+                    _ = shutdown_rx.recv() => {
+                        let _ = sink.send(ws::Message::Close(None)).await;
+                        break;
+                    }
                 }
             }
             Ok(())
@@ -212,12 +231,12 @@ async fn ws_status_inner(
 
 /// Status-stream WebSocket for the root namespace.
 #[rocket::get("/ws/status?<token_code>")]
-pub async fn ws_status_root(ws: ws::WebSocket, token_code: String) -> Result<ws::Channel<'static>, Status> {
-    ws_status_inner(ws, PathBuf::new(), token_code).await
+pub async fn ws_status_root(ws: ws::WebSocket, token_code: String, shutdown: &State<crate::Shutdown>) -> Result<ws::Channel<'static>, Status> {
+    ws_status_inner(ws, PathBuf::new(), token_code, shutdown).await
 }
 
 /// Status-stream WebSocket for a specific namespace path.
 #[rocket::get("/ws/status/<path..>?<token_code>")]
-pub async fn ws_status(ws: ws::WebSocket, path: PathBuf, token_code: String) -> Result<ws::Channel<'static>, Status> {
-    ws_status_inner(ws, path, token_code).await
+pub async fn ws_status(ws: ws::WebSocket, path: PathBuf, token_code: String, shutdown: &State<crate::Shutdown>) -> Result<ws::Channel<'static>, Status> {
+    ws_status_inner(ws, path, token_code, shutdown).await
 }

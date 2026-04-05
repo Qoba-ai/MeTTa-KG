@@ -264,8 +264,29 @@ export function buildASTFromTokens(tokenPaths: string[][]): { ast: ASTDocument; 
 
   // Process all paths in order: terminals added immediately, fringes consolidated at first occurrence
   const emittedFringeKeys = new Set<string>()
+  const emittedRawExprs = new Set<string>()
   for (const tp of tokenPaths) {
     if (tp.length === 0) continue
+
+    // Check for raw expression marker "!"
+    // Format: ["!", "(a b c d)"] - non-binary expression to be parsed as-is
+    if (tp.length >= 2 && tp[0] === '!') {
+      const rawExpr = tp[1]
+      if (!emittedRawExprs.has(rawExpr)) {
+        emittedRawExprs.add(rawExpr)
+        // Parse the raw expression and add to AST
+        const parsed = parseMeTTaString(rawExpr, 'loaded')
+        for (const node of parsed) {
+          nodeMap.set(node.id, node)
+          if (node.type === 'expr') {
+            buildNodeMapRecursive((node as ExprNode).children, nodeMap)
+          }
+          atoms.push(node)
+        }
+      }
+      continue
+    }
+
     const isFringe = tp[tp.length - 1] === '$'
     if (isFringe) {
       const key = tp[0]
@@ -287,6 +308,16 @@ export function buildASTFromTokens(tokenPaths: string[][]): { ast: ASTDocument; 
   return { ast: atoms, nodeMap }
 }
 
+// Helper to recursively add children to nodeMap
+function buildNodeMapRecursive(nodes: ASTNode[], nodeMap: Map<string, ASTNode>): void {
+  for (const node of nodes) {
+    nodeMap.set(node.id, node)
+    if (node.type === 'expr') {
+      buildNodeMapRecursive((node as ExprNode).children, nodeMap)
+    }
+  }
+}
+
 /**
  * Merge new explore results into existing AST (flat list).
  * fringePath identifies which fringe to expand (e.g. "a" or "greger/greegr").
@@ -304,9 +335,32 @@ export function mergeTokensIntoAST(
     if (node.type === 'fringe') return (node as FringeNode).path === path
     if (node.type === 'expr') {
       const exprNode = node as ExprNode
-      // After parseMeTTaString re-parses editor content, $ appears as AtomNode
-      if (exprNode.key === path && exprNode.children.some(c => c.type === 'atom' && (c as AtomNode).value === '$')) return true
-      return exprNode.children.some(c => hasDescendantFringe(c, path))
+      const pathSegments = path.split('/').filter(Boolean)
+
+      // Navigate through the path segments
+      let currentNode: ASTNode = node
+      for (let i = 0; i < pathSegments.length; i++) {
+        if (currentNode.type !== 'expr') return false
+        const expr = currentNode as ExprNode
+
+        // Check if this level matches the current segment
+        if (expr.key !== pathSegments[i]) {
+          // This node doesn't match, check siblings via recursion
+          return expr.children.some(c => hasDescendantFringe(c, path))
+        }
+
+        // This level matches, continue to next level
+        if (i === pathSegments.length - 1) {
+          // We're at the final segment, check for fringe/$ child
+          return expr.children.some(c =>
+            c.type === 'fringe' ||
+            (c.type === 'atom' && (c as AtomNode).value === '$')
+          )
+        }
+
+        // Move to the next level (first child should be the nested expr)
+        currentNode = expr.children[0]
+      }
     }
     return false
   }
@@ -389,22 +443,35 @@ export function unexpandFringe(
 // ============ Folding Operations ============
 
 /**
- * Check if a node at a given path in the AST is a fringe node (contains a $ child).
+ * Check if ANY node at a given path in the AST is a fringe node (contains a $ child).
+ * There may be multiple nodes with the same key at each level.
  */
 export function hasFringeDescendant(nodes: ASTNode[], relPath: string): boolean {
   const parts = relPath.split('/').filter(Boolean)
-  let current: ASTNode[] = nodes
 
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]
-    const found = current.find(n => n.type === 'expr' && (n as ExprNode).key === part)
-    if (!found) return false
-    if (i === parts.length - 1) {
-      return (found as ExprNode).children.some(c => c.type === 'fringe' || (c.type === 'atom' && (c as AtomNode).value === '$'))
+  function checkLevel(currentNodes: ASTNode[], partIndex: number): boolean {
+    if (partIndex >= parts.length) return false
+
+    const part = parts[partIndex]
+    // Find ALL nodes with the matching key at this level
+    const matchingNodes = currentNodes.filter(n => n.type === 'expr' && (n as ExprNode).key === part)
+
+    if (matchingNodes.length === 0) return false
+
+    // If this is the last part, check if ANY matching node has a fringe child
+    if (partIndex === parts.length - 1) {
+      return matchingNodes.some(node =>
+        (node as ExprNode).children.some(c =>
+          c.type === 'fringe' || (c.type === 'atom' && (c as AtomNode).value === '$')
+        )
+      )
     }
-    current = (found as ExprNode).children
+
+    // Otherwise, recurse into children of ALL matching nodes
+    return matchingNodes.some(node => checkLevel((node as ExprNode).children, partIndex + 1))
   }
-  return false
+
+  return checkLevel(nodes, 0)
 }
 
 // ============ Diff Computation ============

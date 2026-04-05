@@ -287,6 +287,26 @@ const TrieBranch: Component<{
         <For each={props.node.terminals}>
           {(terminal) => <TerminalLeaf value={terminal} />}
         </For>
+
+        {/* Fringe indicator - clickable to expand unexplored subspace */}
+        <Show when={props.node.isFringe}>
+          <div style={{ "margin-left": "16px" }}>
+            <div
+              class={styles.TrieNode}
+              style={{ cursor: "pointer" }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (props.onExpand) props.onExpand(props.path);
+              }}
+              data-testid="trie-fringe"
+              data-trie-path={props.path}
+            >
+              <VsChevronRight size={18} />
+              <VsSymbolEnum size={16} class={styles.TrieFringeIcon} />
+              <span class={styles.TrieFringeText}>$</span>
+            </div>
+          </div>
+        </Show>
       </Show>
     </div>
   );

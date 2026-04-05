@@ -21,13 +21,26 @@ export function getOriginalContent(astState: EditorASTState): string {
 /**
  * Strip namespace prefix tokens from a list of token paths.
  * e.g. namespace "/test/" → prefix ["test"], strips first token from each path.
+ * Paths starting with "!" are raw expressions and are passed through unchanged.
  */
 export function stripNamespacePrefix(tokenPaths: string[][], namespace: string): string[][] {
   const nsTokens = namespace.replace(/^\/|\/$/g, '').split('/').filter(Boolean)
   if (nsTokens.length === 0) return tokenPaths
-  return tokenPaths
-    .filter(tp => tp.length > nsTokens.length && tp.slice(0, nsTokens.length).join('/') === nsTokens.join('/'))
-    .map(tp => tp.slice(nsTokens.length))
+
+  const result: string[][] = []
+  for (const tp of tokenPaths) {
+    // Pass through raw expression markers unchanged
+    if (tp.length >= 1 && tp[0] === '!') {
+      result.push(tp)
+      continue
+    }
+
+    // Normal path: strip namespace prefix
+    if (tp.length > nsTokens.length && tp.slice(0, nsTokens.length).join('/') === nsTokens.join('/')) {
+      result.push(tp.slice(nsTokens.length))
+    }
+  }
+  return result
 }
 
 /**

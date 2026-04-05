@@ -3,9 +3,14 @@ use rocket::fs::TempFile;
 use rocket::http::Status;
 use rocket::post;
 use rocket::serde::json::Json;
+use std::env;
 use std::fs;
 use std::process::Command;
 use uuid::Uuid;
+
+fn get_translations_path() -> String {
+    env::var("TRANSLATIONS_RELATIVE_PATH").unwrap_or_else(|_| "../translations".to_string())
+}
 
 #[derive(FromFormField, Copy, Clone)]
 pub enum CSVParseDirection {
@@ -83,8 +88,9 @@ pub async fn create(
             let direction = (parameters.direction as u8).to_string();
             let delimiter = parameters.delimiter;
 
+            let translations_path = get_translations_path();
             Command::new("python3")
-                .arg("translations/src/csv_to_metta_run.py")
+                .arg(format!("{}/src/csv_to_metta_run.py", translations_path))
                 .arg(&path)
                 .arg(&direction)
                 .arg(&delimiter)
@@ -95,28 +101,37 @@ pub async fn create(
             nt_parameters: Some(_parameters),
             jsonld_parameters: None,
             n3_parameters: None,
-        } => Command::new("python3")
-            .arg("translations/src/nt_to_metta_run.py")
-            .arg(&path)
-            .status(),
+        } => {
+            let translations_path = get_translations_path();
+            Command::new("python3")
+                .arg(format!("{}/src/nt_to_metta_run.py", translations_path))
+                .arg(&path)
+                .status()
+        }
         ParserParameters {
             csv_parameters: None,
             nt_parameters: None,
             jsonld_parameters: Some(_parameters),
             n3_parameters: None,
-        } => Command::new("python3")
-            .arg("translations/src/jsonld_to_metta_run.py")
-            .arg(&path)
-            .status(),
+        } => {
+            let translations_path = get_translations_path();
+            Command::new("python3")
+                .arg(format!("{}/src/jsonld_to_metta_run.py", translations_path))
+                .arg(&path)
+                .status()
+        }
         ParserParameters {
             csv_parameters: None,
             nt_parameters: None,
             jsonld_parameters: None,
             n3_parameters: Some(_parameters),
-        } => Command::new("python3")
-            .arg("translations/src/n3_to_metta_run.py")
-            .arg(&path)
-            .status(),
+        } => {
+            let translations_path = get_translations_path();
+            Command::new("python3")
+                .arg(format!("{}/src/n3_to_metta_run.py", translations_path))
+                .arg(&path)
+                .status()
+        }
         _ => {
             eprintln!("Invalid parser parameters combination");
             return Err(Status::InternalServerError);
@@ -240,8 +255,9 @@ pub async fn create_from_bytes(
         } => {
             let direction = (parameters.direction as u8).to_string();
             let delimiter = parameters.delimiter;
+            let translations_path = get_translations_path();
             Command::new("python3")
-                .arg("translations/src/csv_to_metta_run.py")
+                .arg(format!("{}/src/csv_to_metta_run.py", translations_path))
                 .arg(&path)
                 .arg(&direction)
                 .arg(&delimiter)
@@ -252,28 +268,37 @@ pub async fn create_from_bytes(
             nt_parameters: Some(_),
             jsonld_parameters: None,
             n3_parameters: None,
-        } => Command::new("python3")
-            .arg("translations/src/nt_to_metta_run.py")
-            .arg(&path)
-            .status(),
+        } => {
+            let translations_path = get_translations_path();
+            Command::new("python3")
+                .arg(format!("{}/src/nt_to_metta_run.py", translations_path))
+                .arg(&path)
+                .status()
+        }
         ParserParameters {
             csv_parameters: None,
             nt_parameters: None,
             jsonld_parameters: Some(_),
             n3_parameters: None,
-        } => Command::new("python3")
-            .arg("translations/src/jsonld_to_metta_run.py")
-            .arg(&path)
-            .status(),
+        } => {
+            let translations_path = get_translations_path();
+            Command::new("python3")
+                .arg(format!("{}/src/jsonld_to_metta_run.py", translations_path))
+                .arg(&path)
+                .status()
+        }
         ParserParameters {
             csv_parameters: None,
             nt_parameters: None,
             jsonld_parameters: None,
             n3_parameters: Some(_),
-        } => Command::new("python3")
-            .arg("translations/src/n3_to_metta_run.py")
-            .arg(&path)
-            .status(),
+        } => {
+            let translations_path = get_translations_path();
+            Command::new("python3")
+                .arg(format!("{}/src/n3_to_metta_run.py", translations_path))
+                .arg(&path)
+                .status()
+        }
         _ => {
             eprintln!("Invalid parser parameters combination");
             return Err(Status::InternalServerError);

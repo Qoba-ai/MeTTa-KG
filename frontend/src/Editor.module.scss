@@ -569,6 +569,17 @@
     white-space: nowrap;
 }
 
+.TrieFringeIcon {
+    color: var(--rp-gold);
+    flex-shrink: 0;
+}
+
+.TrieFringeText {
+    color: var(--rp-gold);
+    font-weight: 500;
+    font-style: italic;
+}
+
 .TrieConfigTransform {
     margin-top: 12px;
     width: 100%;

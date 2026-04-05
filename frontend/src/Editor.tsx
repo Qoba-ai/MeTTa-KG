@@ -267,6 +267,9 @@ const App: Component = () => {
     // Trie/Editor fold sync state — full paths like "/key/" or "/key/sub/" that are collapsed
     const [collapsedPaths, setCollapsedPaths] = createSignal<Set<string>>(new Set())
 
+    // Focus tokens for expandable paths — keyed by path, stores array of tokens per path
+    const [focusTokens, setFocusTokens] = createSignal<Map<string, string[]>>(new Map())
+
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false)
 
@@ -549,7 +552,24 @@ const App: Component = () => {
         }
 
         try {
-            const tokens = await loadFringeAsTokens(path)
+            // Look up all focus tokens for this path
+            const pathWithSlash = path.endsWith('/') ? path : path + '/'
+            const pathFocusTokens = focusTokens().get(pathWithSlash) || []
+
+            // Fetch results for all focus tokens and combine them
+            let allTokens: string[][] = []
+            if (pathFocusTokens.length === 0) {
+                // No focus tokens, make a single request without token
+                allTokens = await loadFringeAsTokens(path)
+            } else {
+                // Make one request per focus token and combine results
+                for (const focusToken of pathFocusTokens) {
+                    const tokens = await loadFringeAsTokens(path, focusToken)
+                    allTokens = allTokens.concat(tokens)
+                }
+            }
+
+            const tokens = allTokens
 
             // Merge tokens into AST
             const astState = p.astState
@@ -752,19 +772,60 @@ const App: Component = () => {
         }
     }
 
-    const loadFringeAsTokens = async (path: string): Promise<string[][]> => {
+    const loadFringeAsTokens = async (path: string, focusToken?: string): Promise<string[][]> => {
         let ns = path
         if (ns.startsWith('/')) ns = ns.substring(1)
         const encodedNs = ns.split('/').map(encodeURIComponent).join('/')
 
         try {
-            const res = await fetch(`${BACKEND_URL}/explore/${encodedNs}`, {
+            const url = focusToken
+                ? `${BACKEND_URL}/explore/${encodedNs}?focus_token=${encodeURIComponent(focusToken)}`
+                : `${BACKEND_URL}/explore/${encodedNs}`
+
+            const res = await fetch(url, {
                 headers: { Authorization: token()?.code ?? '' }
             })
             if (!res.ok) throw new Error(`Status ${res.status}`)
             const data = await res.json()
             const parsed: any[] = typeof data === 'string' ? (data.trim() === '' ? [] : JSON.parse(data)) : data
-            return parsed.filter((p: any) => Array.isArray(p)) as string[][]
+
+            // Store focus tokens for future expansion
+            const newTokens = new Map(focusTokens())
+
+            // New format: array of [mettaString, focusToken] pairs
+            // Multiple items can have the same mettaString with different focusTokens
+            // Convert to token format using "!" marker for raw expressions
+            const result: string[][] = []
+            const seenExpressions = new Set<string>()
+
+            for (const item of parsed) {
+                if (!Array.isArray(item) || item.length < 1) continue
+                const mettaString = item[0]
+                const itemFocusToken = item[1]
+
+                // Store focus token if present
+                if (itemFocusToken) {
+                    // The MeTTa string contains the full path structure
+                    // Convert to absolute path using sexprToPath
+                    const absolutePath = sexprToPath(mettaString)
+
+                    // Append focus token to the array for this path
+                    const existingTokens = newTokens.get(absolutePath) || []
+                    if (!existingTokens.includes(itemFocusToken)) {
+                        existingTokens.push(itemFocusToken)
+                    }
+                    newTokens.set(absolutePath, existingTokens)
+                }
+
+                // Only add unique MeTTa expressions to result (avoid duplicates)
+                if (!seenExpressions.has(mettaString)) {
+                    seenExpressions.add(mettaString)
+                    result.push(["!", mettaString])
+                }
+            }
+
+            setFocusTokens(newTokens)
+            return result
         } catch (e) {
             console.error("Explore API failed:", e)
             throw e
@@ -935,9 +996,10 @@ const App: Component = () => {
         let ns = path
         if (ns.startsWith('/')) ns = ns.substring(1)
         const encodedNs = ns.split('/').map(encodeURIComponent).join('/')
-        
+
         const results: any[] = []
         const uniqueNextLevelPaths = new Set<string>()
+        const newTokens = new Map(focusTokens())
 
         try {
             const res = await fetch(`${BACKEND_URL}/explore/${encodedNs}`, {
@@ -946,18 +1008,34 @@ const App: Component = () => {
             if (res.ok) {
                 const data = await res.json()
                 const parsed: any[] = typeof data === 'string' ? (data.trim() === '' ? [] : JSON.parse(data)) : data
-                
-                for (const pathTokens of parsed) {
-                    if (!Array.isArray(pathTokens)) continue; // skip invalid formats
-                    
-                    const nextPath = '/' + pathTokens.join('/') + '/'
-                    const nextSexpr = pathToSexpr(nextPath)
-                    
-                    if (!uniqueNextLevelPaths.has(nextSexpr)) {
-                        uniqueNextLevelPaths.add(nextSexpr)
-                        results.push({ token: '', expr: nextSexpr, path: nextPath });
+
+                // New format: array of [mettaString, focusToken] pairs
+                // Multiple items can have the same mettaString with different focusTokens
+                for (const item of parsed) {
+                    if (!Array.isArray(item) || item.length < 1) continue; // skip invalid formats
+
+                    const mettaString = item[0]
+                    const focusToken = item[1] || null
+                    const nextPath = sexprToPath(mettaString)
+
+                    // Store focus token if present
+                    if (focusToken) {
+                        const existingTokens = newTokens.get(nextPath) || []
+                        if (!existingTokens.includes(focusToken)) {
+                            existingTokens.push(focusToken)
+                        }
+                        newTokens.set(nextPath, existingTokens)
+                    }
+
+                    // Only add unique paths to results (avoid duplicate display)
+                    if (!uniqueNextLevelPaths.has(nextPath)) {
+                        uniqueNextLevelPaths.add(nextPath)
+                        // Note: we store the array of tokens, but only show one entry in results
+                        results.push({ token: focusToken, expr: mettaString, path: nextPath });
                     }
                 }
+
+                setFocusTokens(newTokens)
             }
         } catch (e) { console.error("Explore API failed:", e) }
 

@@ -1,21 +1,28 @@
-use rocket::serde::json::{Json, serde_json};
-use rocket::{http::Status, put, get, post};
+use rocket::serde::json::{serde_json, Json};
 use rocket::State;
+use rocket::{get, http::Status, post, put};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
+use std::path::PathBuf;
 use tokio::sync::broadcast;
 use uuid::Uuid;
-use std::path::PathBuf;
 
-use crate::{events::{EventBus, SpaceEvent}, model::Token};
-use mork_client::{MorkClient, Permission, MorkError};
+use crate::{
+    events::{EventBus, SpaceEvent},
+    model::Token,
+};
+use mork_client::{path_to_sexpr, MorkClient, MorkError, Permission};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn permission_from_token(token: &Token) -> Permission {
-    let namespace = token.namespace.strip_prefix('/').unwrap_or(&token.namespace).to_string();
+    let namespace = token
+        .namespace
+        .strip_prefix('/')
+        .unwrap_or(&token.namespace)
+        .to_string();
     Permission::new(namespace, token.permission_read, token.permission_write)
 }
 
@@ -32,7 +39,11 @@ fn get_mork_client() -> MorkClient {
 
 fn path_to_event_path(path: &PathBuf) -> String {
     let s = path.to_string_lossy();
-    if s.is_empty() { "/".to_string() } else { format!("/{}/", s) }
+    if s.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}/", s)
+    }
 }
 
 // ─── Transform ───────────────────────────────────────────────────────────────
@@ -57,11 +68,15 @@ pub async fn transform(
     }
 
     let perm = permission_from_token(&token);
-    let input: Vec<(&std::path::Path, &str)> = transformation.input_spaces.iter()
+    let input: Vec<(&std::path::Path, &str)> = transformation
+        .input_spaces
+        .iter()
         .zip(transformation.patterns.iter())
         .map(|(p, pat)| (p.as_path(), pat.as_str()))
         .collect();
-    let output: Vec<(&std::path::Path, &str)> = transformation.output_spaces.iter()
+    let output: Vec<(&std::path::Path, &str)> = transformation
+        .output_spaces
+        .iter()
         .zip(transformation.templates.iter())
         .map(|(p, tmpl)| (p.as_path(), tmpl.as_str()))
         .collect();
@@ -76,12 +91,21 @@ pub async fn transform(
 // ─── Import ──────────────────────────────────────────────────────────────────
 
 #[post("/spaces", data = "<space>")]
-pub async fn import_root(token: Token, space: String, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
+pub async fn import_root(
+    token: Token,
+    space: String,
+    bus: &State<EventBus>,
+) -> Result<Json<bool>, Status> {
     do_import(&token, &PathBuf::new(), &space, &bus.0).await
 }
 
 #[post("/spaces/<path..>", data = "<space>")]
-pub async fn import(token: Token, path: PathBuf, space: String, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
+pub async fn import(
+    token: Token,
+    path: PathBuf,
+    space: String,
+    bus: &State<EventBus>,
+) -> Result<Json<bool>, Status> {
     do_import(&token, &path, &space, &bus.0).await
 }
 
@@ -109,7 +133,9 @@ pub async fn do_import(
     let uri = format!("{}/public/{}.metta", origin, file_id);
 
     let event_path = path_to_event_path(path);
-    let _ = bus.send(SpaceEvent::Locked { path: event_path.clone() });
+    let _ = bus.send(SpaceEvent::Locked {
+        path: event_path.clone(),
+    });
 
     let result = get_mork_client().import(&perm, path, &uri).await;
     let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
@@ -154,7 +180,11 @@ pub async fn clear(token: Token, path: PathBuf) -> Result<Json<bool>, Status> {
 #[rocket::post("/spaces/<src_path..>?<dst_path>", rank = 1)]
 pub async fn copy(token: Token, src_path: PathBuf, dst_path: String) -> Result<Json<bool>, Status> {
     get_mork_client()
-        .copy(&permission_from_token(&token), &src_path, &PathBuf::from(&dst_path))
+        .copy(
+            &permission_from_token(&token),
+            &src_path,
+            &PathBuf::from(&dst_path),
+        )
         .await
         .map(|_| Json(true))
         .map_err(mork_error_to_status)
@@ -163,33 +193,20 @@ pub async fn copy(token: Token, src_path: PathBuf, dst_path: String) -> Result<J
 // ─── Explore ─────────────────────────────────────────────────────────────────
 
 #[get("/explore")]
-pub async fn explore_root(token: Token) -> Result<Json<Vec<Vec<String>>>, Status> {
-    explore(token, PathBuf::new()).await
+pub async fn explore_root(token: Token) -> Result<Json<Vec<(String, Option<String>)>>, Status> {
+    explore(token, PathBuf::new(), String::new()).await
 }
 
-#[rocket::get("/explore/<path..>")]
-pub async fn explore(token: Token, path: PathBuf) -> Result<Json<Vec<Vec<String>>>, Status> {
+#[rocket::get("/explore/<path..>?<focus_token>")]
+pub async fn explore(
+    token: Token,
+    path: PathBuf,
+    focus_token: String,
+) -> Result<Json<Vec<(String, Option<String>)>>, Status> {
     let perm = permission_from_token(&token);
 
-    let space_root_tokens: Vec<String> = perm.namespace
-        .split('/')
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect();
-
-    let target_path_tokens: Vec<String> = path
-        .components()
-        .filter_map(|c| {
-            if let std::path::Component::Normal(s) = c {
-                Some(s.to_string_lossy().into_owned())
-            } else {
-                None
-            }
-        })
-        .collect();
-
     get_mork_client()
-        .explore(&perm, &space_root_tokens, &target_path_tokens)
+        .explore(&perm, &path, &focus_token)
         .await
         .map(Json)
         .map_err(mork_error_to_status)
@@ -237,7 +254,12 @@ pub async fn busywait(
     writer: Option<bool>,
 ) -> Result<Json<String>, Status> {
     get_mork_client()
-        .busywait(&permission_from_token(&token), &path, millis, writer.unwrap_or(false))
+        .busywait(
+            &permission_from_token(&token),
+            &path,
+            millis,
+            writer.unwrap_or(false),
+        )
         .await
         .map(Json)
         .map_err(mork_error_to_status)
@@ -253,7 +275,9 @@ pub async fn import_csv(
     parse_parameters: crate::routes::translations::CSVParserParameters,
     bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
-    let space = crate::routes::translations::create_from_csv(file, parse_parameters).await?.into_inner();
+    let space = crate::routes::translations::create_from_csv(file, parse_parameters)
+        .await?
+        .into_inner();
     do_import(&token, &path, &space, &bus.0).await
 }
 
@@ -265,7 +289,9 @@ pub async fn import_nt(
     parse_parameters: crate::routes::translations::NTParserParameters,
     bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
-    let space = crate::routes::translations::create_from_nt(file, parse_parameters).await?.into_inner();
+    let space = crate::routes::translations::create_from_nt(file, parse_parameters)
+        .await?
+        .into_inner();
     do_import(&token, &path, &space, &bus.0).await
 }
 
@@ -277,7 +303,9 @@ pub async fn import_jsonld(
     parse_parameters: crate::routes::translations::JSONLDParserParameters,
     bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
-    let space = crate::routes::translations::create_from_jsonld(file, parse_parameters).await?.into_inner();
+    let space = crate::routes::translations::create_from_jsonld(file, parse_parameters)
+        .await?
+        .into_inner();
     do_import(&token, &path, &space, &bus.0).await
 }
 
@@ -289,7 +317,9 @@ pub async fn import_n3(
     parse_parameters: crate::routes::translations::N3ParserParameters,
     bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
-    let space = crate::routes::translations::create_from_n3(file, parse_parameters).await?.into_inner();
+    let space = crate::routes::translations::create_from_n3(file, parse_parameters)
+        .await?
+        .into_inner();
     do_import(&token, &path, &space, &bus.0).await
 }
 
@@ -320,7 +350,9 @@ pub async fn import_url_metta(
 ) -> Result<Json<bool>, Status> {
     let perm = permission_from_token(&token);
     let event_path = path_to_event_path(&path);
-    let _ = bus.0.send(SpaceEvent::Locked { path: event_path.clone() });
+    let _ = bus.0.send(SpaceEvent::Locked {
+        path: event_path.clone(),
+    });
     let result = get_mork_client().import(&perm, &path, &url).await;
     let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
     result.map(|_| Json(true)).map_err(mork_error_to_status)
@@ -336,12 +368,16 @@ pub async fn import_url_csv(
 ) -> Result<Json<bool>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
-        "csv", bytes,
+        "csv",
+        bytes,
         crate::routes::translations::ParserParameters {
             csv_parameters: Some(parse_parameters),
-            nt_parameters: None, jsonld_parameters: None, n3_parameters: None,
+            nt_parameters: None,
+            jsonld_parameters: None,
+            n3_parameters: None,
         },
-    ).await?;
+    )
+    .await?;
     do_import(&token, &path, &space, &bus.0).await
 }
 
@@ -354,13 +390,18 @@ pub async fn import_url_nt(
 ) -> Result<Json<bool>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
-        "nt", bytes,
+        "nt",
+        bytes,
         crate::routes::translations::ParserParameters {
             csv_parameters: None,
-            nt_parameters: Some(crate::routes::translations::NTParserParameters { dummy: String::new() }),
-            jsonld_parameters: None, n3_parameters: None,
+            nt_parameters: Some(crate::routes::translations::NTParserParameters {
+                dummy: String::new(),
+            }),
+            jsonld_parameters: None,
+            n3_parameters: None,
         },
-    ).await?;
+    )
+    .await?;
     do_import(&token, &path, &space, &bus.0).await
 }
 
@@ -373,13 +414,18 @@ pub async fn import_url_jsonld(
 ) -> Result<Json<bool>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
-        "jsonld", bytes,
+        "jsonld",
+        bytes,
         crate::routes::translations::ParserParameters {
-            csv_parameters: None, nt_parameters: None,
-            jsonld_parameters: Some(crate::routes::translations::JSONLDParserParameters { dummy: String::new() }),
+            csv_parameters: None,
+            nt_parameters: None,
+            jsonld_parameters: Some(crate::routes::translations::JSONLDParserParameters {
+                dummy: String::new(),
+            }),
             n3_parameters: None,
         },
-    ).await?;
+    )
+    .await?;
     do_import(&token, &path, &space, &bus.0).await
 }
 
@@ -392,11 +438,17 @@ pub async fn import_url_n3(
 ) -> Result<Json<bool>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
-        "n3", bytes,
+        "n3",
+        bytes,
         crate::routes::translations::ParserParameters {
-            csv_parameters: None, nt_parameters: None, jsonld_parameters: None,
-            n3_parameters: Some(crate::routes::translations::N3ParserParameters { dummy: String::new() }),
+            csv_parameters: None,
+            nt_parameters: None,
+            jsonld_parameters: None,
+            n3_parameters: Some(crate::routes::translations::N3ParserParameters {
+                dummy: String::new(),
+            }),
         },
-    ).await?;
+    )
+    .await?;
     do_import(&token, &path, &space, &bus.0).await
 }
