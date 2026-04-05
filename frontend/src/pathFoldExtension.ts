@@ -59,7 +59,7 @@ export function extractLinePathTokens(text: string): string[] {
         while (pos < s.length && s[pos] !== ' ' && s[pos] !== '(' && s[pos] !== ')') pos++
         if (pos === start) break
         const sym = s.slice(start, pos)
-        if (sym === '$') break // fringe marker, stop
+        if (sym === '|$|') break // fringe marker, stop
         tokens.push(sym)
         // skip whitespace
         while (pos < s.length && s[pos] === ' ') pos++
@@ -150,7 +150,7 @@ class FringeWidget extends WidgetType {
         el.style.cssText =
             'color:var(--rp-iris);cursor:pointer;font-weight:bold;' +
             'padding:0 4px;border-radius:3px;background:var(--rp-highlight-low);'
-        el.textContent = '$'
+        el.textContent = '|$|'
         el.title = `Click to expand fringe at ${this.path}`
         el.dataset.fringePath = this.path
         return el
@@ -237,16 +237,16 @@ const pathFoldPlugin = ViewPlugin.fromClass(
                     continue
                 }
 
-                // Check for fringe markers ($) in unfoldable positions
-                // Match $ at the end of a 2-ary expression like (a (b $))
-                const fringeMatch = /\$\)/.exec(text)
+                // Check for fringe markers (|$|) in unfoldable positions
+                // Match |$| at the end of a 2-ary expression like (a (b |$|))
+                const fringeMatch = /\|\$\|\)/.exec(text)
                 if (fringeMatch) {
-                    const dollarPos = from + text.indexOf('$')
-                    // Extract the path context for this $
+                    const markerPos = from + text.indexOf('|$|')
+                    // Extract the path context for this |$|
                     const pathTokens = extractLinePathTokens(text)
                     if (pathTokens.length > 0) {
                         const fringePath = pathTokens.join('/')
-                        builder.add(dollarPos, dollarPos + 1, Decoration.replace({
+                        builder.add(markerPos, markerPos + 3, Decoration.replace({
                             widget: new FringeWidget(fringePath)
                         }))
                     }

@@ -87,6 +87,7 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::status_root,
                 routes::spaces::explore,
                 routes::spaces::explore_root,
+                routes::spaces::explore_namespaces,
                 routes::spaces::count,
                 routes::spaces::count_root,
                 routes::spaces::copy,

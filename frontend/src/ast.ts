@@ -119,7 +119,7 @@ export function parseTokensToAST(tokens: string[], source: 'manual' | 'loaded' =
       id: generateId(),
       source,
     }
-  } else if (token === '$') {
+  } else if (token === '|$|') {
     // Fringe marker
     return {
       type: 'fringe',
@@ -203,7 +203,7 @@ function nodeToString(node: ASTNode, nodeMap?: Map<string, ASTNode>): string {
   if (node.type === 'atom') {
     return node.value
   } else if (node.type === 'fringe') {
-    return '$'
+    return '|$|'
   } else if (node.type === 'expr') {
     const childStrs = node.children.map(c => nodeToString(c, nodeMap)).filter(s => s.length > 0)
     if (childStrs.length === 0) {
@@ -225,7 +225,7 @@ export function buildASTFromTokens(tokenPaths: string[][]): { ast: ASTDocument; 
   const nodeMap = new Map<string, ASTNode>()
   const atoms: ASTNode[] = []
 
-  const fringePaths = tokenPaths.filter(tp => tp.length > 0 && tp[tp.length - 1] === '$')
+  const fringePaths = tokenPaths.filter(tp => tp.length > 0 && tp[tp.length - 1] === '|$|')
 
   // Build a nested atom from a terminal path: ["a", "b"] → ExprNode("a", [AtomNode("b")])
   function buildAtomFromPath(tokens: string[]): ASTNode {
@@ -240,7 +240,7 @@ export function buildASTFromTokens(tokenPaths: string[][]): { ast: ASTDocument; 
     return expr
   }
 
-  // Build a nested fringe atom from path tokens (without the "$"):
+  // Build a nested fringe atom from path tokens (without the "|$|"):
   // ["a"] → ExprNode("a", [FringeNode{path:"a"}])
   // ["greger", "greegr"] → ExprNode("greger", [ExprNode("greegr", [FringeNode{path:"greger/greegr"}])])
   function buildFringeFromPath(tokensBeforeDollar: string[]): ASTNode {
@@ -287,16 +287,16 @@ export function buildASTFromTokens(tokenPaths: string[][]): { ast: ASTDocument; 
       continue
     }
 
-    const isFringe = tp[tp.length - 1] === '$'
+    const isFringe = tp[tp.length - 1] === '|$|'
     if (isFringe) {
       const key = tp[0]
       if (!emittedFringeKeys.has(key)) {
         emittedFringeKeys.add(key)
         if ((fringeCountByFirstKey.get(key) ?? 0) >= 2) {
-          // Multiple fringe paths for this key → consolidate to (key $)
+          // Multiple fringe paths for this key → consolidate to (key |$|)
           atoms.push(buildFringeFromPath([key]))
         } else {
-          // Single fringe path → show full nested path e.g. (greger (greegr $))
+          // Single fringe path → show full nested path e.g. (greger (greegr |$|))
           atoms.push(buildFringeFromPath(tp.slice(0, -1)))
         }
       }
@@ -351,10 +351,10 @@ export function mergeTokensIntoAST(
 
         // This level matches, continue to next level
         if (i === pathSegments.length - 1) {
-          // We're at the final segment, check for fringe/$ child
+          // We're at the final segment, check for fringe/|$| child
           return expr.children.some(c =>
             c.type === 'fringe' ||
-            (c.type === 'atom' && (c as AtomNode).value === '$')
+            (c.type === 'atom' && (c as AtomNode).value === '|$|')
           )
         }
 
@@ -434,7 +434,7 @@ export function unexpandFringe(
     ast.splice(toRemove[i], 1)
   }
 
-  const { ast: fringeAtoms, nodeMap: fringeNodeMap } = buildASTFromTokens([[...fringePath.split('/'), '$']])
+  const { ast: fringeAtoms, nodeMap: fringeNodeMap } = buildASTFromTokens([[...fringePath.split('/'), '|$|']])
   for (const [id, node] of fringeNodeMap) nodeMap.set(id, node)
   ast.splice(insertIdx, 0, ...fringeAtoms)
 }
@@ -443,7 +443,7 @@ export function unexpandFringe(
 // ============ Folding Operations ============
 
 /**
- * Check if ANY node at a given path in the AST is a fringe node (contains a $ child).
+ * Check if ANY node at a given path in the AST is a fringe node (contains a |$| child).
  * There may be multiple nodes with the same key at each level.
  */
 export function hasFringeDescendant(nodes: ASTNode[], relPath: string): boolean {
@@ -462,7 +462,7 @@ export function hasFringeDescendant(nodes: ASTNode[], relPath: string): boolean 
     if (partIndex === parts.length - 1) {
       return matchingNodes.some(node =>
         (node as ExprNode).children.some(c =>
-          c.type === 'fringe' || (c.type === 'atom' && (c as AtomNode).value === '$')
+          c.type === 'fringe' || (c.type === 'atom' && (c as AtomNode).value === '|$|')
         )
       )
     }

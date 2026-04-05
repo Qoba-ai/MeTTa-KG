@@ -1,9 +1,11 @@
-use itertools::izip;
+use itertools::{Itertools, izip};
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use queue::Queue;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::vec;
 
@@ -22,6 +24,14 @@ pub struct Explore {
     pub token: String,
     pub data: Option<Vec<ExploreNodeData>>,
     pub parent: Option<ExploreNodeData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+
+pub struct NamespaceInfo {
+    namespace: PathBuf,
+    token: String,
+    subnamespaces: Option<Vec<NamespaceInfo>>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -61,6 +71,7 @@ impl Explore {
                 self.base_url, pattern_encoded, self.token
             )
         };
+        println!("{}", url);
         let res = self.client.get(&url).send().await?;
         if res.status().is_success() {
             let data = res.json().await?;
@@ -184,114 +195,6 @@ impl Explore {
         count
     }
 }
-
-/*
-
-/// Converts a list of string tokens into a MeTTa S-expression pattern.
-/// For example, `["foo", "bar"]` becomes `"(foo (bar $))"`.
-pub fn tokens_to_sexpr<S: AsRef<str>>(tokens: &[S]) -> String {
-    let mut sexpr = String::from("$");
-    for token in tokens.iter().rev() {
-        sexpr = format!("({} {})", token.as_ref(), sexpr);
-    }
-    sexpr
-}
-
-/// Converts a list of string tokens into a path string.
-/// For example, `["foo", "bar"]` becomes `"foo/bar"`.
-pub fn tokens_to_path<S: AsRef<str>>(tokens: &[S]) -> String {
-    let parts: Vec<&str> = tokens.iter().map(|t| t.as_ref()).collect();
-    parts.join("/")
-}
-
-pub async fn explore_fringe_bfs_2_levels<S: AsRef<str> + Clone>(
-    client: Arc<Client>,
-    base_url: &str,
-    space_root_path_tokens: &[String],
-    target_path_tokens: &[S],
-) -> Result<Vec<Vec<String>>, reqwest::Error> {
-    let mut new_fringe = Vec::new();
-    let explore_base_pattern = tokens_to_sexpr(space_root_path_tokens);
-    let base_len = target_path_tokens.len();
-    let explore = Explore::new(
-        client.clone(),
-        base_url.to_string(),
-        explore_base_pattern.clone(),
-        String::new(),
-    );
-    let mut next_paths = HashSet::new();
-
-    let extract_path = |expr: &str| -> Vec<String> {
-        let cleaned = expr.replace(['(', ')'], "").replace("$", "");
-        cleaned.split_whitespace().map(|s| s.to_string()).collect()
-    };
-
-    let mut mork_frontier = VecDeque::new();
-    mork_frontier.push_back(explore);
-    let mut processed_nodes = 0;
-
-    while let Some(mut current) = mork_frontier.pop_front() {
-        if processed_nodes >= 200 {
-            break;
-        }
-        processed_nodes += 1;
-
-        if let Err(e) = current.dispatch().await {
-            eprintln!("Error dispatching MORK explore: {}", e);
-            continue;
-        }
-
-        if let Some(data) = current.data.as_ref() {
-            for node in data {
-                let parsed_full_path = extract_path(&node.expr);
-                if parsed_full_path.len() >= space_root_path_tokens.len()
-                    && parsed_full_path[0..space_root_path_tokens.len()] == *space_root_path_tokens
-                {
-                    let relative_path: Vec<String> =
-                        parsed_full_path[space_root_path_tokens.len()..].to_vec();
-                    if relative_path.starts_with(
-                        &target_path_tokens
-                            .iter()
-                            .map(|s| s.as_ref().to_string())
-                            .collect::<Vec<String>>(),
-                    ) {
-                        let relative_base_len = target_path_tokens.len();
-                        let target_len = std::cmp::min(relative_path.len(), relative_base_len + 2);
-                        if target_len > relative_base_len {
-                            let mut sub_path = relative_path[0..target_len].to_vec();
-                            if relative_path.len() > target_len {
-                                sub_path.push("$".to_string());
-                            }
-                            let mut final_path = space_root_path_tokens.to_vec();
-                            final_path.extend(sub_path);
-                            next_paths.insert(final_path);
-                        } else if relative_path.len() == relative_base_len
-                            && !relative_path.is_empty()
-                        {
-                            if relative_path.len() <= relative_base_len + 2 {
-                                let mut final_path = space_root_path_tokens.to_vec();
-                                final_path.extend(relative_path);
-                                next_paths.insert(final_path);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        for child in current.children() {
-            mork_frontier.push_back(child);
-        }
-    }
-
-    for path in next_paths {
-        new_fringe.push(path);
-    }
-    new_fringe.sort();
-    new_fringe.dedup();
-    Ok(new_fringe)
-}
-*/
 
 // ─── Permission ─────────────────────────────────────────────────────────────
 
@@ -680,7 +583,6 @@ impl MorkClient {
         Err(MorkError::Timeout)
     }
 
-    /// Explore the trie structure two levels deep. Requires read.
     pub async fn explore(
         &self,
         perm: &Permission,
@@ -692,14 +594,11 @@ impl MorkClient {
 
         let mut result: Vec<(String, Option<String>)> = vec![];
 
-        // let pattern = path_to_sexpr(path);
-
         let pattern = String::from("$");
 
         let mut queue = Queue::<Explore>::new();
         let mut visited_tokens = std::collections::HashSet::new();
 
-        // Track the initial token if provided
         if !focus_token.is_empty() {
             visited_tokens.insert(focus_token.clone());
         }
@@ -726,13 +625,15 @@ impl MorkClient {
         while let Some(mut e) = queue.dequeue() {
             e.dispatch().await?;
 
-            println!("{:#?} {}", visited_tokens, e.clone().token);
-
             let nr_children = e.children(Arity::ANY).len();
 
             if nr_children == 0 || nr_children == 1 {
                 if let Some(parent) = e.parent {
                     result.push((parent.expr, None));
+
+                    // if let Some(stripped) = strip_prefix(v.as_str(), &path) {
+                    //    result.push((parent.expr, None));
+                    // }
                 }
 
                 continue;
@@ -751,13 +652,12 @@ impl MorkClient {
 
             for (v, t) in izip!(binary_values, binary_tokens) {
                 if let Some(stripped) = strip_prefix(v.as_str(), &path) {
+                    println!("{} {}", v, stripped);
                     if let Some((lhs, rhs)) = parse_binary_sexp(&stripped.as_str()) {
                         let replaced = v.replace(
                             format!("({} {})", lhs, rhs).as_str(),
-                            format!("({} $)", lhs).as_str(),
+                            format!("({} |$|)", lhs).as_str(),
                         );
-
-                        println!("{} {}", replaced, v);
 
                         result.push((replaced, Some(t)));
                     }
@@ -765,60 +665,127 @@ impl MorkClient {
             }
         }
 
-        /*
-        while let Some(mut explore) = queue.dequeue() {
-            explore.dispatch().await?;
+        Ok(result)
+    }
 
-            println!("{} {} {:#?}", pattern, focus_token, explore.data);
+    pub async fn explore_namespaces(
+        &self,
+        perm: &Permission,
+        path: &PathBuf,
+    ) -> Result<NamespaceInfo, MorkError> {
+        perm.require_read()?;
+        perm.check_namespace(path)?;
 
-            let children = explore.children_non_binary();
+        self.explore_namespaces_helper(path).await
+    }
 
-            if children.len() == 0 {
-                if let Some(parent) = explore.parent {
-                    result.push((parent.expr, None));
-                }
-            } else {
+    pub async fn explore_namespaces_helper(
+        &self,
+        path: &PathBuf,
+    ) -> Result<NamespaceInfo, MorkError> {
+        let mut result: Vec<NamespaceInfo> = vec![];
+
+        let mut q = Queue::new();
+
+        q.queue(Explore::new(
+            self.client.clone(),
+            self.base_url.clone(),
+            PathBuf::new(),
+            String::from("$"),
+            String::new(),
+            None,
+        ))
+        .expect("FAILED TO QUEUE");
+
+        for i in 0..path.components().count() * 2 + 1 {
+            let mut new = Queue::new();
+
+            while let Some(mut explore) = q.dequeue() {
+                explore.dispatch().await?;
+
+                let children = explore.children(Arity::TWO);
+
+                println!("{:#?}", explore.data);
+
                 for c in children {
-                    queue.queue(c).expect("FAILED TO QUEUE");
+                    new.queue(c).expect("FAILED TO QUEUE");
                 }
             }
+
+            println!("NEW LENGTH: {:?}", new.len());
+
+            q = new.clone();
         }
 
-        let binary_nested_path = path.join(PathBuf::from("$l"));
-        let binary_nested_pattern = path_to_sexpr(&binary_nested_path);
+        println!("\nQ LENGTH: {:?}", q.len());
+        println!("Q: {:#?}\n", q);
 
-        let mut binary_explorer = Explore::new(
+        let token = if let Some(mut explore) = q.dequeue() {
+            explore.dispatch().await?;
+
+            let tokens = explore.tokens(Arity::TWO);
+            let values: Vec<String> = explore.values(Arity::TWO);
+
+            for (t, v) in izip!(tokens, values) {
+                if let Some(stripped) = strip_prefix(v.as_str(), &path) {
+                    if let Some((lhs, rhs)) = parse_binary_sexp(&stripped.as_str()) {
+                        result.push(NamespaceInfo {
+                            namespace: path.join(lhs),
+                            token: t,
+                            subnamespaces: None,
+                        });
+                    }
+                }
+            }
+
+            explore.token.clone()
+        } else {
+            String::new()
+        };
+
+        /*
+        let focus_token = explore
+            .tokens(Arity::TWO)
+            .into_iter()
+            .next()
+            .unwrap_or(String::new());
+
+        let mut result: Vec<NamespaceInfo> = vec![];
+
+        let mut explore = Explore::new(
             self.client.clone(),
             self.base_url.clone(),
             path.clone(),
-            binary_nested_pattern,
+            String::from("$"),
             focus_token.clone(),
             None,
         );
 
-        binary_explorer.dispatch().await?;
+        explore.dispatch().await?;
 
-        for (expr, token) in binary_explorer
-            .binary_values()
-            .iter()
-            .zip(binary_explorer.binary_tokens())
-        {
-            if let Some(stripped) = strip_prefix(expr.as_str(), &path) {
+        let children = explore.children(Arity::TWO);
+
+        let tokens = explore.tokens(Arity::TWO);
+        let values: Vec<String> = explore.values(Arity::TWO);
+
+        for (t, v) in izip!(tokens, values) {
+            if let Some(stripped) = strip_prefix(v.as_str(), &path) {
                 if let Some((lhs, rhs)) = parse_binary_sexp(&stripped.as_str()) {
-                    let replaced = pattern
-                        .clone()
-                        .replace("$", format!("({} $)", lhs).as_str());
-
-                    result.push((replaced, Some(token)));
+                    result.push(NamespaceInfo {
+                        namespace: path.join(lhs),
+                        token: t,
+                        subnamespaces: None,
+                    });
                 }
-            } else {
             }
         }
          */
 
-        println!("{:#?}", result);
-
-        Ok(result)
+        Ok(NamespaceInfo {
+            namespace: path.clone(),
+            token: token,
+            subnamespaces: Some(result),
+        })
     }
 }
 

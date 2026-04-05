@@ -95,8 +95,6 @@ hljs.registerLanguage('metta', (hljs) => ({
 }))
 import {
     bracketMatching,
-    foldGutter,
-    foldKeymap,
     syntaxHighlighting,
 } from '@codemirror/language'
 import { Annotation, EditorState } from '@codemirror/state'
@@ -174,16 +172,16 @@ const extensionToImportFormat = (file: File): ImportFormat | undefined => {
 }
 
 const sexprToPath = (sexpr: string): string => {
-    if (!sexpr || sexpr.trim() === '' || sexpr.trim() === '$') return '/';
-    const cleaned = sexpr.replace(/[()]/g, '').replace(/\$$/, '').trim();
+    if (!sexpr || sexpr.trim() === '' || sexpr.trim() === '|$|') return '/';
+    const cleaned = sexpr.replace(/[()]/g, '').replace(/\|?\$\|?$/, '').trim();
     const parts = cleaned.split(/\s+/).filter(p => p.length > 0);
     if (parts.length === 0) return '/';
     return '/' + parts.join('/') + '/';
 }
 
 const tokensToSexpr = (tokens: string[]): string => {
-    if (tokens.length === 0) return '$';
-    // If the last token is $, use it as the inner base.
+    if (tokens.length === 0) return '|$|';
+    // If the last token is |$|, use it as the inner base.
     // Otherwise, it's a terminal atom path, so just build the nested structure.
     let sexpr = tokens[tokens.length - 1];
     for (let i = tokens.length - 2; i >= 0; i--) {
@@ -193,10 +191,10 @@ const tokensToSexpr = (tokens: string[]): string => {
 }
 
 const pathToSexpr = (path: string): string => {
-    if (!path || path === '/') return '$';
+    if (!path || path === '/') return '|$|';
     const parts = path.split('/').filter(p => p.length > 0);
-    if (parts.length === 0) return '$';
-    let sexpr = '$';
+    if (parts.length === 0) return '|$|';
+    let sexpr = '|$|';
     for (let i = parts.length - 1; i >= 0; i--) {
         sexpr = `(${parts[i]} ${sexpr})`;
     }
@@ -314,7 +312,6 @@ const App: Component = () => {
                 diffExtension,
                 highlightActiveLineGutter(),
                 history(),
-                foldGutter(),
                 drawSelection(),
                 highlightSelectionMatches(),
                 dropCursor(),
@@ -330,7 +327,6 @@ const App: Component = () => {
                     ...defaultKeymap,
                     ...searchKeymap,
                     ...historyKeymap,
-                    ...foldKeymap,
                     ...completionKeymap,
                     ...lintKeymap,
                 ]),
@@ -778,9 +774,9 @@ const App: Component = () => {
         const encodedNs = ns.split('/').map(encodeURIComponent).join('/')
 
         try {
-            const url = focusToken
-                ? `${BACKEND_URL}/explore/${encodedNs}?focus_token=${encodeURIComponent(focusToken)}`
-                : `${BACKEND_URL}/explore/${encodedNs}`
+            // Always pass focus_token parameter, use empty string if not provided
+            const tokenParam = encodeURIComponent(focusToken || '')
+            const url = `${BACKEND_URL}/explore/${encodedNs}?focus_token=${tokenParam}`
 
             const res = await fetch(url, {
                 headers: { Authorization: token()?.code ?? '' }
@@ -832,6 +828,29 @@ const App: Component = () => {
         }
     }
 
+    const fetchNamespaceInfo = async (ns: string): Promise<{ token: string, subnamespaces: any[] }> => {
+        let namespace = ns
+        if (namespace.startsWith('/')) namespace = namespace.substring(1)
+        if (namespace.endsWith('/')) namespace = namespace.slice(0, -1)
+        const encodedNs = namespace.split('/').map(encodeURIComponent).join('/')
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/namespaces/${encodedNs}`, {
+                headers: { Authorization: token()?.code ?? '' }
+            })
+            if (res.ok) {
+                const data = await res.json()
+                return {
+                    token: data.token || '',
+                    subnamespaces: data.subnamespaces || []
+                }
+            }
+        } catch (e) {
+            console.error("Fetch namespace info failed:", e)
+        }
+        return { token: '', subnamespaces: [] }
+    }
+
     const addPanel = async (ns: string) => {
         const existing = panels().find(p => p.namespace === ns)
         if (existing) {
@@ -842,8 +861,24 @@ const App: Component = () => {
         const id = Math.random().toString(36).substring(7)
 
         try {
-            const tokens = await loadFringeAsTokens(ns)
-            const astState = createASTStateFromTokens(tokens, ns)
+            // First fetch namespace info to get focus tokens
+            const namespaceInfo = await fetchNamespaceInfo(ns)
+
+            // Store focus tokens for subnamespaces
+            const newTokens = new Map(focusTokens())
+            for (const sub of namespaceInfo.subnamespaces) {
+                if (sub.token) {
+                    const subNs = sub.namespace || ''
+                    const subPath = subNs.startsWith('/') ? subNs : '/' + subNs
+                    const normalizedPath = subPath.endsWith('/') ? subPath : subPath + '/'
+                    newTokens.set(normalizedPath, [sub.token])
+                }
+            }
+            setFocusTokens(newTokens)
+
+            // Now load the space content using the root token
+            const fringeTokens = await loadFringeAsTokens(ns, namespaceInfo.token)
+            const astState = createASTStateFromTokens(fringeTokens, ns)
 
             const newPanel: EditorPanel = {
                 id,
@@ -954,7 +989,23 @@ const App: Component = () => {
         const p = activePanel()
         const path = ns || p?.namespace || '/'
         try {
-            const tokens = await loadFringeAsTokens(path)
+            // First fetch namespace info to get focus tokens
+            const namespaceInfo = await fetchNamespaceInfo(path)
+
+            // Store focus tokens for subnamespaces
+            const newTokens = new Map(focusTokens())
+            for (const sub of namespaceInfo.subnamespaces) {
+                if (sub.token) {
+                    const subNs = sub.namespace || ''
+                    const subPath = subNs.startsWith('/') ? subNs : '/' + subNs
+                    const normalizedPath = subPath.endsWith('/') ? subPath : subPath + '/'
+                    newTokens.set(normalizedPath, [sub.token])
+                }
+            }
+            setFocusTokens(newTokens)
+
+            // Now load the space content using the root token
+            const tokens = await loadFringeAsTokens(path, namespaceInfo.token)
 
             if (p && !ns) {
                 // Update current panel
@@ -999,45 +1050,31 @@ const App: Component = () => {
 
         const results: any[] = []
         const uniqueNextLevelPaths = new Set<string>()
-        const newTokens = new Map(focusTokens())
 
         try {
-            const res = await fetch(`${BACKEND_URL}/explore/${encodedNs}`, {
+            const res = await fetch(`${BACKEND_URL}/namespaces/${encodedNs}`, {
                 headers: { Authorization: token()?.code ?? '' }
             })
             if (res.ok) {
-                const data = await res.json()
-                const parsed: any[] = typeof data === 'string' ? (data.trim() === '' ? [] : JSON.parse(data)) : data
+                const data: any = await res.json()
+                const subnamespaces = data.subnamespaces || []
 
-                // New format: array of [mettaString, focusToken] pairs
-                // Multiple items can have the same mettaString with different focusTokens
-                for (const item of parsed) {
-                    if (!Array.isArray(item) || item.length < 1) continue; // skip invalid formats
+                // Convert NamespaceInfo objects to the format expected by NamespaceSelector
+                for (const info of subnamespaces) {
+                    // Convert namespace like "a/b" to path format "/a/b/"
+                    const namespace = info.namespace || ''
+                    const resultPath = namespace.startsWith('/') ? namespace : '/' + namespace
+                    const normalizedPath = resultPath.endsWith('/') ? resultPath : resultPath + '/'
 
-                    const mettaString = item[0]
-                    const focusToken = item[1] || null
-                    const nextPath = sexprToPath(mettaString)
-
-                    // Store focus token if present
-                    if (focusToken) {
-                        const existingTokens = newTokens.get(nextPath) || []
-                        if (!existingTokens.includes(focusToken)) {
-                            existingTokens.push(focusToken)
-                        }
-                        newTokens.set(nextPath, existingTokens)
-                    }
-
-                    // Only add unique paths to results (avoid duplicate display)
-                    if (!uniqueNextLevelPaths.has(nextPath)) {
-                        uniqueNextLevelPaths.add(nextPath)
-                        // Note: we store the array of tokens, but only show one entry in results
-                        results.push({ token: focusToken, expr: mettaString, path: nextPath });
+                    if (!uniqueNextLevelPaths.has(normalizedPath)) {
+                        uniqueNextLevelPaths.add(normalizedPath)
+                        // Generate a simple display expression from the path
+                        const expr = pathToSexpr(normalizedPath)
+                        results.push({ token: info.token, expr, path: normalizedPath });
                     }
                 }
-
-                setFocusTokens(newTokens)
             }
-        } catch (e) { console.error("Explore API failed:", e) }
+        } catch (e) { console.error("Namespaces API failed:", e) }
 
         // Local fallback: use current editor content to find sub-namespaces
         const p = activePanel()

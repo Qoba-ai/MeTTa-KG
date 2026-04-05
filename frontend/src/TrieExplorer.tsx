@@ -65,7 +65,7 @@ const addToTrie = (node: TrieNode, expr: any) => {
     addToTrie(node.children[key], expr[1]);
   } else {
     const val = exprToString(expr);
-    if (val === "$") {
+    if (val === "|$|") {
       node.isFringe = true;
     } else {
       node.terminals.push(val);

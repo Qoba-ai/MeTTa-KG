@@ -13,7 +13,7 @@ use crate::{
     events::{EventBus, SpaceEvent},
     model::Token,
 };
-use mork_client::{path_to_sexpr, MorkClient, MorkError, Permission};
+use mork_client::{MorkClient, MorkError, NamespaceInfo, Permission};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -207,6 +207,20 @@ pub async fn explore(
 
     get_mork_client()
         .explore(&perm, &path, &focus_token)
+        .await
+        .map(Json)
+        .map_err(mork_error_to_status)
+}
+
+#[rocket::get("/namespaces/<path..>")]
+pub async fn explore_namespaces(
+    token: Token,
+    path: PathBuf,
+) -> Result<Json<NamespaceInfo>, Status> {
+    let perm = permission_from_token(&token);
+
+    get_mork_client()
+        .explore_namespaces(&perm, &path)
         .await
         .map(Json)
         .map_err(mork_error_to_status)
