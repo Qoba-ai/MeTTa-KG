@@ -1,359 +1,46 @@
-use itertools::{Itertools, izip};
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
-use queue::Queue;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Component, Path, PathBuf};
-use std::pin::Pin;
 use std::sync::Arc;
-use std::vec;
+
+// ─── API Response Types ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExploreNodeData {
+pub struct MORKExploreResponse {
     pub expr: String,
     pub token: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
-pub struct Explore {
-    client: Arc<Client>,
-    pub base_url: String,
-    pub path: PathBuf,
-    pub pattern: String,
-    pub token: String,
-    pub data: Option<Vec<ExploreNodeData>>,
-    pub parent: Option<ExploreNodeData>,
-}
+// ─── Public Result Types ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-
 pub struct NamespaceInfo {
-    namespace: PathBuf,
-    subnamespaces: Option<Vec<NamespaceInfo>>,
+    pub namespace: PathBuf,
+    pub subnamespaces: Option<Vec<NamespaceInfo>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-
 pub struct ExploreResult {
-    namespace: PathBuf,
-    metta_expressions: Vec<String>,
-    subspaces: Vec<(String, PathBuf)>,
-    focus_token: Option<String>,
+    pub namespace: PathBuf,
+    pub metta_expressions: Vec<String>,
+    pub subspaces: Vec<(String, PathBuf)>,
+    pub focus_token: Option<String>,
 }
 
-#[derive(PartialEq, Eq)]
-pub enum Arity {
-    TWO,
-    NONTWO,
-    ANY,
-}
+// ─── S-Expression Utilities ─────────────────────────────────────────────────
 
-impl Explore {
-    pub fn new(
-        client: Arc<Client>,
-        base_url: String,
-        path: PathBuf,
-        pattern: String,
-        token: String,
-        parent: Option<ExploreNodeData>,
-    ) -> Self {
-        Self {
-            client,
-            base_url,
-            path,
-            pattern,
-            token,
-            data: None,
-            parent: parent,
-        }
-    }
-
-    pub async fn dispatch(&mut self) -> Result<(), reqwest::Error> {
-        let pattern_encoded = percent_encode(self.pattern.as_bytes(), NON_ALPHANUMERIC).to_string();
-        let url = if self.token.is_empty() {
-            format!("{}/explore/{}//", self.base_url, pattern_encoded)
-        } else {
-            format!(
-                "{}/explore/{}/{}/",
-                self.base_url, pattern_encoded, self.token
-            )
-        };
-        println!("{}", url);
-        let res = self.client.get(&url).send().await?;
-        if res.status().is_success() {
-            let data = res.json().await?;
-            self.data = Some(data);
-        }
-        Ok(())
-    }
-
-    pub fn children(&self, aritytype: Arity) -> Vec<Explore> {
-        let mut result: Vec<Explore> = Vec::new();
-
-        if let Some(data) = &self.data {
-            for entry in data {
-                if let Some(stripped) = strip_prefix(&entry.expr, &self.path) {
-                    if aritytype == Arity::ANY
-                        || (self.arity(&stripped) != 2 && aritytype == Arity::NONTWO)
-                        || (self.arity(&stripped) == 2 && aritytype == Arity::TWO)
-                    {
-                        let token_encoded =
-                            percent_encode(&entry.token, NON_ALPHANUMERIC).to_string();
-
-                        result.push(Explore::new(
-                            self.client.clone(),
-                            self.base_url.clone(),
-                            self.path.clone(),
-                            self.pattern.clone(),
-                            token_encoded,
-                            Some(entry.clone()),
-                        ));
-                    }
-                }
-            }
-        }
-        result
-    }
-
-    pub fn values(&self, aritytype: Arity) -> Vec<String> {
-        let mut result: Vec<String> = Vec::new();
-
-        if let Some(data) = &self.data {
-            for entry in data {
-                if let Some(stripped) = strip_prefix(&entry.expr, &self.path) {
-                    if aritytype == Arity::ANY
-                        || (self.arity(&stripped) != 2 && aritytype == Arity::NONTWO)
-                        || (self.arity(&stripped) == 2 && aritytype == Arity::TWO)
-                    {
-                        result.push(entry.expr.clone());
-                    }
-                }
-            }
-        }
-
-        result
-    }
-
-    pub fn tokens(&self, aritytype: Arity) -> Vec<String> {
-        let mut result: Vec<String> = Vec::new();
-
-        if let Some(data) = &self.data {
-            for entry in data {
-                if let Some(stripped) = strip_prefix(&entry.expr, &self.path) {
-                    if aritytype == Arity::ANY
-                        || (self.arity(&stripped) != 2 && aritytype == Arity::NONTWO)
-                        || (self.arity(&stripped) == 2 && aritytype == Arity::TWO)
-                    {
-                        let encoded = percent_encode(&entry.token, NON_ALPHANUMERIC).to_string();
-
-                        result.push(encoded);
-                    }
-                }
-            }
-        }
-
-        result
-    }
-
-    pub fn arity(&self, expr: &String) -> usize {
-        let trimmed = expr.trim();
-
-        // Check if it's an S-expression (must have outer parentheses)
-        if !trimmed.starts_with('(') || !trimmed.ends_with(')') {
-            return 0;
-        }
-
-        // Remove outer parentheses
-        let inner = &trimmed[1..trimmed.len() - 1];
-
-        let mut count = 0;
-        let mut depth = 0;
-        let mut in_token = false;
-
-        for ch in inner.chars() {
-            match ch {
-                '(' => {
-                    if depth == 0 && !in_token {
-                        in_token = true;
-                        count += 1;
-                    }
-                    depth += 1;
-                }
-                ')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        in_token = false;
-                    }
-                }
-                c if c.is_whitespace() => {
-                    if depth == 0 {
-                        in_token = false;
-                    }
-                }
-                _ => {
-                    if depth == 0 && !in_token {
-                        in_token = true;
-                        count += 1;
-                    }
-                }
-            }
-        }
-
-        count
-    }
-}
-
-// ─── Permission ─────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PermissionError {
-    ReadRequired,
-    WriteRequired,
-    NamespaceMismatch { path: String, namespace: String },
-}
-
-impl std::fmt::Display for PermissionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PermissionError::ReadRequired => write!(f, "read permission required"),
-            PermissionError::WriteRequired => write!(f, "write permission required"),
-            PermissionError::NamespaceMismatch { path, namespace } => {
-                write!(
-                    f,
-                    "path '{}' is outside token namespace '{}'",
-                    path, namespace
-                )
-            }
-        }
-    }
-}
-
-/// Permissions derived from a token, used to gate every MORK operation.
-#[derive(Debug, Clone)]
-pub struct Permission {
-    /// Token namespace without leading slash, e.g. `"space/sub"` or `""` for root.
-    pub namespace: String,
-    pub can_read: bool,
-    pub can_write: bool,
-}
-
-impl Permission {
-    pub fn new(namespace: impl Into<String>, can_read: bool, can_write: bool) -> Self {
-        Self {
-            namespace: namespace.into(),
-            can_read,
-            can_write,
-        }
-    }
-
-    pub fn require_read(&self) -> Result<(), PermissionError> {
-        if self.can_read {
-            Ok(())
-        } else {
-            Err(PermissionError::ReadRequired)
-        }
-    }
-
-    pub fn require_write(&self) -> Result<(), PermissionError> {
-        if self.can_write {
-            Ok(())
-        } else {
-            Err(PermissionError::WriteRequired)
-        }
-    }
-
-    /// Returns an error if `path` is not under this token's namespace.
-    pub fn check_namespace(&self, path: &Path) -> Result<(), PermissionError> {
-        if self.namespace.is_empty() {
-            return Ok(());
-        }
-        if !path.starts_with(&self.namespace) {
-            return Err(PermissionError::NamespaceMismatch {
-                path: path.to_string_lossy().into_owned(),
-                namespace: self.namespace.clone(),
-            });
-        }
-        Ok(())
-    }
-}
-
-// ─── Error ──────────────────────────────────────────────────────────────────
-
-#[derive(Debug)]
-pub enum MorkError {
-    Permission(PermissionError),
-    Http(reqwest::Error),
-    BadStatus(u16),
-    Timeout,
-}
-
-impl From<PermissionError> for MorkError {
-    fn from(e: PermissionError) -> Self {
-        MorkError::Permission(e)
-    }
-}
-
-impl From<reqwest::Error> for MorkError {
-    fn from(e: reqwest::Error) -> Self {
-        MorkError::Http(e)
-    }
-}
-
-// ─── Path helper ────────────────────────────────────────────────────────────
-
-/// Converts a filesystem path into a MeTTa S-expression pattern.
-/// E.g. `foo/bar` → `"(foo (bar $))"`, empty path → `"$"`.
-pub fn path_to_sexpr(path: &Path) -> String {
-    let mut sexpr = String::from("$");
-    for component in path.components().rev() {
-        if let Component::Normal(name) = component {
-            sexpr = format!("({} {})", name.to_string_lossy(), sexpr);
-        }
-    }
-    sexpr
-}
-
-pub fn n_ary_pattern(n: usize) -> String {
-    let mut result = String::new();
-
-    result.push('(');
-
-    for i in 0..n {
-        result.push_str(format!("${} ", i).as_str());
-    }
-
-    result.push(')');
-
-    result
-}
-
-pub fn is_balanced(s: &str) -> bool {
-    let mut depth = 0;
-    for c in s.chars() {
-        if c == '(' {
-            depth += 1;
-        } else if c == ')' {
-            depth -= 1;
-            if depth < 0 {
-                return false;
-            }
-        }
-    }
-    depth == 0
-}
-
-pub fn arity(expr: &String) -> usize {
+/// Count the arity (number of top-level elements) of an S-expression.
+/// Returns 0 for atoms (non-parenthesized values).
+pub fn arity(expr: &str) -> usize {
     let trimmed = expr.trim();
 
-    // Check if it's an S-expression (must have outer parentheses)
     if !trimmed.starts_with('(') || !trimmed.ends_with(')') {
         return 0;
     }
 
-    // Remove outer parentheses
     let inner = &trimmed[1..trimmed.len() - 1];
-
     let mut count = 0;
     let mut depth = 0;
     let mut in_token = false;
@@ -390,15 +77,35 @@ pub fn arity(expr: &String) -> usize {
     count
 }
 
+/// Check if parentheses are balanced in a string.
+pub fn is_balanced(s: &str) -> bool {
+    let mut depth = 0;
+    for c in s.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    depth == 0
+}
+
+/// Parse a binary S-expression into (lhs, rhs).
+/// Returns None if not binary or LHS is not a simple symbol.
 pub fn parse_binary_sexp(input: &str) -> Option<(&str, &str)> {
-    if arity(&input.to_string()) != 2 {
+    if arity(input) != 2 {
         return None;
     }
 
-    let inner = input.strip_prefix('(')?.strip_suffix(')')?;
-
+    let inner = input.trim().strip_prefix('(')?.strip_suffix(')')?;
     let (lhs, rhs) = inner.split_once(' ')?;
 
+    // LHS must be a simple symbol (no parens)
     if lhs.contains('(') || lhs.contains(')') {
         return None;
     }
@@ -410,24 +117,136 @@ pub fn parse_binary_sexp(input: &str) -> Option<(&str, &str)> {
     }
 }
 
+/// Strip a path prefix from an S-expression.
+/// E.g., strip_prefix("(a (b c))", "a") -> Some("(b c)")
 pub fn strip_prefix(input: &str, path: &Path) -> Option<String> {
     let mut inner = input;
 
     for component in path.components() {
-        inner = inner.strip_prefix('(')?.strip_suffix(')')?.trim();
+        inner = inner.trim().strip_prefix('(')?.strip_suffix(')')?.trim();
 
         if let Some(s) = component.as_os_str().to_str() {
             inner = inner.strip_prefix(s)?.trim();
         }
     }
 
-    Some(String::from(inner.trim()))
+    Some(inner.trim().to_string())
+}
+
+/// Convert a path to a MeTTa S-expression pattern.
+/// E.g., "foo/bar" -> "(foo (bar $))", "" -> "$"
+pub fn path_to_sexpr(path: &Path) -> String {
+    let mut sexpr = String::from("$");
+    for component in path.components().rev() {
+        if let Component::Normal(name) = component {
+            sexpr = format!("({} {})", name.to_string_lossy(), sexpr);
+        }
+    }
+    sexpr
+}
+
+/// URL-encode a string for MORK API calls.
+fn encode(s: &str) -> String {
+    percent_encode(s.as_bytes(), NON_ALPHANUMERIC).to_string()
+}
+
+// ─── Permission ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PermissionError {
+    ReadRequired,
+    WriteRequired,
+    NamespaceMismatch { path: String, namespace: String },
+}
+
+impl std::fmt::Display for PermissionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PermissionError::ReadRequired => write!(f, "read permission required"),
+            PermissionError::WriteRequired => write!(f, "write permission required"),
+            PermissionError::NamespaceMismatch { path, namespace } => {
+                write!(
+                    f,
+                    "path '{}' is outside token namespace '{}'",
+                    path, namespace
+                )
+            }
+        }
+    }
+}
+
+/// Permissions derived from a token, used to gate every MORK operation.
+#[derive(Debug, Clone)]
+pub struct Permission {
+    pub namespace: String,
+    pub can_read: bool,
+    pub can_write: bool,
+}
+
+impl Permission {
+    pub fn new(namespace: impl Into<String>, can_read: bool, can_write: bool) -> Self {
+        Self {
+            namespace: namespace.into(),
+            can_read,
+            can_write,
+        }
+    }
+
+    pub fn require_read(&self) -> Result<(), PermissionError> {
+        if self.can_read {
+            Ok(())
+        } else {
+            Err(PermissionError::ReadRequired)
+        }
+    }
+
+    pub fn require_write(&self) -> Result<(), PermissionError> {
+        if self.can_write {
+            Ok(())
+        } else {
+            Err(PermissionError::WriteRequired)
+        }
+    }
+
+    pub fn check_namespace(&self, path: &Path) -> Result<(), PermissionError> {
+        if self.namespace.is_empty() {
+            return Ok(());
+        }
+        if !path.starts_with(&self.namespace) {
+            return Err(PermissionError::NamespaceMismatch {
+                path: path.to_string_lossy().into_owned(),
+                namespace: self.namespace.clone(),
+            });
+        }
+        Ok(())
+    }
+}
+
+// ─── Error ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug)]
+pub enum MorkError {
+    Permission(PermissionError),
+    Http(reqwest::Error),
+    BadStatus(u16),
+    Timeout,
+}
+
+impl From<PermissionError> for MorkError {
+    fn from(e: PermissionError) -> Self {
+        MorkError::Permission(e)
+    }
+}
+
+impl From<reqwest::Error> for MorkError {
+    fn from(e: reqwest::Error) -> Self {
+        MorkError::Http(e)
+    }
 }
 
 // ─── MorkClient ─────────────────────────────────────────────────────────────
 
-/// HTTP client for all MORK operations. Every method enforces the supplied
-/// [`Permission`] before issuing any network request.
+/// HTTP client for all MORK operations.
 #[derive(Clone, Debug)]
 pub struct MorkClient {
     client: Arc<Client>,
@@ -446,11 +265,8 @@ impl MorkClient {
         self.base_url.trim_end_matches('/')
     }
 
-    fn enc(s: &str) -> String {
-        percent_encode(s.as_bytes(), NON_ALPHANUMERIC).to_string()
-    }
+    // ─── Basic Operations ───────────────────────────────────────────────────
 
-    /// Import MeTTa content served at `uri` into `path`. Requires write.
     pub async fn import(&self, perm: &Permission, path: &Path, uri: &str) -> Result<(), MorkError> {
         perm.require_write()?;
         perm.check_namespace(path)?;
@@ -459,9 +275,9 @@ impl MorkClient {
         let url = format!(
             "{}/import/{}/{}?uri={}",
             self.base(),
-            Self::enc("$"),
-            Self::enc(&template),
-            Self::enc(uri),
+            encode("$"),
+            encode(&template),
+            encode(uri),
         );
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
@@ -470,7 +286,6 @@ impl MorkClient {
         Ok(())
     }
 
-    /// Export all MeTTa content at `path`. Requires read.
     pub async fn export(&self, perm: &Permission, path: &Path) -> Result<String, MorkError> {
         perm.require_read()?;
         perm.check_namespace(path)?;
@@ -479,8 +294,8 @@ impl MorkClient {
         let url = format!(
             "{}/export/{}/{}",
             self.base(),
-            Self::enc(&pattern),
-            Self::enc("$"),
+            encode(&pattern),
+            encode("$")
         );
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
@@ -489,13 +304,12 @@ impl MorkClient {
         Ok(resp.text().await?)
     }
 
-    /// Delete all data at `path`. Requires write.
     pub async fn clear(&self, perm: &Permission, path: &Path) -> Result<(), MorkError> {
         perm.require_write()?;
         perm.check_namespace(path)?;
 
         let pattern = path_to_sexpr(path);
-        let url = format!("{}/clear/{}", self.base(), Self::enc(&pattern));
+        let url = format!("{}/clear/{}", self.base(), encode(&pattern));
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -503,23 +317,17 @@ impl MorkClient {
         Ok(())
     }
 
-    /// Copy `src_path` to `dst_path`. Requires read + write on both.
-    pub async fn copy(
-        &self,
-        perm: &Permission,
-        src_path: &Path,
-        dst_path: &Path,
-    ) -> Result<(), MorkError> {
+    pub async fn copy(&self, perm: &Permission, src: &Path, dst: &Path) -> Result<(), MorkError> {
         perm.require_read()?;
         perm.require_write()?;
-        perm.check_namespace(src_path)?;
-        perm.check_namespace(dst_path)?;
+        perm.check_namespace(src)?;
+        perm.check_namespace(dst)?;
 
         let url = format!(
             "{}/copy/{}/{}",
             self.base(),
-            Self::enc(&path_to_sexpr(src_path)),
-            Self::enc(&path_to_sexpr(dst_path)),
+            encode(&path_to_sexpr(src)),
+            encode(&path_to_sexpr(dst)),
         );
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
@@ -528,7 +336,6 @@ impl MorkClient {
         Ok(())
     }
 
-    /// Apply a multi-space transformation. Requires read + write on all spaces.
     pub async fn transform(
         &self,
         perm: &Permission,
@@ -563,7 +370,6 @@ impl MorkClient {
         Ok(())
     }
 
-    /// Wait for a space lock. Requires write if `is_writer`, read otherwise.
     pub async fn busywait(
         &self,
         perm: &Permission,
@@ -573,17 +379,17 @@ impl MorkClient {
     ) -> Result<String, MorkError> {
         perm.check_namespace(path)?;
         if is_writer {
-            perm.require_write()?
+            perm.require_write()?;
         } else {
-            perm.require_read()?
-        };
+            perm.require_read()?;
+        }
 
         let pattern = path_to_sexpr(path);
         let mut url = format!(
             "{}/busywait/{}/?expr1={}",
             self.base(),
             millis,
-            Self::enc(&pattern),
+            encode(&pattern),
         );
         if is_writer {
             url.push_str("&writer1");
@@ -592,7 +398,6 @@ impl MorkClient {
         Ok(resp.text().await?)
     }
 
-    /// Poll the status of a space operation. Requires read.
     pub async fn status(
         &self,
         perm: &Permission,
@@ -602,7 +407,7 @@ impl MorkClient {
         perm.check_namespace(path)?;
 
         let pattern = path_to_sexpr(path);
-        let url = format!("{}/status/{}", self.base(), Self::enc(&pattern));
+        let url = format!("{}/status/{}", self.base(), encode(&pattern));
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -611,14 +416,13 @@ impl MorkClient {
         serde_json::from_str(&text).map_err(|_| MorkError::BadStatus(0))
     }
 
-    /// Count atoms at `path`, polling until the result is ready. Requires read.
     pub async fn count(&self, perm: &Permission, path: &Path) -> Result<usize, MorkError> {
         perm.require_read()?;
         perm.check_namespace(path)?;
 
         let pattern = path_to_sexpr(path);
-        let count_url = format!("{}/count/{}", self.base(), Self::enc(&pattern));
-        let status_url = format!("{}/status/{}", self.base(), Self::enc(&pattern));
+        let count_url = format!("{}/count/{}", self.base(), encode(&pattern));
+        let status_url = format!("{}/status/{}", self.base(), encode(&pattern));
 
         let resp = self.client.get(&count_url).send().await?;
         if !resp.status().is_success() {
@@ -642,100 +446,191 @@ impl MorkClient {
         Err(MorkError::Timeout)
     }
 
+    // ─── Explore Operations ─────────────────────────────────────────────────
+
+    /// Low-level MORK explore call. Returns raw expression/token pairs.
+    async fn explore_raw(
+        &self,
+        pattern: &str,
+        token: &str,
+    ) -> Result<Vec<MORKExploreResponse>, MorkError> {
+        let url = if token.is_empty() {
+            format!("{}/explore/{}//", self.base(), encode(pattern))
+        } else {
+            format!("{}/explore/{}/{}/", self.base(), encode(pattern), token)
+        };
+
+        let resp = self.client.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Err(MorkError::BadStatus(resp.status().as_u16()));
+        }
+        Ok(resp.json().await?)
+    }
+
+    /// Explore a namespace and return subspaces and plain metta expressions.
+    ///
+    /// Uses two-phase approach to minimize requests on large spaces:
+    /// - Phase 1 (BFS): Discover ALL subspaces (only on first request)
+    /// - Phase 2 (DFS): Collect metta_expressions with pagination (50 per page)
+    ///
+    /// The focus_token encodes the DFS stack state for continuation.
     pub async fn explore(
         &self,
         perm: &Permission,
         path: &PathBuf,
-        focus_token: &String,
+        focus_token: &str,
     ) -> Result<ExploreResult, MorkError> {
         perm.require_read()?;
         perm.check_namespace(path)?;
 
-        let mut metta_expressions: Vec<String> = vec![];
-        let mut subspaces: Vec<(String, PathBuf)> = vec![];
-        let mut cutoff_focus_token: Option<String> = None;
-
         let pattern = path_to_sexpr(path);
+        const PAGE_SIZE: usize = 100;
 
-        let mut queue = Queue::<Explore>::new();
-        let mut visited_tokens = std::collections::HashSet::new();
+        let mut subspaces: Vec<(String, PathBuf)> = Vec::new();
+        let mut metta_expressions: Vec<String> = Vec::new();
+        let mut next_focus_token: Option<String> = None;
 
-        if !focus_token.is_empty() {
-            visited_tokens.insert(focus_token.clone());
-        }
+        // Shared visited tokens between BFS and DFS phases
+        let mut visited_tokens: HashSet<String> = HashSet::new();
 
-        let mut explore = Explore::new(
-            self.client.clone(),
-            self.base_url.clone(),
-            path.clone(),
-            pattern.clone(),
-            focus_token.clone(),
-            None,
-        );
+        // Phase 1: BFS to discover all subspaces (only on first request)
+        // Uses same pattern as DFS so tokens can be reused
+        // When it encounters only 1 child with binary s-expression, marks it as visited so DFS skips it
+        if focus_token.is_empty() {
+            let mut subspace_symbols: HashSet<String> = HashSet::new();
+            let mut queue: VecDeque<String> = VecDeque::new();
 
-        explore.dispatch().await?;
+            queue.push_back(String::new());
+            visited_tokens.insert(String::new());
 
-        let children = explore.children(Arity::ANY);
+            while let Some(current_token) = queue.pop_front() {
+                let responses = self.explore_raw(&pattern, &current_token).await?;
 
-        for c2 in children {
-            if visited_tokens.insert(c2.token.clone()) {
-                queue.queue(c2).expect("FAILED TO QUEUE");
-            }
-        }
-
-        while let Some(mut e) = queue.dequeue() {
-            e.dispatch().await?;
-
-            let nr_children = e.children(Arity::ANY).len();
-
-            if nr_children == 0 || nr_children == 1 {
-                if let Some(parent) = e.parent {
-                    metta_expressions.push(parent.expr);
-
-                    if metta_expressions.len() > 50 {
-                        cutoff_focus_token =
-                            Some(percent_encode(&parent.token, NON_ALPHANUMERIC).to_string());
-                        break;
+                // Process all responses to collect subspace symbols
+                for response in &responses {
+                    if let Some(relative_expr) = strip_prefix(&response.expr, path) {
+                        // Collect all unique LHS symbols
+                        if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
+                            subspace_symbols.insert(lhs.to_string());
+                        }
                     }
                 }
 
+                // Check stopping condition: only 1 response that's a binary s-expression
+                // Mark its token as visited so DFS will skip it
+                if let Some(relative_expr) = strip_prefix(&responses[0].expr, path) {
+                    if parse_binary_sexp(&relative_expr).is_some() {
+                        // Mark as visited so DFS skips these binary-only branches
+                        let encoded_token =
+                            percent_encode(&responses[0].token, NON_ALPHANUMERIC).to_string();
+                        visited_tokens.insert(encoded_token);
+                        continue; // Don't explore further
+                    }
+                }
+
+                // Multiple responses or non-binary → continue BFS
+                for response in responses {
+                    let encoded_token =
+                        percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
+
+                    // Continue BFS if not already visited
+                    if visited_tokens.insert(encoded_token.clone()) {
+                        queue.push_back(encoded_token);
+                    }
+                }
+            }
+
+            subspaces = subspace_symbols
+                .into_iter()
+                .map(|symbol| {
+                    let display = format!("({} |$|)", symbol);
+                    let subpath = path.join(&symbol);
+                    (display, subpath)
+                })
+                .collect();
+        }
+
+        // Phase 2: DFS to collect metta_expressions with pagination
+        // Skips tokens already visited/marked-to-skip in BFS phase
+        let mut stack: Vec<String> = Vec::new();
+
+        // Initialize stack from focus_token
+        if focus_token.is_empty() {
+            // Start DFS from root - will skip tokens marked by BFS
+            stack.push(String::new());
+        } else {
+            // Decode focus_token as JSON array of tokens (DFS stack state)
+            if let Ok(tokens) = serde_json::from_str::<Vec<String>>(focus_token) {
+                stack = tokens;
+            } else {
+                // Fallback for invalid token
+                stack.push(String::new());
+            }
+        }
+
+        visited_tokens.remove("");
+
+        // DFS loop
+        while let Some(current_token) = stack.pop() {
+            // Skip if already visited
+            if !visited_tokens.insert(current_token.clone()) {
                 continue;
             }
 
-            let nary_children = e.children(Arity::NONTWO);
+            let responses = self.explore_raw(&pattern, &current_token).await?;
 
-            for c in nary_children {
-                if visited_tokens.insert(c.token.clone()) {
-                    queue.queue(c.clone()).expect("FAILED TO QUEUE");
+            // Process responses in DFS order
+            for response in responses {
+                let relative_expr = match strip_prefix(&response.expr, path) {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                let encoded_token = percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
+
+                // Add child token to stack if not visited (DFS: push onto stack)
+                if !visited_tokens.contains(&encoded_token) {
+                    stack.push(encoded_token);
+                }
+
+                // Skip subspaces (already collected in phase 1)
+                if parse_binary_sexp(&relative_expr).is_some() {
+                    continue;
+                }
+
+                // Add to metta_expressions if not duplicate
+                if !metta_expressions.contains(&relative_expr) {
+                    metta_expressions.push(relative_expr);
+
+                    // Check if we hit page limit
+                    if metta_expressions.len() >= PAGE_SIZE {
+                        // Save remaining stack as focus_token for continuation
+                        if !stack.is_empty() {
+                            next_focus_token =
+                                Some(serde_json::to_string(&stack).unwrap_or_default());
+                        }
+                        break;
+                    }
                 }
             }
 
-            let binary_values = e.values(Arity::TWO);
-            let binary_tokens = e.tokens(Arity::TWO);
-
-            for (v, t) in izip!(binary_values, binary_tokens) {
-                if let Some(stripped) = strip_prefix(v.as_str(), &path) {
-                    println!("{} {}", v, stripped);
-                    if let Some((lhs, rhs)) = parse_binary_sexp(&stripped.as_str()) {
-                        let replaced = v.replace(
-                            format!("({} {})", lhs, rhs).as_str(),
-                            format!("({} |$|)", lhs).as_str(),
-                        );
-
-                        subspaces.push((replaced, path.join(lhs)));
-                    }
-                }
+            // Break outer loop if we hit limit
+            if metta_expressions.len() >= PAGE_SIZE {
+                break;
             }
         }
 
         Ok(ExploreResult {
             namespace: path.clone(),
-            metta_expressions: metta_expressions,
-            subspaces: subspaces,
-            focus_token: cutoff_focus_token,
+            metta_expressions,
+            subspaces,
+            focus_token: next_focus_token,
         })
     }
 
+    /// Explore namespaces (for namespace selector UI).
+    /// Uses BFS to traverse the trie and find all unique subnamespaces.
+    /// Stops when encountering only 1 child with a binary s-expression.
     pub async fn explore_namespaces(
         &self,
         perm: &Permission,
@@ -744,63 +639,70 @@ impl MorkClient {
         perm.require_read()?;
         perm.check_namespace(path)?;
 
-        self.explore_namespaces_helper(path).await
-    }
-
-    pub async fn explore_namespaces_helper(
-        &self,
-        path: &PathBuf,
-    ) -> Result<NamespaceInfo, MorkError> {
-        let mut result: Vec<NamespaceInfo> = vec![];
-
         let pattern = path_to_sexpr(path);
 
-        let mut explore = Explore::new(
-            self.client.clone(),
-            self.base_url.clone(),
-            PathBuf::new(),
-            pattern,
-            String::new(),
-            None,
-        );
+        let mut subnamespace_symbols: HashSet<String> = HashSet::new();
+        let mut visited_tokens: HashSet<String> = HashSet::new();
+        let mut queue: VecDeque<String> = VecDeque::new();
 
-        explore.dispatch().await?;
+        // Start BFS with empty token
+        queue.push_back(String::new());
+        visited_tokens.insert(String::new());
 
-        let children = explore.children(Arity::ANY);
+        while let Some(current_token) = queue.pop_front() {
+            let responses = self.explore_raw(&pattern, &current_token).await?;
 
-        for mut child in children {
-            child.dispatch().await?;
-
-            let values: Vec<String> = child.values(Arity::TWO);
-
-            for v in values {
-                if let Some(stripped) = strip_prefix(v.as_str(), &path) {
-                    if let Some((lhs, rhs)) = parse_binary_sexp(&stripped.as_str()) {
-                        result.push(NamespaceInfo {
-                            namespace: path.join(lhs),
-                            subnamespaces: None,
-                        });
+            // First, collect all subspace symbols from responses
+            for response in &responses {
+                if let Some(relative_expr) = strip_prefix(&response.expr, path) {
+                    // Collect all unique LHS symbols
+                    if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
+                        subnamespace_symbols.insert(lhs.to_string());
                     }
+                }
+            }
+
+            // Check stopping condition: if first response is binary, skip this token
+            if let Some(relative_expr) = strip_prefix(&responses[0].expr, path) {
+                if parse_binary_sexp(&relative_expr).is_some() {
+                    // Mark as visited and don't explore further
+                    let encoded_token =
+                        percent_encode(&responses[0].token, NON_ALPHANUMERIC).to_string();
+                    visited_tokens.insert(encoded_token);
+                    continue;
+                }
+            }
+
+            // Continue BFS for remaining responses
+            for response in responses {
+                let encoded_token = percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
+                if visited_tokens.insert(encoded_token.clone()) {
+                    queue.push_back(encoded_token);
                 }
             }
         }
 
+        let subnamespaces: Vec<NamespaceInfo> = subnamespace_symbols
+            .into_iter()
+            .map(|symbol| NamespaceInfo {
+                namespace: path.join(&symbol),
+                subnamespaces: None,
+            })
+            .collect();
+
         Ok(NamespaceInfo {
             namespace: path.clone(),
-            subnamespaces: Some(result),
+            subnamespaces: Some(subnamespaces),
         })
     }
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// A MorkClient pointed at a port nothing is listening on.
-    /// Permission checks fire before any network I/O, so connection errors
-    /// will never appear in these tests.
     fn client() -> MorkClient {
         MorkClient::new("http://127.0.0.1:19999")
     }
@@ -815,7 +717,55 @@ mod tests {
         Permission::new(ns, true, true)
     }
 
-    // ── import ───────────────────────────────────────────────────────────────
+    // ── Arity tests ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn arity_atom() {
+        assert_eq!(arity("x"), 0);
+        assert_eq!(arity("hello"), 0);
+    }
+
+    #[test]
+    fn arity_binary() {
+        assert_eq!(arity("(a b)"), 2);
+        assert_eq!(arity("(a (b c))"), 2);
+    }
+
+    #[test]
+    fn arity_ternary() {
+        assert_eq!(arity("(a b c)"), 3);
+        assert_eq!(arity("(aha hoho hihi)"), 3);
+    }
+
+    #[test]
+    fn arity_complex_lhs() {
+        assert_eq!(arity("((X) Y)"), 2);
+    }
+
+    // ── parse_binary_sexp tests ─────────────────────────────────────────────
+
+    #[test]
+    fn parse_binary_simple() {
+        assert_eq!(parse_binary_sexp("(a b)"), Some(("a", "b")));
+    }
+
+    #[test]
+    fn parse_binary_nested_rhs() {
+        assert_eq!(parse_binary_sexp("(a (b c))"), Some(("a", "(b c)")));
+    }
+
+    #[test]
+    fn parse_binary_complex_lhs_returns_none() {
+        assert_eq!(parse_binary_sexp("((X) Y)"), None);
+    }
+
+    #[test]
+    fn parse_non_binary_returns_none() {
+        assert_eq!(parse_binary_sexp("(a b c)"), None);
+        assert_eq!(parse_binary_sexp("x"), None);
+    }
+
+    // ── Permission tests ────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn import_requires_write() {
@@ -845,8 +795,6 @@ mod tests {
         ));
     }
 
-    // ── export ───────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn export_requires_read() {
         let err = client()
@@ -871,8 +819,6 @@ mod tests {
         ));
     }
 
-    // ── clear ────────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn clear_requires_write() {
         let err = client()
@@ -896,8 +842,6 @@ mod tests {
             MorkError::Permission(PermissionError::NamespaceMismatch { .. })
         ));
     }
-
-    // ── copy ─────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn copy_requires_read() {
@@ -955,8 +899,6 @@ mod tests {
         ));
     }
 
-    // ── transform ────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn transform_requires_read() {
         let input = [(Path::new("a") as &Path, "x")];
@@ -999,8 +941,6 @@ mod tests {
         ));
     }
 
-    // ── busywait ─────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn busywait_reader_requires_read() {
         let err = client()
@@ -1037,8 +977,6 @@ mod tests {
         ));
     }
 
-    // ── status ───────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn status_requires_read() {
         let err = client()
@@ -1062,8 +1000,6 @@ mod tests {
             MorkError::Permission(PermissionError::NamespaceMismatch { .. })
         ));
     }
-
-    // ── count ────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn count_requires_read() {
@@ -1089,7 +1025,7 @@ mod tests {
         ));
     }
 
-    // ── Permission unit tests ─────────────────────────────────────────────────
+    // ── Path utility tests ──────────────────────────────────────────────────
 
     #[test]
     fn empty_namespace_allows_any_path() {
@@ -1128,5 +1064,23 @@ mod tests {
     #[test]
     fn path_to_sexpr_nested() {
         assert_eq!(path_to_sexpr(Path::new("foo/bar")), "(foo (bar $))");
+    }
+
+    #[test]
+    fn strip_prefix_simple() {
+        let result = strip_prefix("(a b)", Path::new("a"));
+        assert_eq!(result, Some("b".to_string()));
+    }
+
+    #[test]
+    fn strip_prefix_nested() {
+        let result = strip_prefix("(a (b c))", Path::new("a"));
+        assert_eq!(result, Some("(b c)".to_string()));
+    }
+
+    #[test]
+    fn strip_prefix_deep() {
+        let result = strip_prefix("(a (b (c d)))", Path::new("a/b"));
+        assert_eq!(result, Some("(c d)".to_string()));
     }
 }
