@@ -492,18 +492,26 @@ impl MorkClient {
 
         // Shared visited tokens between BFS and DFS phases
         let mut visited_tokens: HashSet<String> = HashSet::new();
+        let mut skip_tokens: HashSet<String> = HashSet::new();
 
         // Phase 1: BFS to discover all subspaces (only on first request)
         // Uses same pattern as DFS so tokens can be reused
         // When it encounters only 1 child with binary s-expression, marks it as visited so DFS skips it
         if focus_token.is_empty() {
             let mut subspace_symbols: HashSet<String> = HashSet::new();
-            let mut queue: VecDeque<String> = VecDeque::new();
+            let mut queue: VecDeque<(String, usize)> = VecDeque::new(); // (token, depth)
 
-            queue.push_back(String::new());
+            queue.push_back((String::new(), 0));
             visited_tokens.insert(String::new());
 
-            while let Some(current_token) = queue.pop_front() {
+            // Depth limit for BFS - prevents exploring too deep in nested namespaces
+            const MAX_BFS_DEPTH: usize = 2;
+
+            while let Some((current_token, depth)) = queue.pop_front() {
+                // Stop if we've gone too deep
+                if depth >= MAX_BFS_DEPTH {
+                    continue;
+                }
                 let responses = self.explore_raw(&pattern, &current_token).await?;
 
                 // Process all responses to collect subspace symbols
@@ -516,16 +524,33 @@ impl MorkClient {
                     }
                 }
 
-                // Check stopping condition: only 1 response that's a binary s-expression
-                // Mark its token as visited so DFS will skip it
-                if let Some(relative_expr) = strip_prefix(&responses[0].expr, path) {
-                    if parse_binary_sexp(&relative_expr).is_some() {
-                        // Mark as visited so DFS skips these binary-only branches
-                        let encoded_token =
-                            percent_encode(&responses[0].token, NON_ALPHANUMERIC).to_string();
-                        visited_tokens.insert(encoded_token);
-                        continue; // Don't explore further
+                let all_binary = responses
+                    .clone()
+                    .into_iter()
+                    .map(|r| r.expr)
+                    .all(|e: String| {
+                        if let Some(relative_expr) = strip_prefix(&e, path) {
+                            return parse_binary_sexp(&relative_expr).is_some();
+                        }
+                        false
+                    });
+
+                if all_binary && responses.len() >= 1 {
+                    let response = responses.first().unwrap();
+
+                    if let Some(relative_expr) = strip_prefix(&response.expr, path)
+                        && all_binary
+                    {
+                        if parse_binary_sexp(&relative_expr).is_some() {
+                            // Mark as visited so DFS skips these binary-only branches
+                            let encoded_token =
+                                percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
+                            visited_tokens.insert(encoded_token.clone());
+                            skip_tokens.insert(current_token.clone());
+                        }
                     }
+
+                    continue;
                 }
 
                 // Multiple responses or non-binary → continue BFS
@@ -535,7 +560,7 @@ impl MorkClient {
 
                     // Continue BFS if not already visited
                     if visited_tokens.insert(encoded_token.clone()) {
-                        queue.push_back(encoded_token);
+                        queue.push_back((encoded_token, depth + 1));
                     }
                 }
             }
@@ -568,12 +593,12 @@ impl MorkClient {
             }
         }
 
-        visited_tokens.remove("");
+        println!("{:#?}", skip_tokens);
 
         // DFS loop
         while let Some(current_token) = stack.pop() {
             // Skip if already visited
-            if !visited_tokens.insert(current_token.clone()) {
+            if !skip_tokens.insert(current_token.clone()) {
                 continue;
             }
 
@@ -589,14 +614,14 @@ impl MorkClient {
                 let encoded_token = percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
 
                 // Add child token to stack if not visited (DFS: push onto stack)
-                if !visited_tokens.contains(&encoded_token) {
+                if !skip_tokens.contains(&encoded_token) {
                     stack.push(encoded_token);
                 }
 
                 // Skip subspaces (already collected in phase 1)
-                if parse_binary_sexp(&relative_expr).is_some() {
-                    continue;
-                }
+                // if parse_binary_sexp(&relative_expr).is_some() {
+                //    continue;
+                // }
 
                 // Add to metta_expressions if not duplicate
                 if !metta_expressions.contains(&relative_expr) {
@@ -643,13 +668,20 @@ impl MorkClient {
 
         let mut subnamespace_symbols: HashSet<String> = HashSet::new();
         let mut visited_tokens: HashSet<String> = HashSet::new();
-        let mut queue: VecDeque<String> = VecDeque::new();
+        let mut queue: VecDeque<(String, usize)> = VecDeque::new(); // (token, depth)
 
         // Start BFS with empty token
-        queue.push_back(String::new());
+        queue.push_back((String::new(), 0));
         visited_tokens.insert(String::new());
 
-        while let Some(current_token) = queue.pop_front() {
+        // Depth limit for BFS
+        const MAX_BFS_DEPTH: usize = 3;
+
+        while let Some((current_token, depth)) = queue.pop_front() {
+            // Stop if we've gone too deep
+            if depth >= MAX_BFS_DEPTH {
+                continue;
+            }
             let responses = self.explore_raw(&pattern, &current_token).await?;
 
             // First, collect all subspace symbols from responses
@@ -677,7 +709,7 @@ impl MorkClient {
             for response in responses {
                 let encoded_token = percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
                 if visited_tokens.insert(encoded_token.clone()) {
-                    queue.push_back(encoded_token);
+                    queue.push_back((encoded_token, depth + 1));
                 }
             }
         }

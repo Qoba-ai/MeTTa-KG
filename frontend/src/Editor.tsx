@@ -303,6 +303,10 @@ const App: Component = () => {
 
     const { theme: currentTheme } = useTheme()
 
+    const getDisplayContentWithPaginationIndicator = (astState: EditorASTState, namespace: string): string => {
+        return getDisplayContent(astState)
+    }
+
     const createEditorState = (initialDoc: string, astState: EditorASTState) => {
         return EditorState.create({
             doc: initialDoc,
@@ -396,7 +400,7 @@ const App: Component = () => {
             const p = untrack(panels).find(item => item.id === id)
             if (p) {
                 if (!p.view) {
-                    const displayContent = getDisplayContent(p.astState)
+                    const displayContent = getDisplayContentWithPaginationIndicator(p.astState, p.namespace)
                     const view = new EditorView({
                         state: createEditorState(displayContent, p.astState),
                         parent: mettaInput
@@ -511,7 +515,7 @@ const App: Component = () => {
             astState.expandedPaths.delete(relPath)
 
             // Re-render
-            const displayContent = getDisplayContent(astState)
+            const displayContent = getDisplayContentWithPaginationIndicator(astState, p.namespace)
             setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
             p.view.dispatch(p.view.state.update({
                 changes: { from: 0, to: p.view.state.doc.length, insert: displayContent },
@@ -580,7 +584,7 @@ const App: Component = () => {
             astState.expandedPaths.add(pathKey)
 
             // Re-render
-            const displayContent = getDisplayContent(astState)
+            const displayContent = getDisplayContentWithPaginationIndicator(astState, p.namespace)
             setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
             p.view.dispatch(p.view.state.update({
                 changes: { from: 0, to: p.view.state.doc.length, insert: displayContent },
@@ -596,6 +600,50 @@ const App: Component = () => {
         const newCollapsed = new Set(p.view.state.field(collapsedPathsField))
         newCollapsed.delete(relPath)
         p.view.dispatch({ effects: setCollapsedPathsEffect.of(newCollapsed) })
+    }
+
+    const handleLoadMore = async (path: string) => {
+        const p = activePanel()
+        if (!p?.view) return
+
+        try {
+            const pathWithSlash = path.endsWith('/') ? path : path + '/'
+            const pathFocusTokens = focusTokens().get(pathWithSlash) || []
+
+            if (pathFocusTokens.length === 0) {
+                notify.info('No more expressions to load')
+                return
+            }
+
+            // Get the pagination token (skip count)
+            const paginationToken = pathFocusTokens[0]
+
+            // Load next page - loadFringeAsTokens will update focusTokens with new token
+            const newTokens = await loadFringeAsTokens(path, paginationToken)
+
+            // Append new expressions to the AST
+            const astState = p.astState
+            const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+            const strippedTokens = stripNamespacePrefix(newTokens, activeNs)
+
+            // Build new nodes from tokens and append to root
+            const { ast: newNodes } = buildASTFromTokens(strippedTokens)
+            astState.ast.push(...newNodes)
+            astState.originalAST.push(...newNodes)
+
+            // Re-render
+            const displayContent = getDisplayContentWithPaginationIndicator(astState, p.namespace)
+            setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+            p.view.dispatch(p.view.state.update({
+                changes: { from: 0, to: p.view.state.doc.length, insert: displayContent },
+                annotations: [programmaticEdit.of(true)],
+            }))
+
+            notify.success(`Loaded more expressions`)
+        } catch (e) {
+            console.error("Load more failed:", e)
+            notify.error('Failed to load more expressions')
+        }
     }
 
     const getParserParameters = (): any => {
@@ -790,17 +838,17 @@ const App: Component = () => {
             const mettaExpressions = exploreResult.metta_expressions || []
             const resultFocusToken = exploreResult.focus_token
 
-            // Store focus tokens for future expansion
+            // Store focus tokens for pagination
             const newTokens = new Map(focusTokens())
 
-            // Store the focus token for the current namespace if present
+            // Store the pagination token for the current namespace
+            const currentPath = path.endsWith('/') ? path : path + '/'
             if (resultFocusToken) {
-                const currentPath = path.endsWith('/') ? path : path + '/'
-                const existingTokens = newTokens.get(currentPath) || []
-                if (!existingTokens.includes(resultFocusToken)) {
-                    existingTokens.push(resultFocusToken)
-                }
-                newTokens.set(currentPath, existingTokens)
+                // Replace any existing token with the new pagination token
+                newTokens.set(currentPath, [resultFocusToken])
+            } else {
+                // No more pages, remove the token
+                newTokens.delete(currentPath)
             }
 
             // Process subspaces and store their focus tokens
@@ -821,17 +869,41 @@ const App: Component = () => {
             // Convert to token format: subspaces first, then metta_expressions
             const result: string[][] = []
 
-            // Add subspaces at the top
-            for (const [mettaString, _path] of subspaces) {
-                if (mettaString) {
-                    result.push(["!", mettaString])
+            // Helper to convert a path like "/a/c/" to nested S-expr "(a (c |$|))"
+            const pathToNestedSexpr = (subspacePath: string): string => {
+                const parts = subspacePath.split('/').filter(p => p.length > 0)
+                if (parts.length === 0) return '|$|'
+                let sexpr = '|$|'
+                for (let i = parts.length - 1; i >= 0; i--) {
+                    sexpr = `(${parts[i]} ${sexpr})`
+                }
+                return sexpr
+            }
+
+            // Add subspaces at the top - use the full path to generate proper nested expression
+            for (const [_mettaString, subspacePath] of subspaces) {
+                if (subspacePath) {
+                    const fullSexpr = pathToNestedSexpr(subspacePath)
+                    result.push(["!", fullSexpr])
                 }
             }
 
-            // Add metta_expressions below
-            for (const expr of mettaExpressions) {
+            // Helper to wrap an expression with the namespace prefix
+            // e.g., for path "/a/" and expr "b", returns "(a b)"
+            const wrapWithNamespace = (expr: string): string => {
+                const parts = ns.split('/').filter(p => p.length > 0)
+                if (parts.length === 0) return expr
+                let wrapped = expr
+                for (let i = parts.length - 1; i >= 0; i--) {
+                    wrapped = `(${parts[i]} ${wrapped})`
+                }
+                return wrapped
+            }
+
+            // Add metta_expressions below in reverse order, wrapped with namespace
+            for (const expr of mettaExpressions.reverse()) {
                 if (expr) {
-                    result.push(["!", expr])
+                    result.push(["!", wrapWithNamespace(expr)])
                 }
             }
 
@@ -1024,7 +1096,7 @@ const App: Component = () => {
             if (p && !ns) {
                 // Update current panel
                 const astState = createASTStateFromTokens(tokens, path)
-                const displayContent = getDisplayContent(astState)
+                const displayContent = getDisplayContentWithPaginationIndicator(astState, path)
                 setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
                 p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: displayContent } }))
                 notify.success(`Reloaded space fringe '${path}'`)
@@ -1399,6 +1471,8 @@ const App: Component = () => {
                             collapsedPaths={() => collapsedPaths()}
                             onCollapse={handleTrieCollapse}
                             onExpand={handleTrieExpand}
+                            focusTokens={() => focusTokens()}
+                            onLoadMore={handleLoadMore}
                         />
                     </Show>
                 </div>

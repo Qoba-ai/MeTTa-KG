@@ -616,6 +616,33 @@
     font-style: italic;
 }
 
+.TrieLoadMoreBtn {
+    width: 100%;
+    padding: 8px;
+    margin: 8px 0;
+    background: var(--rp-highlight-med);
+    color: var(--rp-text);
+    border: 1px solid var(--rp-highlight-high);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+
+    &:hover {
+        background: var(--rp-highlight-high);
+        color: var(--rp-foam);
+        transform: translateY(-1px);
+    }
+
+    &:active {
+        transform: translateY(0);
+    }
+}
+
 .Spacer {
     flex-grow: 1;
 }

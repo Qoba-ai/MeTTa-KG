@@ -19,6 +19,8 @@ interface TrieExplorerProps {
   collapsedPaths?: () => Set<string>;
   onCollapse?: (path: string) => void;
   onExpand?: (path: string) => void;
+  focusTokens?: () => Map<string, string[]>;
+  onLoadMore?: (path: string) => void;
 }
 
 const tokenize = (s: string): string[] => {
@@ -341,6 +343,14 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
   const isSelected = (path: string) => selectedPaths().includes(path);
   const getSelectionCount = (path: string) => selectedPaths().filter(p => p === path).length;
 
+  const hasMoreToLoad = () => {
+    if (!props.focusTokens) return false;
+    const tokens = props.focusTokens();
+    const rootPathNormalized = rootPath().endsWith('/') ? rootPath() : rootPath() + '/';
+    const tokensForPath = tokens.get(rootPathNormalized) || [];
+    return tokensForPath.length > 0;
+  };
+
   return (
     <div class={styles.TrieExplorer}>
       <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", "border-bottom": "1px solid var(--rp-highlight-low)", "padding-bottom": "10px" }}>
@@ -381,6 +391,16 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
           <div class={styles.TrieEmpty}>No data to display</div>
         </Show>
       </div>
+
+      <Show when={hasMoreToLoad()}>
+        <button
+          class={styles.TrieLoadMoreBtn}
+          onClick={() => props.onLoadMore?.(rootPath())}
+          title="Load more expressions"
+        >
+          Load More Expressions...
+        </button>
+      </Show>
 
       <Show when={selectedPaths().length >= 2}>
         <button

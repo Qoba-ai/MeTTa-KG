@@ -192,9 +192,12 @@ pub async fn copy(token: Token, src_path: PathBuf, dst_path: String) -> Result<J
 
 // ─── Explore ─────────────────────────────────────────────────────────────────
 
-#[get("/explore")]
-pub async fn explore_root(token: Token) -> Result<Json<ExploreResult>, Status> {
-    explore(token, PathBuf::new(), String::new()).await
+#[get("/explore?<focus_token>")]
+pub async fn explore_root(
+    token: Token,
+    focus_token: String,
+) -> Result<Json<ExploreResult>, Status> {
+    explore(token, PathBuf::new(), focus_token).await
 }
 
 #[rocket::get("/explore/<path..>?<focus_token>")]
