@@ -623,7 +623,7 @@ const App: Component = () => {
                 annotations: [programmaticEdit.of(true)],
             }))
 
-            notify.success(`Explored fringe at '${path}'`)
+            notify.success(`Explored space at '${path}'`)
         } catch (e) {
             console.error("Expand exploration failed:", e)
         }
@@ -1066,10 +1066,10 @@ const App: Component = () => {
                 setEditorMode(EditorMode.EDIT)
             })
 
-            notify.success(`Loaded space fringe '${ns}'`)
+            notify.success(`Loaded space '${ns}'`)
         } catch (e) {
             console.error(e)
-            notify.error(`Failed to load space fringe '${ns}'`)
+            notify.error(`Failed to load space '${ns}'`)
         }
     }
 
@@ -1122,7 +1122,7 @@ const App: Component = () => {
         const lineCount = diffContent.split('\n').length
 
         setConfirmData({
-            title: 'Save to Space',
+            title: 'Update Space',
             message: `Are you sure you want to save ${lineCount} new line(s) to space '${path}'?`,
             onConfirm: async () => {
                 try {
@@ -1187,13 +1187,13 @@ const App: Component = () => {
                 const displayContent = getDisplayContentWithPaginationIndicator(astState, path)
                 setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
                 p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: displayContent } }))
-                notify.success(`Reloaded space fringe '${path}'`)
+                notify.success(`Reloaded space '${path}'`)
             } else {
                 addPanel(path)
             }
         } catch (e) {
             console.error(e)
-            notify.error(`Failed to load space fringe '${path}'`)
+            notify.error(`Failed to load space '${path}'`)
         }
     }
 
@@ -1398,43 +1398,92 @@ const App: Component = () => {
                     }
                 }}
             >
-                <div class={styles.EditorLayout}>
-                    <div class={styles.MainEditorArea}>
-                        <div ref={mettaEditor!} class={styles.EditorWrapper}>
-                            <Show when={panels().length === 0 && editorMode() === EditorMode.DEFAULT}>
-                                <div class={styles.NewSessionDiv}>
-                                    <button onClick={() => loadSpaceModal.showModal()} class={styles.ImportButton}>
-                                        <AiFillFolderOpen class={styles.Icon} size={28} />
-                                        <span>Load MeTTa Space</span>
+                {/* Tabs - full width at top */}
+                <Show when={panels().length > 0 || editorMode() !== EditorMode.DEFAULT}>
+                    <div class={styles.EditorTabs}>
+                        <For each={panels()}>
+                            {(p) => (
+                                <div
+                                    class={`${styles.EditorTab} ${p.id === activePanelId() ? styles.ActiveTab : ''}`}
+                                    onClick={() => setActivePanelId(p.id)}
+                                >
+                                    <span class={styles.TabTitle}>{p.namespace}</span>
+                                    <Show when={lockedPaths().has(p.namespace)}>
+                                        <span class={styles.TabLocked} title="Space is locked (import in progress)">
+                                            <VsLock size={12} />
+                                        </span>
+                                    </Show>
+                                    <button class={styles.TabClose} onClick={(e) => closePanel(p.id, e)}>
+                                        <VsClose size={14} />
                                     </button>
                                 </div>
-                            </Show>
-                            <Show when={panels().length > 0 || editorMode() !== EditorMode.DEFAULT}>
-                                <div class={styles.EditorTabs}>
-                                    <For each={panels()}>
-                                        {(p) => (
-                                            <div
-                                                class={`${styles.EditorTab} ${p.id === activePanelId() ? styles.ActiveTab : ''}`}
-                                                onClick={() => setActivePanelId(p.id)}
-                                            >
-                                                <span class={styles.TabTitle}>{p.namespace}</span>
-                                                <Show when={lockedPaths().has(p.namespace)}>
-                                                    <span class={styles.TabLocked} title="Space is locked (import in progress)">
-                                                        <VsLock size={12} />
-                                                    </span>
-                                                </Show>
-                                                <button class={styles.TabClose} onClick={(e) => closePanel(p.id, e)}>
-                                                    <VsClose size={14} />
-                                                </button>
-                                            </div>
-                                        )}
-                                    </For>
-                                    <button class={styles.AddTab} onClick={() => selectSpaceModal.showModal()}>
-                                        <VsAdd size={16} />
-                                    </button>
-                                </div>
+                            )}
+                        </For>
+                        <button class={styles.AddTab} onClick={() => selectSpaceModal.showModal()}>
+                            <VsAdd size={16} />
+                        </button>
+                    </div>
+                </Show>
 
-                                {/* Full-width namespace / address bar */}
+                {/* Content wrapper with margin */}
+                <div class={styles.ContentWrapper}>
+                    {/* Content row: Sidebar | Editor | Trie */}
+                    <Show when={panels().length > 0 || editorMode() !== EditorMode.DEFAULT}>
+                        <div class={styles.ContentRow}>
+                            {/* Sidebar */}
+                            <aside class={`${styles.Sidebar} ${sidebarCollapsed() ? styles.SidebarCollapsed : ''}`}>
+                        <div class={styles.MettaEditorActions}>
+                            <div class={styles.ButtonGroup}>
+                                <button onClick={() => openImportModal()}>
+                                    <VsCloudUpload size={16} />
+                                    <span>Import</span>
+                                </button>
+                                <button onclick={() => exportMetta()}>
+                                    <VsSave size={16} />
+                                    <span>Export</span>
+                                </button>
+                            </div>
+                            <div class={styles.ButtonGroup}>
+                                <button onclick={() => clearSpace()}>
+                                    <VsClearAll size={16} />
+                                    <span>Clear</span>
+                                </button>
+                                <button onclick={() => {
+                                    if (transformConfigs().length === 0) {
+                                        setTransformConfigs([
+                                            { path: '/', type: 'input', patternOrTemplate: '' },
+                                            { path: '/', type: 'output', patternOrTemplate: '' }
+                                        ]);
+                                    }
+                                    transformModal.showModal();
+                                }}>
+                                    <VsReplace size={16} />
+                                    <span>Transform</span>
+                                </button>
+                                <button onclick={() => write()}>
+                                    <VsCloudDownload size={16} />
+                                    <span>Update</span>
+                                </button>
+                            </div>
+                            <div class={styles.ButtonGroup}>
+                                <button onclick={() => indent()}>
+                                    <VsIndent size={16} />
+                                    <span>Reformat</span>
+                                </button>
+                            </div>
+                        </div>
+                        <button
+                            class={styles.SidebarToggle}
+                            onClick={() => setSidebarCollapsed(v => !v)}
+                            title={sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'}
+                        >
+                            {sidebarCollapsed() ? <VsChevronRight size={14} /> : <VsChevronLeft size={14} />}
+                            </button>
+                            </aside>
+
+                            {/* Main editor column */}
+                            <div class={styles.EditorColumn}>
+                                {/* Namespace selector */}
                                 <div class={styles.MettaInputActionsWrapper}>
                                     <Show when={spaceStatus()}>
                                         {(status) => {
@@ -1475,105 +1524,64 @@ const App: Component = () => {
                                     />
                                 </div>
 
-                                {/* Card body: sidebar + editor content side by side */}
-                                <div class={styles.EditorBody}>
-                                    <Show when={editorMode() !== EditorMode.DEFAULT}>
-                                        <aside class={`${styles.Sidebar} ${sidebarCollapsed() ? styles.SidebarCollapsed : ''}`}>
-                                            <div class={styles.MettaEditorActions}>
-                                                <div class={styles.ButtonGroup}>
-                                                    <button onClick={() => openImportModal()}>
-                                                        <VsCloudUpload size={16} />
-                                                        <span>Import</span>
-                                                    </button>
-                                                    <button onclick={() => exportMetta()}>
-                                                        <VsSave size={16} />
-                                                        <span>Export</span>
-                                                    </button>
-                                                </div>
-                                                <div class={styles.ButtonGroup}>
-                                                    <button onclick={() => clearSpace()}>
-                                                        <VsClearAll size={16} />
-                                                        <span>Clear</span>
-                                                    </button>
-                                                    <button onclick={() => {
-                                                        if (transformConfigs().length === 0) {
-                                                            setTransformConfigs([
-                                                                { path: '/', type: 'input', patternOrTemplate: '' },
-                                                                { path: '/', type: 'output', patternOrTemplate: '' }
-                                                            ]);
-                                                        }
-                                                        transformModal.showModal();
-                                                    }}>
-                                                        <VsReplace size={16} />
-                                                        <span>Transform</span>
-                                                    </button>
-                                                    <button onclick={() => write()}>
-                                                        <VsCloudDownload size={16} />
-                                                        <span>Save</span>
-                                                    </button>
-                                                </div>
-                                                <div class={styles.ButtonGroup}>
-                                                    <button onclick={() => indent()}>
-                                                        <VsIndent size={16} />
-                                                        <span>Reformat</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <button
-                                                class={styles.SidebarToggle}
-                                                onClick={() => setSidebarCollapsed(v => !v)}
-                                                title={sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'}
-                                            >
-                                                {sidebarCollapsed() ? <VsChevronRight size={14} /> : <VsChevronLeft size={14} />}
+                                {/* Main editor - takes remaining space */}
+                                <div class={styles.MettaInput} ref={(ref) => { mettaInput = ref; }}></div>
+
+                                {/* Console - full width at bottom */}
+                                <div class={`${styles.ConsoleResizer} ${isResizingConsole() ? styles.Resizing : ''}`} onMouseDown={startConsoleResizing} />
+                                <div class={styles.ConsoleSection}>
+                                        <div class={styles.ConsoleToolbar}>
+                                            <button onclick={() => run()} class={styles.RunButton} title="Run MeTTa">
+                                                <VsPlay size={14} />
+                                                <span>Run</span>
                                             </button>
-                                        </aside>
-                                    </Show>
-
-                                    <div class={styles.EditorContent}>
-                                        <div class={styles.MettaInput} ref={(ref) => { mettaInput = ref; }}></div>
-                                        <div class={`${styles.ConsoleResizer} ${isResizingConsole() ? styles.Resizing : ''}`} onMouseDown={startConsoleResizing} />
-                                        <div class={styles.ConsoleSection}>
-                                            <div class={styles.ConsoleToolbar}>
-                                                <button onclick={() => run()} class={styles.RunButton} title="Run MeTTa">
-                                                    <VsPlay size={14} />
-                                                    <span>Run</span>
-                                                </button>
-                                            </div>
-                                            <pre class={styles.Console}>
-                                                <code class={'language-metta'} innerHTML={hljs.highlight(editorOutput(), { language: 'metta' }).value}></code>
-                                            </pre>
                                         </div>
-                                    </div>
+                                    <pre class={styles.Console}>
+                                        <code class={'language-metta'} innerHTML={hljs.highlight(editorOutput(), { language: 'metta' }).value}></code>
+                                    </pre>
                                 </div>
-                            </Show>
-                        </div>
-                    </div>
+                            </div>
 
-                    <Show when={editorMode() !== EditorMode.DEFAULT}>
-                        <div class={`${styles.Resizer} ${isResizing() ? styles.Resizing : ''}`} onMouseDown={startResizing} />
-                        <TrieExplorer
-                            content={activePanel() ? getDisplayContent(activePanel()!.astState) : ''}
-                            originalContent={activePanel() ? getOriginalContent(activePanel()!.astState) : ''}
-                            onDelete={deleteSubspace}
-                            rootPath={activePanel()?.namespace || '/'}
-                            onOpenSubspace={(path) => addPanel(path)}
-                            onConfigureTransform={(paths) => {
-                                setTransformConfigs(paths.map((p, i) => ({
-                                    path: p,
-                                    type: i === 0 ? 'input' : 'output',
-                                    patternOrTemplate: ''
-                                })));
-                                transformModal.showModal();
-                            }}
-                            collapsedPaths={() => collapsedPaths()}
-                            onCollapse={handleTrieCollapse}
-                            onExpand={handleTrieExpand}
-                            focusTokens={() => focusTokens()}
-                            onLoadMore={handleLoadMore}
-                            onNodeClick={handleTrieNodeClick}
-                        />
+                            {/* Resizer for Trie Explorer */}
+                            <div class={`${styles.Resizer} ${isResizing() ? styles.Resizing : ''}`} onMouseDown={startResizing} />
+
+                            {/* Trie Explorer */}
+                            <TrieExplorer
+                                content={activePanel() ? getDisplayContent(activePanel()!.astState) : ''}
+                                originalContent={activePanel() ? getOriginalContent(activePanel()!.astState) : ''}
+                                onDelete={deleteSubspace}
+                                rootPath={activePanel()?.namespace || '/'}
+                                onOpenSubspace={(path) => addPanel(path)}
+                                onConfigureTransform={(paths) => {
+                                    setTransformConfigs(paths.map((p, i) => ({
+                                        path: p,
+                                        type: i === 0 ? 'input' : 'output',
+                                        patternOrTemplate: ''
+                                    })));
+                                    transformModal.showModal();
+                                }}
+                                collapsedPaths={() => collapsedPaths()}
+                                onCollapse={handleTrieCollapse}
+                                onExpand={handleTrieExpand}
+                                focusTokens={() => focusTokens()}
+                                onLoadMore={handleLoadMore}
+                                onNodeClick={handleTrieNodeClick}
+                            />
+                        </div>
+                    </Show>
+
+                    <Show when={panels().length === 0 && editorMode() === EditorMode.DEFAULT}>
+                        <div class={styles.NewSessionDiv}>
+                            <button onClick={() => loadSpaceModal.showModal()} class={styles.ImportButton}>
+                                <AiFillFolderOpen class={styles.Icon} size={28} />
+                                <span>Load MeTTa Space</span>
+                            </button>
+                        </div>
                     </Show>
                 </div>
+
+                {/* Footer bar */}
+                <div class={styles.Footer}></div>
             </main>
 
             <ImportModal

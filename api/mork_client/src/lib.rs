@@ -486,7 +486,7 @@ impl MorkClient {
         perm.check_namespace(path)?;
 
         let pattern = path_to_sexpr(path);
-        const PAGE_SIZE: usize = 100;
+        const PAGE_SIZE: usize = 250;
 
         let mut subspaces: Vec<(String, PathBuf)> = Vec::new();
         let mut metta_expressions: Vec<String> = Vec::new();
@@ -677,74 +677,78 @@ impl MorkClient {
         path: &'a PathBuf,
     ) -> Pin<Box<dyn Future<Output = Result<NamespaceInfo, MorkError>> + Send + 'a>> {
         Box::pin(async move {
-        perm.require_read()?;
-        perm.check_namespace(path)?;
+            perm.require_read()?;
+            perm.check_namespace(path)?;
 
-        let pattern = path_to_sexpr(path);
+            let pattern = path_to_sexpr(path);
 
-        let mut subnamespace_symbols: HashSet<String> = HashSet::new();
-        let mut visited_tokens: HashSet<String> = HashSet::new();
-        let mut queue: VecDeque<(String, usize)> = VecDeque::new(); // (token, depth)
+            let mut subnamespace_symbols: HashSet<String> = HashSet::new();
+            let mut visited_tokens: HashSet<String> = HashSet::new();
+            let mut queue: VecDeque<(String, usize)> = VecDeque::new(); // (token, depth)
 
-        queue.push_back((String::new(), 0));
-        visited_tokens.insert(String::new());
+            queue.push_back((String::new(), 0));
+            visited_tokens.insert(String::new());
 
-        const MAX_BFS_DEPTH: usize = 3;
+            const MAX_BFS_DEPTH: usize = 3;
 
-        while let Some((current_token, depth)) = queue.pop_front() {
-            if depth >= MAX_BFS_DEPTH {
-                continue;
-            }
-            let responses = self.explore_raw(&pattern, &current_token).await?;
+            while let Some((current_token, depth)) = queue.pop_front() {
+                if depth >= MAX_BFS_DEPTH {
+                    continue;
+                }
+                let responses = self.explore_raw(&pattern, &current_token).await?;
 
-            for response in &responses {
-                if let Some(relative_expr) = strip_prefix(&response.expr, path) {
-                    if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
-                        subnamespace_symbols.insert(lhs.to_string());
+                for response in &responses {
+                    if let Some(relative_expr) = strip_prefix(&response.expr, path) {
+                        if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
+                            subnamespace_symbols.insert(lhs.to_string());
+                        }
+                    }
+                }
+
+                if let Some(relative_expr) = strip_prefix(&responses[0].expr, path) {
+                    if parse_binary_sexp(&relative_expr).is_some() {
+                        let encoded_token =
+                            percent_encode(&responses[0].token, NON_ALPHANUMERIC).to_string();
+                        visited_tokens.insert(encoded_token);
+                        continue;
+                    }
+                }
+
+                for response in responses {
+                    let encoded_token =
+                        percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
+                    if visited_tokens.insert(encoded_token.clone()) {
+                        queue.push_back((encoded_token, depth + 1));
                     }
                 }
             }
 
-            if let Some(relative_expr) = strip_prefix(&responses[0].expr, path) {
-                if parse_binary_sexp(&relative_expr).is_some() {
-                    let encoded_token =
-                        percent_encode(&responses[0].token, NON_ALPHANUMERIC).to_string();
-                    visited_tokens.insert(encoded_token);
-                    continue;
+            // Recursively explore each subnamespace
+            let mut subnamespaces: Vec<NamespaceInfo> = Vec::new();
+            for symbol in subnamespace_symbols {
+                let subnamespace_path = path.join(&symbol);
+
+                // Recursively explore this subnamespace
+                match self.explore_namespaces(perm, &subnamespace_path).await {
+                    Ok(subnamespace_info) => subnamespaces.push(subnamespace_info),
+                    Err(e) => {
+                        // Log the error but continue with other subnamespaces
+                        eprintln!(
+                            "Error exploring subnamespace {:?}: {:?}",
+                            subnamespace_path, e
+                        );
+                    }
                 }
             }
 
-            for response in responses {
-                let encoded_token = percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
-                if visited_tokens.insert(encoded_token.clone()) {
-                    queue.push_back((encoded_token, depth + 1));
-                }
-            }
-        }
-
-        // Recursively explore each subnamespace
-        let mut subnamespaces: Vec<NamespaceInfo> = Vec::new();
-        for symbol in subnamespace_symbols {
-            let subnamespace_path = path.join(&symbol);
-
-            // Recursively explore this subnamespace
-            match self.explore_namespaces(perm, &subnamespace_path).await {
-                Ok(subnamespace_info) => subnamespaces.push(subnamespace_info),
-                Err(e) => {
-                    // Log the error but continue with other subnamespaces
-                    eprintln!("Error exploring subnamespace {:?}: {:?}", subnamespace_path, e);
-                }
-            }
-        }
-
-        Ok(NamespaceInfo {
-            namespace: path.clone(),
-            subnamespaces: if subnamespaces.is_empty() {
-                None
-            } else {
-                Some(subnamespaces)
-            },
-        })
+            Ok(NamespaceInfo {
+                namespace: path.clone(),
+                subnamespaces: if subnamespaces.is_empty() {
+                    None
+                } else {
+                    Some(subnamespaces)
+                },
+            })
         })
     }
 }

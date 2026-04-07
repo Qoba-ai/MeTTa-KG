@@ -87,7 +87,7 @@
 .Main {
     flex: 1;
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     align-items: stretch;
     padding: 0;
     box-sizing: border-box;
@@ -95,33 +95,38 @@
     overflow: hidden;
 }
 
-.EditorLayout {
-    display: flex;
-    flex-direction: row;
-    width: 100%;
-    height: 100%;
-    gap: 0;
+.ContentWrapper {
     flex: 1;
-    min-height: 0;
-}
-
-// ── Inside-card sidebar ───────────────────────────────────────────────────────
-
-.EditorBody {
-    display: flex;
-    flex-direction: row;
-    flex: 1;
-    min-height: 0;
+    padding: 16px;
+    box-sizing: border-box;
     overflow: hidden;
-}
-
-.EditorContent {
     display: flex;
     flex-direction: column;
+}
+
+.ContentRow {
     flex: 1;
-    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    overflow: hidden;
+    min-height: 0;
+    background: var(--rp-surface);
+    border: 1px solid var(--rp-highlight-low);
+    border-radius: 8px;
     overflow: hidden;
 }
+
+.EditorColumn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--rp-base);
+}
+
+// ── Outside-card sidebar (flush with navbar) ─────────────────────────────────
 
 .Sidebar {
     display: flex;
@@ -133,6 +138,8 @@
     flex-shrink: 0;
     overflow: hidden;
     transition: width 0.2s ease, min-width 0.2s ease;
+    margin: 0;
+    padding: 8px;
 
     &.SidebarCollapsed {
         width: 42px;
@@ -142,10 +149,12 @@
             justify-content: center;
             padding: 9px 0;
 
-            span { display: none; }
+            span {
+                display: none;
+            }
         }
 
-        .ButtonGroup + .ButtonGroup {
+        .ButtonGroup+.ButtonGroup {
             margin-top: 2px;
             padding-top: 2px;
         }
@@ -212,7 +221,7 @@
         display: flex;
         flex-direction: column;
 
-        & + .ButtonGroup {
+        &+.ButtonGroup {
             border-top: 1px solid var(--rp-highlight-low);
             margin-top: 4px;
             padding-top: 4px;
@@ -261,57 +270,52 @@
     }
 }
 
-.MainEditorArea {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    gap: 0;
-    min-height: 0;
-    min-width: 0;
-    padding: 16px 0 16px 16px;
-    box-sizing: border-box;
-    overflow: hidden;
-}
-
-.EditorWrapper {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    width: 100%;
-    background: var(--rp-base);
-    border-radius: 12px;
-    overflow: hidden;
-    border: 1px solid var(--rp-highlight-low);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-}
-
 .EditorTabs {
     display: flex;
     flex-direction: row;
     background: var(--rp-surface);
-    border-bottom: 1px solid var(--rp-highlight-low);
-    padding: 0 8px;
-    gap: 4px;
-    align-items: flex-end;
-    height: 40px;
+    padding: 8px 16px;
+    gap: 8px;
+    align-items: center;
+    min-height: 48px;
     overflow-x: auto;
+    width: 100%;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--rp-highlight-low);
+    margin: 0;
 
     &::-webkit-scrollbar {
-        height: 2px;
+        height: 4px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: var(--rp-surface);
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: var(--rp-highlight-high);
+        border-radius: 2px;
     }
 
     .AddTab {
-        background: transparent;
-        border: none;
+        background: var(--rp-highlight-low);
+        border: 1px solid transparent;
+        border-radius: 50%;
         color: var(--rp-subtle);
         cursor: pointer;
-        padding: 8px;
+        padding: 6px;
         display: flex;
         align-items: center;
-        transition: color 0.2s;
+        justify-content: center;
+        transition: all 0.2s;
+        width: 28px;
+        height: 28px;
 
         &:hover {
+            background: var(--rp-highlight-med);
             color: var(--rp-text);
+            border-color: var(--rp-highlight-high);
         }
     }
 }
@@ -320,29 +324,31 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 12px;
-    padding: 8px 16px;
-    background: var(--rp-base);
-    border: 1px solid var(--rp-highlight-low);
-    border-bottom: none;
-    border-radius: 6px 6px 0 0;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--rp-highlight-low);
+    border: 1px solid transparent;
+    border-radius: 6px;
     cursor: pointer;
-    min-width: 120px;
+    min-width: 90px;
     max-width: 240px;
     transition: all 0.2s;
-    height: 32px;
+    height: auto;
     position: relative;
+    color: var(--rp-subtle);
+    font-size: 0.85rem;
 
     &:hover {
-        background: var(--rp-highlight-low);
+        background: var(--rp-highlight-med);
+        color: var(--rp-text);
+        border-color: var(--rp-highlight-high);
     }
 
     &.ActiveTab {
-        background: var(--rp-base);
-        border-top: 2px solid var(--rp-love);
-        color: var(--rp-love);
-        height: 36px;
-        z-index: 2;
+        background: var(--rp-highlight-med);
+        color: var(--rp-text);
+        border-bottom-color: var(--rp-love);
+        font-weight: 600;
     }
 
     .TabTitle {
@@ -356,23 +362,32 @@
     .TabClose {
         background: transparent;
         border: none;
-        color: var(--rp-subtle);
+        color: inherit;
         cursor: pointer;
         padding: 2px;
-        border-radius: 2px;
+        border-radius: 50%;
         display: flex;
         align-items: center;
-        opacity: 0;
+        opacity: 0.6;
         transition: all 0.2s;
 
         &:hover {
-            background: var(--rp-highlight-med);
-            color: var(--rp-love);
+            background: rgba(0, 0, 0, 0.2);
+            opacity: 1;
         }
     }
 
-    &:hover .TabClose, &.ActiveTab .TabClose {
-        opacity: 1;
+    &:hover .TabClose {
+        opacity: 0.8;
+    }
+
+    &.ActiveTab .TabClose {
+        opacity: 0.9;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.15);
+            opacity: 1;
+        }
     }
 
     .TabLocked {
@@ -403,14 +418,16 @@
 
 .MettaInputActionsWrapper {
     width: 100%;
-    background: var(--rp-surface);
+    background: var(--rp-base);
     border-bottom: 1px solid var(--rp-highlight-low);
-    padding: 6px 12px;
+    border-top: 1px solid var(--rp-highlight-low);
+    padding: 8px 16px;
     box-sizing: border-box;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 8px;
+    margin: 0;
 }
 
 .SpaceStatusBadge {
@@ -432,13 +449,14 @@
     flex: 1;
     overflow: hidden;
     background: var(--rp-base);
-    
+    min-height: 0;
+
     :global(.cm-editor) {
         height: 100%;
     }
 
     :global(.cm-content) {
-        padding: 8px;
+        padding: 12px 16px;
     }
 
     :global(.cm-scroller) {
@@ -453,15 +471,17 @@
     flex-shrink: 0;
     background: var(--rp-base);
     border-top: 2px solid var(--rp-highlight-low);
-    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.15);
+    width: 100%;
+    margin: 0;
 }
 
 .ConsoleToolbar {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    padding: 4px 8px;
-    background: var(--rp-surface);
+    padding: 6px 16px;
+    background: var(--rp-base);
     border-bottom: 1px solid var(--rp-highlight-low);
     flex-shrink: 0;
 }
@@ -544,12 +564,14 @@
     }
 }
 
-.Resizer, .ConsoleResizer {
+.Resizer,
+.ConsoleResizer {
     background: transparent;
     transition: background 0.3s;
     z-index: 10;
 
-    &:hover, &.Resizing {
+    &:hover,
+    &.Resizing {
         background: var(--rp-love);
     }
 }
@@ -557,7 +579,8 @@
 .Resizer {
     width: 4px;
     cursor: col-resize;
-    margin: 16px 4px;
+    margin: 0;
+    display: block;
 }
 
 .ConsoleResizer {
@@ -569,24 +592,21 @@
 .TrieExplorer {
     width: var(--trie-width, 300px);
     background: var(--rp-surface);
-    border-radius: 12px;
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--rp-highlight-med);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.08);
+    border-left: 1px solid var(--rp-highlight-low);
     flex-shrink: 0;
-    margin: 16px 16px 16px 0;
+    margin: 0;
     overflow: hidden;
-    backdrop-filter: blur(10px);
 
     h3 {
         margin: 0;
-        font-size: 1rem;
+        font-size: 0.9rem;
         font-weight: 600;
         color: var(--rp-text);
-        background: var(--rp-overlay);
-        border-bottom: 2px solid var(--rp-highlight-med);
-        padding: 16px 20px;
+        background: var(--rp-surface);
+        border-bottom: 1px solid var(--rp-highlight-low);
+        padding: 10px 14px;
         display: flex;
         align-items: center;
         gap: 8px;
@@ -598,12 +618,12 @@
     overflow-y: auto;
     overflow-x: auto;
     font-family: 'Fira Code', monospace;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 16px 20px;
-    background: var(--rp-base);
+    gap: 1px;
+    padding: 8px 12px;
+    background: var(--rp-surface);
     position: relative;
 
     &::before {
@@ -620,49 +640,59 @@
     &::-webkit-scrollbar {
         width: 10px;
     }
+
     &::-webkit-scrollbar-track {
         background: var(--rp-surface);
         border-radius: 5px;
         margin: 4px 0;
     }
+
     &::-webkit-scrollbar-thumb {
         background: var(--rp-highlight-high);
         border-radius: 5px;
         border: 2px solid var(--rp-surface);
         transition: background 0.2s;
     }
+
     &::-webkit-scrollbar-thumb:hover {
         background: var(--rp-text);
     }
 }
 
+.TreePrefix {
+    font-family: monospace;
+    color: var(--rp-muted);
+    font-size: 0.75rem;
+    line-height: 1;
+    white-space: pre;
+    flex-shrink: 0;
+    user-select: none;
+    opacity: 0.6;
+}
+
 .TrieNode {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border-radius: 6px;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 4px;
     transition: all 0.15s ease;
     user-select: none;
     width: 100%;
     box-sizing: border-box;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     position: relative;
 
     &:hover {
         background: var(--rp-overlay);
-        transform: translateX(2px);
-        box-shadow: -3px 0 0 var(--rp-foam);
-
-        .TrieActions {
-            opacity: 1;
-        }
+        transform: translateX(1px);
+        box-shadow: -2px 0 0 var(--rp-foam);
     }
 
     &.SelectedNode {
         background: var(--rp-highlight-med);
-        box-shadow: -3px 0 0 var(--rp-love);
-        transform: translateX(2px);
+        box-shadow: -2px 0 0 var(--rp-love);
+        transform: translateX(1px);
     }
 }
 
@@ -670,9 +700,7 @@
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: 4px;
-    opacity: 0;
-    transition: opacity 0.2s;
+    gap: 2px;
 }
 
 .TrieActionBtn {
@@ -680,12 +708,12 @@
     border: none;
     color: var(--rp-subtle);
     cursor: pointer;
-    padding: 4px 6px;
+    padding: 3px 4px;
     border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: all 0.15s;
 
     &:hover {
         background: var(--rp-highlight-med);
@@ -739,20 +767,20 @@
 }
 
 .TrieConfigTransform {
-    margin: 16px 20px;
-    padding: 12px 16px;
+    margin: 10px 12px;
+    padding: 8px 12px;
     background: var(--rp-love);
     color: var(--rp-base);
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     box-shadow: 0 2px 8px rgba(235, 111, 146, 0.3);
 
     &:hover {
@@ -774,27 +802,28 @@
 }
 
 .TrieEmpty {
-    padding: 20px;
+    padding: 12px;
     text-align: center;
     color: var(--rp-subtle);
     font-style: italic;
+    font-size: 0.8rem;
 }
 
 .TrieLoadMoreBtn {
     width: 100%;
-    padding: 8px;
-    margin: 8px 0;
+    padding: 6px;
+    margin: 6px 0;
     background: var(--rp-highlight-med);
     color: var(--rp-text);
     border: 1px solid var(--rp-highlight-high);
     border-radius: 4px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.75rem;
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 4px;
 
     &:hover {
         background: var(--rp-highlight-high);
@@ -805,6 +834,13 @@
     &:active {
         transform: translateY(0);
     }
+}
+
+.Footer {
+    height: 16px;
+    width: 100%;
+    background: var(--rp-highlight-low);
+    flex-shrink: 0;
 }
 
 .Spacer {
@@ -822,6 +858,7 @@
 
     .TextButton {
         color: var(--rp-subtle);
+
         &:hover {
             color: var(--rp-love);
         }
@@ -831,7 +868,7 @@
 .TransformModal {
     width: 700px;
     max-width: 90vw;
-    
+
     form {
         display: flex;
         flex-direction: column;
@@ -863,7 +900,10 @@
             letter-spacing: 0.5px;
         }
 
-        input, .SelectSpaces, :global(.NamespaceSelector) input, .NamespaceSelector input {
+        input,
+        .SelectSpaces,
+        :global(.NamespaceSelector) input,
+        .NamespaceSelector input {
             width: 100%;
             padding: 10px 16px;
             border-radius: 8px;
@@ -941,13 +981,13 @@
         gap: 16px;
         font-size: 1.5rem;
         transition: all 0.3s;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 
         &:hover {
             transform: translateY(-4px);
             border-color: var(--rp-love);
             color: var(--rp-love);
-            box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
         }
     }
 }
@@ -984,7 +1024,7 @@
     z-index: 100;
     max-height: 300px;
     overflow-y: auto;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
 
 .ExploreItem {
@@ -996,8 +1036,12 @@
     cursor: pointer;
     transition: background 0.2s;
 
-    &:last-child { border-bottom: none; }
-    &:hover, &.ExploreItemFocused {
+    &:last-child {
+        border-bottom: none;
+    }
+
+    &:hover,
+    &.ExploreItemFocused {
         background: var(--rp-highlight-med);
     }
 
@@ -1100,11 +1144,13 @@
     background: var(--rp-surface);
     transition: all 0.3s;
 
-    &:hover, &.DropZoneActive {
+    &:hover,
+    &.DropZoneActive {
         border-color: var(--rp-love);
         background: var(--rp-overlay);
     }
 }
+
 .ImportSourceTabs {
     display: flex;
     gap: 4px;
@@ -1184,7 +1230,8 @@
         letter-spacing: 0.5px;
     }
 
-    select, input {
+    select,
+    input {
         width: 100%;
         padding: 10px 16px;
         border-radius: 8px;

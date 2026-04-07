@@ -1,6 +1,6 @@
-import { Component, createSignal, createMemo, For, Show } from "solid-js";
+import { Component, createSignal, createMemo, For, Show, onMount, onCleanup } from "solid-js";
 import styles from "./Editor.module.scss";
-import { VsChevronRight, VsChevronDown, VsSymbolEnum, VsTrash, VsFolderOpened, VsReplace, VsAdd, VsRemove, VsArrowDown } from "solid-icons/vs";
+import { VsChevronRight, VsChevronDown, VsSymbolEnum, VsTrash, VsFolderOpened, VsReplace } from "solid-icons/vs";
 
 export interface TrieNode {
   children: { [key: string]: TrieNode };
@@ -86,33 +86,63 @@ export const buildTrie = (content: string): TrieNode => {
   return root;
 };
 
-const TerminalLeaf: Component<{ value: string; depth?: number; onNodeClick?: (expression: string) => void }> = (props) => {
+const TerminalLeaf: Component<{
+  value: string;
+  depth?: number;
+  onNodeClick?: (expression: string) => void;
+  onDelete?: (value: string) => void;
+  shiftPressed: () => boolean;
+  treePrefix?: string;
+  isLast?: boolean;
+}> = (props) => {
   const depth = props.depth || 0;
+  const [isHovering, setIsHovering] = createSignal(false);
 
-  const handleClick = () => {
-    console.log('TerminalLeaf clicked:', props.value);
+  const handleDoubleClick = () => {
+    console.log('TerminalLeaf double-clicked:', props.value);
     if (props.onNodeClick) {
       props.onNodeClick(props.value);
     }
   };
 
+  const handleDelete = (e: MouseEvent) => {
+    e.stopPropagation();
+    if (props.onDelete) {
+      props.onDelete(props.value);
+    }
+  };
+
+  const showActions = () => isHovering() && props.shiftPressed();
+
   return (
-    <div style={{
-      "margin-left": `${depth > 0 ? 24 : 0}px`,
-      "border-left": depth > 0 ? "2px solid var(--rp-highlight-low)" : "none",
-      "padding-left": depth > 0 ? "8px" : "0"
-    }}>
-      <div style={{ "margin-left": "16px" }}>
+    <div style={{ width: "100%" }}>
+      <div style={{ display: "flex", "align-items": "center" }}>
+        <Show when={depth > 0}>
+          <span class={styles.TreePrefix}>{props.treePrefix || ""}{props.isLast ? "└─" : "├─"}</span>
+        </Show>
         <div
           class={styles.TrieNode}
-          onClick={handleClick}
-          style={{ cursor: "pointer" }}
+          onDblClick={handleDoubleClick}
+          onMouseEnter={() => setIsHovering(true)}
+          onMouseLeave={() => setIsHovering(false)}
+          style={{ cursor: "pointer", flex: 1 }}
         >
           <div style={{ width: "16px" }} />
-          <VsSymbolEnum size={16} class={styles.TrieLeafIcon} />
+          <VsSymbolEnum size={14} class={styles.TrieLeafIcon} />
           <span class={styles.TrieLeafText}>
             {props.value}
           </span>
+          <Show when={showActions() && props.onDelete}>
+            <div class={styles.TrieActions}>
+              <button
+                class={`${styles.TrieActionBtn} ${styles.TrieDeleteBtn}`}
+                onClick={handleDelete}
+                title="Delete terminal"
+              >
+                <VsTrash size={12} />
+              </button>
+            </div>
+          </Show>
         </div>
       </div>
     </div>
@@ -140,9 +170,14 @@ const TrieBranch: Component<{
     focusTokens?: () => Map<string, string[]>;
     onLoadMore?: (path: string) => void;
     onNodeClick?: (expression: string) => void;
+    shiftPressed: () => boolean;
+    onDeleteTerminal?: (value: string) => void;
+    treePrefix?: string;
+    isLast?: boolean;
 }> = (props) => {
 
   const [localOpen, setLocalOpen] = createSignal(false);
+  const [isHovering, setIsHovering] = createSignal(false);
   const isOpen = () => {
     // If it's a fringe node with no actual children (unexplored), it should appear closed
     if (props.node.isFringe && Object.keys(props.node.children).length === 0 && props.node.terminals.length === 0) {
@@ -179,12 +214,31 @@ const TrieBranch: Component<{
 
   const handleAdd = (e: MouseEvent) => {
     e.stopPropagation();
-    if (!isLeaf()) props.onAddSelect(props.path);
+    props.onAddSelect(props.path);
   };
 
   const handleRemove = (e: MouseEvent) => {
     e.stopPropagation();
-    if (!isLeaf()) props.onRemoveSelect(props.path);
+    props.onRemoveSelect(props.path);
+  };
+
+  const handleDoubleClick = (e: MouseEvent) => {
+    e.stopPropagation();
+    if (props.onOpenSubspace) {
+      props.onOpenSubspace(props.path);
+    }
+  };
+
+  const handleClick = (e: MouseEvent) => {
+    if (props.shiftPressed()) {
+      e.stopPropagation();
+      // Shift+click toggles selection
+      if (props.isSelected) {
+        props.onRemoveSelect(props.path);
+      } else {
+        props.onAddSelect(props.path);
+      }
+    }
   };
 
   const handleNodeClick = () => {
@@ -226,22 +280,29 @@ const TrieBranch: Component<{
     return "";
   };
 
+  const showActions = () => isHovering() && props.shiftPressed();
+
   return (
-    <div style={{
-      "margin-left": `${props.depth > 0 ? 24 : 0}px`,
-      "border-left": props.depth > 0 ? "2px solid var(--rp-highlight-low)" : "none",
-      "padding-left": props.depth > 0 ? "8px" : "0"
-    }}>
-      <div
-        class={`${styles.TrieNode} ${props.isSelected ? styles.SelectedNode : ""}`}
-        style={{
-          cursor: "default",
-          "background-color": getBgColor(),
-          "border-left": getBorderColor(),
-          "opacity": props.diffState === "removed" ? 0.6 : 1,
-          "text-decoration": props.diffState === "removed" ? "line-through" : "none"
-        }}
-      >
+    <div style={{ width: "100%" }}>
+      <div style={{ display: "flex", "align-items": "center" }}>
+        <Show when={props.depth > 0}>
+          <span class={styles.TreePrefix}>{props.treePrefix || ""}{props.isLast ? "└─" : "├─"}</span>
+        </Show>
+        <div
+          class={`${styles.TrieNode} ${props.isSelected ? styles.SelectedNode : ""}`}
+          onMouseEnter={() => setIsHovering(true)}
+          onMouseLeave={() => setIsHovering(false)}
+          onDblClick={handleDoubleClick}
+          onClick={handleClick}
+          style={{
+            cursor: props.shiftPressed() ? "pointer" : "default",
+            "background-color": getBgColor(),
+            "border-left": getBorderColor(),
+            "opacity": props.diffState === "removed" ? 0.6 : 1,
+            "text-decoration": props.diffState === "removed" ? "line-through" : "none",
+            flex: 1
+          }}
+        >
         <Show when={!isLeaf()} fallback={<div style={{ width: "16px" }} />}>
           <div
             onClick={toggleOpen}
@@ -251,140 +312,148 @@ const TrieBranch: Component<{
             data-trie-fringe={props.node.isFringe ? "true" : "false"}
             style={{ cursor: "pointer" }}
           >
-            {isOpen() ? <VsChevronDown size={18} /> : <VsChevronRight size={18} />}
+            {isOpen() ? <VsChevronDown size={16} /> : <VsChevronRight size={16} />}
           </div>
         </Show>
-        <VsSymbolEnum size={16} class={isLeaf() ? styles.TrieLeafIcon : styles.TrieBranchIcon} />
+        <VsSymbolEnum size={14} class={isLeaf() ? styles.TrieLeafIcon : styles.TrieBranchIcon} />
         <span class={isLeaf() ? styles.TrieLeafText : styles.TrieBranchText}>
           {props.name}
         </span>
 
         <Show when={props.selectionCount > 0}>
-          <span style={{ "font-size": "0.7rem", background: "var(--rp-love)", color: "var(--rp-base)", "padding": "0 4px", "border-radius": "2px", "margin-left": "4px" }}>
+          <span style={{ "font-size": "0.65rem", background: "var(--rp-love)", color: "var(--rp-base)", "padding": "0 3px", "border-radius": "2px", "margin-left": "4px" }}>
             {props.selectionCount}
           </span>
         </Show>
 
-        <div class={styles.TrieActions}>
-          <Show when={props.onOpenSubspace && !isLeaf()}>
-            <button
-              class={styles.TrieActionBtn}
-              onClick={handleOpen}
-              title="Open subspace in new tab"
-            >
-              <VsFolderOpened size={14} />
-            </button>
-          </Show>
-          <Show when={!isLeaf()}>
-            <button
-              class={styles.TrieActionBtn}
-              onClick={handleAdd}
-              title="Add to selection"
-            >
-              <VsAdd size={14} />
-            </button>
-            <button
-              class={`${styles.TrieActionBtn} ${props.selectionCount === 0 ? styles.Hidden : ''}`}
-              onClick={handleRemove}
-              title="Remove from selection"
-            >
-              <VsRemove size={14} />
-            </button>
-          </Show>
-          <Show when={hasMoreToLoad() && props.onLoadMore}>
-            <button
-              class={styles.TrieActionBtn}
-              onClick={(e) => {
-                e.stopPropagation();
-                props.onLoadMore?.(props.path);
-              }}
-              title="Load more expressions"
-            >
-              <VsArrowDown size={14} />
-            </button>
-          </Show>
-          <Show when={props.onDelete && props.node.isDeletable}>
-            <button
-              class={`${styles.TrieActionBtn} ${styles.TrieDeleteBtn}`}
-              onClick={handleDelete}
-              title="Delete subspace"
-            >
-              <VsTrash size={14} />
-            </button>
-          </Show>
-        </div>
+        <Show when={showActions()}>
+          <div class={styles.TrieActions}>
+            <Show when={props.onOpenSubspace}>
+              <button
+                class={styles.TrieActionBtn}
+                onClick={handleOpen}
+                title="Open subspace in new tab"
+              >
+                <VsFolderOpened size={12} />
+              </button>
+            </Show>
+            <Show when={props.onDelete}>
+              <button
+                class={`${styles.TrieActionBtn} ${styles.TrieDeleteBtn}`}
+                onClick={handleDelete}
+                title="Delete subspace"
+              >
+                <VsTrash size={12} />
+              </button>
+            </Show>
+          </div>
+        </Show>
+      </div>
       </div>
 
       <Show when={isOpen() && !isLeaf()}>
-        {/* Navigable sub-namespace children */}
-        <For each={
-          Array.from(new Set([
-            ...Object.keys(props.node.children),
-            ...(props.originalNode ? Object.keys(props.originalNode.children) : [])
-          ])).sort()
-        }>
-          {(childName) => {
-            const childPath = `${props.path}${childName}/`;
-            return (
-              <Show when={props.node.children[childName] || props.originalNode?.children?.[childName]}>
-                <TrieBranch
-                  name={childName}
-                  node={props.node.children[childName] || props.originalNode!.children[childName]}
-                  originalNode={props.originalNode?.children?.[childName]}
-                  diffState={
-                    (props.node.children[childName] && !props.originalNode?.children?.[childName]) ? "added" :
-                    (!props.node.children[childName] && props.originalNode?.children?.[childName]) ? "removed" :
-                    (props.node.children[childName] && props.originalNode?.children?.[childName] && (
-                      Object.keys(props.node.children[childName].children).length !== Object.keys(props.originalNode!.children[childName].children).length ||
-                      props.node.children[childName].terminals.length !== props.originalNode!.children[childName].terminals.length
-                    )) ? "modified" : "unchanged"
-                  }
-                  depth={props.depth + 1}
-                  path={childPath}
-                  onDelete={props.onDelete}
-                onOpenSubspace={props.onOpenSubspace}
-                isSelected={props.onIsSelected(childPath)}
-                selectionCount={props.onGetSelectionCount(childPath)}
-                onAddSelect={props.onAddSelect}
-                onRemoveSelect={props.onRemoveSelect}
-                onIsSelected={props.onIsSelected}
-                onGetSelectionCount={props.onGetSelectionCount}
-                collapsedPaths={props.collapsedPaths}
-                onCollapse={props.onCollapse}
-                onExpand={props.onExpand}
-                focusTokens={props.focusTokens}
-                onLoadMore={props.onLoadMore}
+        <div style={{ width: "100%" }}>
+          {/* Navigable sub-namespace children (branches) - always shown first */}
+          <For each={
+            Array.from(new Set([
+              ...Object.keys(props.node.children),
+              ...(props.originalNode ? Object.keys(props.originalNode.children) : [])
+            ])).sort()
+          }>
+            {(childName, index) => {
+              const childPath = `${props.path}${childName}/`;
+              const allBranches = Array.from(new Set([
+                ...Object.keys(props.node.children),
+                ...(props.originalNode ? Object.keys(props.originalNode.children) : [])
+              ])).sort();
+              // A child is last only if it's the last branch AND there are no terminals
+              const isLastChild = index() === allBranches.length - 1 && props.node.terminals.length === 0;
+              const newPrefix = (props.treePrefix || "") + (props.isLast ? "  " : "│ ");
+
+              return (
+                <Show when={props.node.children[childName] || props.originalNode?.children?.[childName]}>
+                  <TrieBranch
+                    name={childName}
+                    node={props.node.children[childName] || props.originalNode!.children[childName]}
+                    originalNode={props.originalNode?.children?.[childName]}
+                    diffState={
+                      (props.node.children[childName] && !props.originalNode?.children?.[childName]) ? "added" :
+                      (!props.node.children[childName] && props.originalNode?.children?.[childName]) ? "removed" :
+                      (props.node.children[childName] && props.originalNode?.children?.[childName] && (
+                        Object.keys(props.node.children[childName].children).length !== Object.keys(props.originalNode!.children[childName].children).length ||
+                        props.node.children[childName].terminals.length !== props.originalNode!.children[childName].terminals.length
+                      )) ? "modified" : "unchanged"
+                    }
+                    depth={props.depth + 1}
+                    path={childPath}
+                    onDelete={props.onDelete}
+                    onOpenSubspace={props.onOpenSubspace}
+                    isSelected={props.onIsSelected(childPath)}
+                    selectionCount={props.onGetSelectionCount(childPath)}
+                    onAddSelect={props.onAddSelect}
+                    onRemoveSelect={props.onRemoveSelect}
+                    onIsSelected={props.onIsSelected}
+                    onGetSelectionCount={props.onGetSelectionCount}
+                    collapsedPaths={props.collapsedPaths}
+                    onCollapse={props.onCollapse}
+                    onExpand={props.onExpand}
+                    focusTokens={props.focusTokens}
+                    onLoadMore={props.onLoadMore}
+                    onNodeClick={props.onNodeClick}
+                    shiftPressed={props.shiftPressed}
+                    onDeleteTerminal={props.onDeleteTerminal}
+                    treePrefix={newPrefix}
+                    isLast={isLastChild}
+                  />
+                </Show>
+              );
+            }}
+          </For>
+
+          {/* Terminal (leaf) values at this node - always shown after branches */}
+          <For each={props.node.terminals.slice().sort()}>
+            {(terminal, index) => {
+              const sortedTerminals = props.node.terminals.slice().sort();
+              const isLastTerminal = index() === sortedTerminals.length - 1;
+              const newPrefix = (props.treePrefix || "") + (props.isLast ? "  " : "│ ");
+
+              return <TerminalLeaf
+                value={terminal}
+                depth={props.depth + 1}
                 onNodeClick={props.onNodeClick}
-              />
-              </Show>
-            );
-          }}
-        </For>
+                onDelete={props.onDeleteTerminal}
+                shiftPressed={props.shiftPressed}
+                treePrefix={newPrefix}
+                isLast={isLastTerminal}
+              />;
+            }}
+          </For>
 
-        {/* Terminal (leaf) values at this node */}
-        <For each={props.node.terminals}>
-          {(terminal) => <TerminalLeaf value={terminal} depth={props.depth + 1} onNodeClick={props.onNodeClick} />}
-        </For>
-
-        {/* Fringe indicator - clickable to expand unexplored subspace */}
-        <Show when={props.node.isFringe}>
-          <div style={{ "margin-left": "16px" }}>
-            <div
-              class={styles.TrieNode}
-              style={{ cursor: "pointer" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (props.onExpand) props.onExpand(props.path);
-              }}
-              data-testid="trie-fringe"
-              data-trie-path={props.path}
-            >
-              <VsChevronRight size={18} />
-              <VsSymbolEnum size={16} class={styles.TrieFringeIcon} />
-              <span class={styles.TrieFringeText}>$</span>
+          {/* Fringe indicator - clickable to expand unexplored subspace */}
+          <Show when={props.node.isFringe}>
+            <div style={{ width: "100%" }}>
+              <div style={{ display: "flex", "align-items": "center" }}>
+                <Show when={props.depth >= 0}>
+                  <span class={styles.TreePrefix}>{(props.treePrefix || "") + (props.isLast ? "  " : "│ ")}└─</span>
+                </Show>
+                <div
+                  class={styles.TrieNode}
+                  style={{ cursor: "pointer", flex: 1 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (props.onExpand) props.onExpand(props.path);
+                  }}
+                  data-testid="trie-fringe"
+                  data-trie-path={props.path}
+                >
+                  <VsChevronRight size={16} />
+                  <VsSymbolEnum size={14} class={styles.TrieFringeIcon} />
+                  <span class={styles.TrieFringeText}>$</span>
+                </div>
+              </div>
             </div>
-          </div>
-        </Show>
+          </Show>
+        </div>
       </Show>
     </div>
   );
@@ -395,6 +464,22 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
   const originalTrie = createMemo(() => props.originalContent !== undefined ? buildTrie(props.originalContent) : buildTrie(props.content));
   const rootPath = () => props.rootPath || "/";
   const [selectedPaths, setSelectedPaths] = createSignal<string[]>([]);
+  const [shiftPressed, setShiftPressed] = createSignal(false);
+
+  onMount(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftPressed(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftPressed(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    onCleanup(() => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    });
+  });
 
   const addSelect = (path: string) => {
     setSelectedPaths(prev => [...prev, path]);
@@ -419,10 +504,17 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
   const isSelected = (path: string) => selectedPaths().includes(path);
   const getSelectionCount = (path: string) => selectedPaths().filter(p => p === path).length;
 
+  const handleDeleteTerminal = (value: string) => {
+    // Terminal deletion: just the literal value
+    if (props.onDelete) {
+      props.onDelete(value);
+    }
+  };
+
   return (
     <div class={styles.TrieExplorer}>
       <h3>
-        <span>Trie Explorer</span>
+        <span>Tree Explorer</span>
         <Show when={selectedPaths().length > 0}>
           <button
             class={styles.TrieActionBtn}
@@ -435,15 +527,22 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
         </Show>
       </h3>
       <div class={styles.TrieContent}>
-        {/* Render children directly without root wrapper */}
+        {/* Render branch nodes first (parents/navigable children) */}
         <For each={
           Array.from(new Set([
             ...Object.keys(trie().children),
             ...(originalTrie() ? Object.keys(originalTrie().children) : [])
           ])).sort()
         }>
-          {(childName) => {
+          {(childName, index) => {
             const childPath = `${rootPath()}${childName}/`;
+            const allBranches = Array.from(new Set([
+              ...Object.keys(trie().children),
+              ...(originalTrie() ? Object.keys(originalTrie().children) : [])
+            ])).sort();
+            // Last branch only if there are no terminals after it
+            const isLastChild = index() === allBranches.length - 1 && trie().terminals.length === 0;
+
             return (
               <Show when={trie().children[childName] || originalTrie()?.children?.[childName]}>
                 <TrieBranch
@@ -474,15 +573,31 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
                   focusTokens={props.focusTokens}
                   onLoadMore={props.onLoadMore}
                   onNodeClick={props.onNodeClick}
+                  shiftPressed={shiftPressed}
+                  onDeleteTerminal={handleDeleteTerminal}
+                  treePrefix=""
+                  isLast={isLastChild}
                 />
               </Show>
             );
           }}
         </For>
 
-        {/* Render terminal values at root level */}
-        <For each={trie().terminals}>
-          {(terminal) => <TerminalLeaf value={terminal} onNodeClick={props.onNodeClick} />}
+        {/* Render terminal values at root level - always after branches */}
+        <For each={trie().terminals.slice().sort()}>
+          {(terminal, index) => {
+            const sortedTerminals = trie().terminals.slice().sort();
+            const isLastTerminal = index() === sortedTerminals.length - 1;
+
+            return <TerminalLeaf
+              value={terminal}
+              onNodeClick={props.onNodeClick}
+              onDelete={handleDeleteTerminal}
+              shiftPressed={shiftPressed}
+              treePrefix=""
+              isLast={isLastTerminal}
+            />;
+          }}
         </For>
 
         {/* Show "Load More" button at root level if needed */}
