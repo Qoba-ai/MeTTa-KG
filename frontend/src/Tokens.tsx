@@ -1,15 +1,17 @@
 import type { Component, JSX, ResourceFetcherInfo } from 'solid-js'
-import { createResource, createSignal, For, onMount, Show } from 'solid-js'
+import { createResource, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { A } from '@solidjs/router'
 import { BACKEND_URL } from './urls'
-import { AiOutlineArrowLeft, AiOutlineCopy, AiOutlineGithub } from 'solid-icons/ai'
-import { VsSettings } from 'solid-icons/vs'
+import { AiOutlineCopy, AiOutlineGithub } from 'solid-icons/ai'
+import { VsSettings, VsSignOut } from 'solid-icons/vs'
 import styles from './Tokens.module.scss'
+import commonStyles from './styles/Common.module.scss'
 import { Toaster } from 'solid-toast'
 import { notify } from './notify'
 import { useTheme } from './ThemeContext'
 import { Token } from './types'
-import { Header } from './components/Header'
+import { Navbar } from './components/Navbar'
+import { wsService } from './websocket'
 
 enum SortableColumns {
     TIMESTAMP,
@@ -127,6 +129,61 @@ const deleteTokens = async (
     })
 }
 
+interface NamespaceNode {
+    namespace: string
+    subnamespaces: NamespaceNode[] | null
+}
+
+const parseNamespaceTree = (node: NamespaceNode): string[] => {
+    const results: string[] = []
+
+    // The namespace is already a fully qualified path from the backend
+    if (node.namespace) {
+        // Add trailing slash if not present
+        const fullPath = node.namespace.endsWith('/')
+            ? node.namespace
+            : node.namespace + '/'
+        results.push(fullPath)
+    }
+
+    // Recursively process all subnamespaces
+    if (node.subnamespaces) {
+        for (const child of node.subnamespaces) {
+            results.push(...parseNamespaceTree(child))
+        }
+    }
+
+    return results
+}
+
+const fetchNamespaces = async (
+    root: string | null
+): Promise<string[]> => {
+    if (!root) {
+        return []
+    }
+
+    try {
+        const resp = await fetch(`${BACKEND_URL}/namespaces/`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: root,
+            },
+        })
+
+        if (resp.ok) {
+            const tree: NamespaceNode = await resp.json()
+            const namespaces = parseNamespaceTree(tree)
+            return namespaces
+        }
+        return []
+    } catch (e) {
+        console.error('Failed to fetch namespaces:', e)
+        return []
+    }
+}
+
 const Tokens: Component = () => {
     let rootTokenForm: HTMLFormElement
     let rootTokenFormInput: HTMLInputElement
@@ -173,14 +230,31 @@ const Tokens: Component = () => {
     const [descriptionSearchRegex, setDescriptionSearchRegex] = createSignal<
         string | null
     >(null)
+    const [showNamespaceFilter, setShowNamespaceFilter] = createSignal(false)
+    const [showDescriptionFilter, setShowDescriptionFilter] = createSignal(false)
     const [copiedToken, setCopiedToken] = createSignal<Token | null>()
+    const [online, setOnline] = createSignal(false)
+    const [namespaceSuggestions, setNamespaceSuggestions] = createSignal<string[]>([])
+    const [showNamespaceSuggestions, setShowNamespaceSuggestions] = createSignal(false)
+    const [namespaceInputValue, setNamespaceInputValue] = createSignal('')
 
     const [tokens, { refetch: refetchTokens, mutate: mutateTokens }] =
         createResource<Token[], string, boolean>(rootTokenCode, fetchTokens, {
             initialValue: [],
         })
 
-    onMount(() => {
+    onMount(async () => {
+        wsService.connectPing()
+        const unsubOnline = wsService.onOnlineChange(setOnline)
+
+        // Fetch namespace suggestions
+        const namespaces = await fetchNamespaces(rootTokenCode())
+        setNamespaceSuggestions(namespaces)
+
+        onCleanup(() => {
+            unsubOnline()
+        })
+
         // dismiss import dialog when clicking on backdrop
         // TODO: put this in separate component
         refreshTokensModel.addEventListener('click', function (event) {
@@ -213,63 +287,67 @@ const Tokens: Component = () => {
             }
         })
 
-        rootTokenForm.onsubmit = (event) => {
-            event.preventDefault()
+        if (rootTokenForm) {
+            rootTokenForm.onsubmit = (event) => {
+                event.preventDefault()
 
-            const newRootToken = rootTokenFormInput.value.trim()
+                const newRootToken = rootTokenFormInput.value.trim()
 
-            setRootTokenCode(newRootToken)
+                setRootTokenCode(newRootToken)
+            }
         }
 
-        newTokenForm.onsubmit = async (event) => {
-            event.preventDefault()
+        if (newTokenForm) {
+            newTokenForm.onsubmit = async (event) => {
+                event.preventDefault()
 
-            const description = newTokenDescriptionInput.value
-            const namespace = newTokenNamespaceInput.value
-            const read = newTokenReadCheckbox.checked
-            const write = newTokenWriteCheckbox.checked
-            const shareRead = newTokenShareReadCheckbox.checked
-            const shareWrite = newTokenShareWriteCheckbox.checked
-            const shareShare = false
+                const description = newTokenDescriptionInput.value
+                const namespace = newTokenNamespaceInput.value
+                const read = newTokenReadCheckbox.checked
+                const write = newTokenWriteCheckbox.checked
+                const shareRead = newTokenShareReadCheckbox.checked
+                const shareWrite = newTokenShareWriteCheckbox.checked
+                const shareShare = false
 
-            try {
-                const newToken = await createToken(
-                    rootTokenCode(),
-                    description,
-                    namespace,
-                    read,
-                    write,
-                    shareRead,
-                    shareWrite,
-                    shareShare
-                )
+                try {
+                    const newToken = await createToken(
+                        rootTokenCode(),
+                        description,
+                        namespace,
+                        read,
+                        write,
+                        shareRead,
+                        shareWrite,
+                        shareShare
+                    )
 
-                mutateTokens((v) => [...v, newToken])
+                    mutateTokens((v) => [...v, newToken])
 
-                // bit of a hack
-                // signals propagate: the mutateTokens call above causes newTokenNamespaceInput to re-render
-                newTokenNamespaceInput.value = namespace
+                    // bit of a hack
+                    // signals propagate: the mutateTokens call above causes newTokenNamespaceInput to re-render
+                    newTokenNamespaceInput.value = namespace
 
-                notify.custom(
-                    (t) => (
-                        <div>
-                            <span>Successfully created token.</span>
-                            <br />
-                            <button
-                                onclick={() =>
-                                    navigator.clipboard.writeText(newToken.code)
-                                }
-                            >
-                                Copy Code
-                            </button>
-                        </div>
-                    ),
-                    {
-                        duration: 1000 * 10,
-                    }
-                )
-            } catch (e) {
-                notify.error(`Failed to create new token.`)
+                    notify.custom(
+                        (t) => (
+                            <div>
+                                <span>Successfully created token.</span>
+                                <br />
+                                <button
+                                    onclick={() =>
+                                        navigator.clipboard.writeText(newToken.code)
+                                    }
+                                >
+                                    Copy Code
+                                </button>
+                            </div>
+                        ),
+                        {
+                            duration: 1000 * 10,
+                        }
+                    )
+                } catch (e) {
+                    notify.error(`Failed to create new token.`)
+                }
             }
         }
     })
@@ -406,209 +484,76 @@ const Tokens: Component = () => {
 
     return (
         <div class={styles.MainLayout}>
-            <Header title="MeTTa KG Tokens">
-                <A href="/" class={styles.OutlineButton}>
-                    <AiOutlineArrowLeft size={18} style={{ "margin-right": "8px" }} />
-                    Back to Editor
-                </A>
-                <A href="/settings" class={styles.IconButton} title="Settings">
-                    <VsSettings size={24} />
-                </A>
-                <a href="https://github.com/Qoba-ai/MeTTa-KG" target="_blank" rel="noopener noreferrer" class="github-link">
-                    <AiOutlineGithub size={32} />
-                </a>
-            </Header>
+            <Navbar title="MeTTa KG Tokens" currentPage="tokens" />
             <main class={styles.Main}>
-                <form
-                    class={styles.RootTokenForm}
-                    ref={rootTokenForm!}
-                    role="search"
-                >
-                    <h2>Manage Access</h2>
-                    <input
-                        id="root-token"
-                        ref={rootTokenFormInput!}
-                        type="search"
-                        class={styles.TokenInput}
-                        placeholder="Token"
-                        oninvalid={() =>
-                            rootTokenFormInput.setCustomValidity(
-                                'Please enter a valid UUIDv4'
-                            )
-                        }
-                        value={rootTokenCodeInputValue() ?? ''}
-                        onchange={(e) => {
-                            setRootTokenCodeInputValue(e.target.value.trim())
-                            rootTokenFormInput.setCustomValidity('')
-                        }}
-                        pattern={
-                            '(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)'
-                        }
-                    />
-                    <input type="submit" value={'Submit'} />
-                </form>
-                <div></div>
-                <form class={styles.NewTokenForm} ref={newTokenForm!}>
-                    <h2>Create Token</h2>
-                    <label>
-                        Namespace
-                        <input
-                            ref={newTokenNamespaceInput!}
-                            type="text"
-                            placeholder="Namespace"
-                            required
-                            pattern={
-                                '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$'
-                            }
-                            disabled={
-                                !tokens().find(
-                                    (t) => t.code === rootTokenCode()
-                                )
-                            }
-                            onchange={() =>
-                                newTokenNamespaceInput.setCustomValidity('')
-                            }
-                            oninvalid={() =>
-                                newTokenNamespaceInput.setCustomValidity(
-                                    "Namespaces start with '/' followed by 2 or more alphanumeric characters and end with '/'."
-                                )
-                            }
-                            value={
-                                tokens().find((t) => t.code === rootTokenCode())
-                                    ?.namespace ?? ''
-                            }
-                        />
-                    </label>
-                    <label>
-                        Description
-                        <input
-                            ref={newTokenDescriptionInput!}
-                            type="text"
-                            required
-                            placeholder="Description"
-                            disabled={
-                                !tokens().find(
-                                    (t) => t.code === rootTokenCode()
-                                )
-                            }
-                        />
-                    </label>
-                    <div class={styles.NewTokenPermissions}>
-                        <fieldset>
-                            <legend>
-                                <span>Permissions</span>
-                                <Show when={!newTokenReadEnabled()}>
-                                    <span
-                                        class={
-                                            styles.NewTokenNoPermissionsWarningSmall
-                                        }
-                                    >
-                                        Token has no permissions!
-                                    </span>
-                                </Show>
-                            </legend>
-                            <label>
-                                Read
-                                <input
-                                    ref={newTokenReadCheckbox!}
-                                    onchange={(e) => {
-                                        if (!e.target.checked) {
-                                            newTokenWriteCheckbox.checked =
-                                                false
-                                            newTokenShareReadCheckbox.checked =
-                                                false
-                                            newTokenShareWriteCheckbox.checked =
-                                                false
-                                        }
-
-                                        setNewTokenReadEnabled(e.target.checked)
-                                    }}
-                                    type="checkbox"
-                                    checked={newTokenReadEnabled()}
-                                    disabled={
-                                        !rootTokenCode() ||
-                                        !tokens().find(
-                                            (t) => t.code === rootTokenCode()
-                                        )?.permission_share_read
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Write
-                                <input
-                                    ref={newTokenWriteCheckbox!}
-                                    onchange={(e) => {
-                                        if (e.target.checked) {
-                                            setNewTokenReadEnabled(true)
-                                        } else {
-                                            newTokenShareWriteCheckbox.checked =
-                                                false
-                                        }
-                                    }}
-                                    type="checkbox"
-                                    disabled={
-                                        !rootTokenCode() ||
-                                        !tokens().find(
-                                            (t) => t.code === rootTokenCode()
-                                        )?.permission_share_write
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Share read
-                                <input
-                                    ref={newTokenShareReadCheckbox!}
-                                    onchange={(e) => {
-                                        if (e.target.checked) {
-                                            setNewTokenReadEnabled(true)
-                                        } else {
-                                            newTokenShareWriteCheckbox.checked =
-                                                false
-                                        }
-                                    }}
-                                    type="checkbox"
-                                    disabled={
-                                        !rootTokenCode() ||
-                                        !tokens().find(
-                                            (t) => t.code === rootTokenCode()
-                                        )?.permission_share_read
-                                    }
-                                />
-                            </label>
-                            <label>
-                                Share write
-                                <input
-                                    ref={newTokenShareWriteCheckbox!}
-                                    onchange={(e) => {
-                                        if (e.target.checked) {
-                                            setNewTokenReadEnabled(true)
-                                            newTokenWriteCheckbox.checked = true
-                                            newTokenShareReadCheckbox.checked =
-                                                true
-                                        }
-                                    }}
-                                    type="checkbox"
-                                    disabled={
-                                        !rootTokenCode() ||
-                                        !tokens().find(
-                                            (t) => t.code === rootTokenCode()
-                                        )?.permission_share_write
-                                    }
-                                />
-                            </label>
-                        </fieldset>
+                <Show when={!rootTokenCode()}>
+                    <div class={styles.RootTokenSection}>
+                        <form
+                            class={styles.RootTokenForm}
+                            ref={rootTokenForm!}
+                            role="search"
+                        >
+                            <h2>Manage Access</h2>
+                            <p class={styles.FormDescription}>
+                                Enter your root token to manage access tokens and permissions
+                            </p>
+                            <input
+                                id="root-token"
+                                ref={rootTokenFormInput!}
+                                type="search"
+                                class={styles.TokenInput}
+                                placeholder="Enter your root token (UUID)"
+                                oninvalid={() =>
+                                    rootTokenFormInput.setCustomValidity(
+                                        'Please enter a valid UUIDv4'
+                                    )
+                                }
+                                value={rootTokenCodeInputValue() ?? ''}
+                                onchange={(e) => {
+                                    setRootTokenCodeInputValue(e.target.value.trim())
+                                    rootTokenFormInput.setCustomValidity('')
+                                }}
+                                pattern={
+                                    '(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)'
+                                }
+                            />
+                            <input type="submit" value={'Connect'} />
+                        </form>
                     </div>
-                    <input type="submit" value={'Create'} />
-                    <Show when={!newTokenReadEnabled()}>
-                        <span class={styles.NewTokenNoPermissionsWarningLarge}>
-                            Token has no permissions!
-                        </span>
-                    </Show>
-                </form>
-                <div class={styles.TokenTableWrapper}>
-                    <div class={styles.TokenTableInnerWrapper}>
-                        <table class={styles.TokenTable}>
-                            <thead>
+                </Show>
+
+                <Show
+                    when={rootTokenCode() && tokens().length >= 0}
+                    fallback={
+                        <div class={styles.EmptyState}>
+                            <div class={styles.EmptyStateContent}>
+                                <h3>No Token Connected</h3>
+                                <p>Enter your root token above to view and manage access tokens for your namespaces.</p>
+                                <div class={styles.EmptyStateHints}>
+                                    <div class={styles.Hint}>
+                                        <strong>🔑 Root Token</strong>
+                                        <span>Your root token grants you permission to create and manage sub-tokens</span>
+                                    </div>
+                                    <div class={styles.Hint}>
+                                        <strong>🔒 Permissions</strong>
+                                        <span>Control read, write, and share permissions for each namespace</span>
+                                    </div>
+                                    <div class={styles.Hint}>
+                                        <strong>🌳 Hierarchical</strong>
+                                        <span>Create tokens for specific namespaces with granular access control</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                >
+                    <div class={styles.TokenManagementSection}>
+                        <div class={styles.TokenListSection}>
+                            <h2 class={styles.SectionTitle}>Token List</h2>
+                            <div class={styles.TokenTableWrapper}>
+                                <div class={styles.TokenTableInnerWrapper}>
+                                    <table class={styles.TokenTable}>
+                                        <thead>
                                 <tr>
                                     <th tabIndex={0}>
                                         <input
@@ -679,255 +624,121 @@ const Tokens: Component = () => {
                                             )
                                         }
                                     >
-                                        <span>Namespace</span>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.NAMESPACE &&
-                                                sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↓
-                                            </span>
-                                        </Show>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.NAMESPACE &&
-                                                !sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↑
-                                            </span>
-                                        </Show>
-                                        <div ref={namespaceSearch!}>
-                                            <input
-                                                class={
-                                                    styles.NamespaceSearchRegexInput
-                                                }
-                                                ref={namespaceSearchInput!}
-                                                placeholder="Search Regex Pattern"
-                                                onchange={(e) =>
-                                                    setNamespaceSearchRegex(
-                                                        e.target.value
-                                                    )
-                                                }
-                                            />
+                                        <div class={styles.HeaderWithFilter}>
+                                            <div class={styles.HeaderContent}>
+                                                <span>Namespace</span>
+                                                <Show
+                                                    when={
+                                                        sortColumn() ===
+                                                            SortableColumns.NAMESPACE &&
+                                                        sortDirectionDescending()
+                                                    }
+                                                >
+                                                    <span class={styles.SortIcon}>
+                                                        ↓
+                                                    </span>
+                                                </Show>
+                                                <Show
+                                                    when={
+                                                        sortColumn() ===
+                                                            SortableColumns.NAMESPACE &&
+                                                        !sortDirectionDescending()
+                                                    }
+                                                >
+                                                    <span class={styles.SortIcon}>
+                                                        ↑
+                                                    </span>
+                                                </Show>
+                                                <button
+                                                    class={`${styles.FilterToggle} ${namespaceSearchRegex() ? styles.FilterActive : ''}`}
+                                                    onclick={(e) => {
+                                                        e.stopPropagation()
+                                                        setShowNamespaceFilter(!showNamespaceFilter())
+                                                    }}
+                                                    title="Toggle filter"
+                                                >
+                                                    🔍
+                                                </button>
+                                            </div>
+                                            <Show when={showNamespaceFilter()}>
+                                                <div ref={namespaceSearch!} class={styles.FilterInputWrapper}>
+                                                    <input
+                                                        class={styles.FilterInput}
+                                                        ref={namespaceSearchInput!}
+                                                        placeholder="Filter by regex..."
+                                                        value={namespaceSearchRegex() ?? ''}
+                                                        onchange={(e) =>
+                                                            setNamespaceSearchRegex(
+                                                                e.target.value || null
+                                                            )
+                                                        }
+                                                        onclick={(e) => e.stopPropagation()}
+                                                    />
+                                                    <Show when={namespaceSearchRegex()}>
+                                                        <button
+                                                            class={styles.ClearFilter}
+                                                            onclick={(e) => {
+                                                                e.stopPropagation()
+                                                                setNamespaceSearchRegex(null)
+                                                                namespaceSearchInput.value = ''
+                                                            }}
+                                                            title="Clear filter"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </Show>
+                                                </div>
+                                            </Show>
                                         </div>
                                     </th>
                                     <th tabIndex={0}>
-                                        <span>Description</span>
-                                        <div ref={descriptionSearch!}>
-                                            <input
-                                                class={
-                                                    styles.DescriptionSearchRegexInput
-                                                }
-                                                ref={descriptionSearchInput!}
-                                                placeholder="Search Regex Pattern"
-                                                onchange={(e) =>
-                                                    setDescriptionSearchRegex(
-                                                        e.target.value
-                                                    )
-                                                }
-                                            />
+                                        <div class={styles.HeaderWithFilter}>
+                                            <div class={styles.HeaderContent}>
+                                                <span>Description</span>
+                                                <button
+                                                    class={`${styles.FilterToggle} ${descriptionSearchRegex() ? styles.FilterActive : ''}`}
+                                                    onclick={(e) => {
+                                                        e.stopPropagation()
+                                                        setShowDescriptionFilter(!showDescriptionFilter())
+                                                    }}
+                                                    title="Toggle filter"
+                                                >
+                                                    🔍
+                                                </button>
+                                            </div>
+                                            <Show when={showDescriptionFilter()}>
+                                                <div ref={descriptionSearch!} class={styles.FilterInputWrapper}>
+                                                    <input
+                                                        class={styles.FilterInput}
+                                                        ref={descriptionSearchInput!}
+                                                        placeholder="Filter by regex..."
+                                                        value={descriptionSearchRegex() ?? ''}
+                                                        onchange={(e) =>
+                                                            setDescriptionSearchRegex(
+                                                                e.target.value || null
+                                                            )
+                                                        }
+                                                        onclick={(e) => e.stopPropagation()}
+                                                    />
+                                                    <Show when={descriptionSearchRegex()}>
+                                                        <button
+                                                            class={styles.ClearFilter}
+                                                            onclick={(e) => {
+                                                                e.stopPropagation()
+                                                                setDescriptionSearchRegex(null)
+                                                                descriptionSearchInput.value = ''
+                                                            }}
+                                                            title="Clear filter"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </Show>
+                                                </div>
+                                            </Show>
                                         </div>
                                     </th>
-                                    <th
-                                        tabIndex={0}
-                                        onClick={(e) =>
-                                            handleTableHeadCellClick(
-                                                e,
-                                                SortableColumns.READ
-                                            )
-                                        }
-                                        onkeypress={(e) =>
-                                            handleTableHeadCellKeyPress(
-                                                e,
-                                                SortableColumns.READ
-                                            )
-                                        }
-                                    >
-                                        <span>Read</span>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.READ &&
-                                                sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↓
-                                            </span>
-                                        </Show>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.READ &&
-                                                !sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↑
-                                            </span>
-                                        </Show>
-                                    </th>
-                                    <th
-                                        tabIndex={0}
-                                        onClick={(e) =>
-                                            handleTableHeadCellClick(
-                                                e,
-                                                SortableColumns.WRITE
-                                            )
-                                        }
-                                        onkeypress={(e) =>
-                                            handleTableHeadCellKeyPress(
-                                                e,
-                                                SortableColumns.WRITE
-                                            )
-                                        }
-                                    >
-                                        <span>Write</span>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.WRITE &&
-                                                sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↓
-                                            </span>
-                                        </Show>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.WRITE &&
-                                                !sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↑
-                                            </span>
-                                        </Show>
-                                    </th>
-                                    <th
-                                        tabIndex={0}
-                                        onClick={(e) =>
-                                            handleTableHeadCellClick(
-                                                e,
-                                                SortableColumns.SHARE_READ
-                                            )
-                                        }
-                                        onkeypress={(e) =>
-                                            handleTableHeadCellKeyPress(
-                                                e,
-                                                SortableColumns.SHARE_READ
-                                            )
-                                        }
-                                    >
-                                        <span>Share Read</span>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.SHARE_READ &&
-                                                sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↓
-                                            </span>
-                                        </Show>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.SHARE_READ &&
-                                                !sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↑
-                                            </span>
-                                        </Show>
-                                    </th>
-                                    <th
-                                        tabIndex={0}
-                                        onClick={(e) =>
-                                            handleTableHeadCellClick(
-                                                e,
-                                                SortableColumns.SHARE_WRITE
-                                            )
-                                        }
-                                        onkeypress={(e) =>
-                                            handleTableHeadCellKeyPress(
-                                                e,
-                                                SortableColumns.SHARE_WRITE
-                                            )
-                                        }
-                                    >
-                                        <span>Share Write</span>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.SHARE_WRITE &&
-                                                sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↓
-                                            </span>
-                                        </Show>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.SHARE_WRITE &&
-                                                !sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↑
-                                            </span>
-                                        </Show>
-                                    </th>
-                                    <th
-                                        tabIndex={0}
-                                        onClick={(e) =>
-                                            handleTableHeadCellClick(
-                                                e,
-                                                SortableColumns.SHARE_SHARE
-                                            )
-                                        }
-                                        onkeypress={(e) =>
-                                            handleTableHeadCellKeyPress(
-                                                e,
-                                                SortableColumns.SHARE_SHARE
-                                            )
-                                        }
-                                    >
-                                        <span>Recursive Share</span>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.SHARE_SHARE &&
-                                                sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↓
-                                            </span>
-                                        </Show>
-                                        <Show
-                                            when={
-                                                sortColumn() ===
-                                                    SortableColumns.SHARE_SHARE &&
-                                                !sortDirectionDescending()
-                                            }
-                                        >
-                                            <span class={styles.SortIcon}>
-                                                ↑
-                                            </span>
-                                        </Show>
+                                    <th tabIndex={0}>
+                                        <span>Permissions</span>
                                     </th>
                                 </tr>
                             </thead>
@@ -1064,6 +875,7 @@ const Tokens: Component = () => {
                                                             class={
                                                                 styles.CodeCellContent
                                                             }
+                                                            title={token.code}
                                                         >
                                                             {token.code}
                                                         </div>
@@ -1071,63 +883,28 @@ const Tokens: Component = () => {
                                                 </td>
                                                 <td
                                                     class={styles.NamespaceCell}
+                                                    title={token.namespace}
                                                 >
                                                     {token.namespace}
                                                 </td>
-                                                <td>{token.description}</td>
+                                                <td title={token.description}>{token.description}</td>
                                                 <td>
-                                                    <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
-                                                    >
-                                                        {token.permission_read
-                                                            ? '✅'
-                                                            : '❌'}
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
-                                                    >
-                                                        {token.permission_write
-                                                            ? '✅'
-                                                            : '❌'}
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
-                                                    >
-                                                        {token.permission_share_read
-                                                            ? '✅'
-                                                            : '❌'}
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
-                                                    >
-                                                        {token.permission_share_write
-                                                            ? '✅'
-                                                            : '❌'}
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div
-                                                        class={
-                                                            styles.PermissionIcon
-                                                        }
-                                                    >
-                                                        {token.permission_share_share
-                                                            ? '✅'
-                                                            : '❌'}
+                                                    <div class={styles.PermissionChips}>
+                                                        <Show when={token.permission_read}>
+                                                            <span class={`${styles.PermissionChip} ${styles.PermissionRead}`}>R</span>
+                                                        </Show>
+                                                        <Show when={token.permission_write}>
+                                                            <span class={`${styles.PermissionChip} ${styles.PermissionWrite}`}>W</span>
+                                                        </Show>
+                                                        <Show when={token.permission_share_read}>
+                                                            <span class={`${styles.PermissionChip} ${styles.PermissionShareRead}`}>SR</span>
+                                                        </Show>
+                                                        <Show when={token.permission_share_write}>
+                                                            <span class={`${styles.PermissionChip} ${styles.PermissionShareWrite}`}>SW</span>
+                                                        </Show>
+                                                        <Show when={!token.permission_read && !token.permission_write && !token.permission_share_read && !token.permission_share_write}>
+                                                            <span class={styles.NoPermissions}>None</span>
+                                                        </Show>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1135,33 +912,229 @@ const Tokens: Component = () => {
                                     )}
                                 </For>
                             </tbody>
-                        </table>
-                        <Show when={tokens()?.length === 0}>
-                            <div class={styles.TokenTableNoData}>
-                                <span>No Tokens Available</span>
+                                    </table>
+                                    <Show when={tokens()?.length === 0}>
+                                        <div class={styles.TokenTableNoData}>
+                                            <span>No Tokens Available</span>
+                                        </div>
+                                    </Show>
+                                </div>
+                                <div class={styles.TableButtonBar}>
+                                    <button
+                                        disabled={selectedTokens().length === 0}
+                                        onclick={() => refreshTokensModel.showModal()}
+                                    >
+                                        Refresh Code
+                                    </button>
+                                    <button
+                                        disabled={
+                                            selectedTokens().length === 0 ||
+                                            selectedTokens().findIndex(
+                                                (t) => t.code === rootTokenCode()
+                                            ) !== -1
+                                        }
+                                        onclick={() => deleteTokensModal.showModal()}
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
                             </div>
-                        </Show>
-                        <div class={styles.TableButtonBar}>
-                            <button
-                                disabled={selectedTokens().length === 0}
-                                onclick={() => refreshTokensModel.showModal()}
-                            >
-                                Refresh Code
-                            </button>
-                            <button
-                                disabled={
-                                    selectedTokens().length === 0 ||
-                                    selectedTokens().findIndex(
-                                        (t) => t.code === rootTokenCode()
-                                    ) !== -1
-                                }
-                                onclick={() => deleteTokensModal.showModal()}
-                            >
-                                Delete
-                            </button>
+                        </div>
+
+                        <div class={styles.CreateTokenSection}>
+                            <h2 class={styles.SectionTitle}>Create New Token</h2>
+                            <form class={styles.NewTokenForm} ref={newTokenForm!}>
+                                <label class={styles.NamespaceInputContainer}>
+                                    Namespace
+                                    <div class={styles.AutocompleteWrapper}>
+                                        <input
+                                            ref={newTokenNamespaceInput!}
+                                            type="text"
+                                            placeholder="Namespace (e.g., /myproject/)"
+                                            required
+                                            pattern={
+                                                '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$'
+                                            }
+                                            disabled={
+                                                !tokens().find(
+                                                    (t) => t.code === rootTokenCode()
+                                                )
+                                            }
+                                            oninput={(e) => {
+                                                const value = e.currentTarget.value
+                                                setNamespaceInputValue(value)
+                                                setShowNamespaceSuggestions(true)
+                                                newTokenNamespaceInput.setCustomValidity('')
+                                            }}
+                                            onfocus={() => setShowNamespaceSuggestions(true)}
+                                            onblur={() => {
+                                                // Delay to allow clicking on suggestions
+                                                setTimeout(() => setShowNamespaceSuggestions(false), 200)
+                                            }}
+                                            oninvalid={() =>
+                                                newTokenNamespaceInput.setCustomValidity(
+                                                    "Namespaces start with '/' followed by 2 or more alphanumeric characters and end with '/'."
+                                                )
+                                            }
+                                            value={
+                                                namespaceInputValue() ||
+                                                (tokens().find((t) => t.code === rootTokenCode())
+                                                    ?.namespace ?? '')
+                                            }
+                                        />
+                                        <Show when={showNamespaceSuggestions() && namespaceSuggestions().length > 0}>
+                                            <div class={styles.SuggestionsList}>
+                                                <For each={namespaceSuggestions().filter(ns =>
+                                                    namespaceInputValue() === '' ||
+                                                    ns.toLowerCase().includes(namespaceInputValue().toLowerCase())
+                                                ).slice(0, 8)}>
+                                                    {(namespace) => (
+                                                        <div
+                                                            class={styles.SuggestionItem}
+                                                            onmousedown={(e) => {
+                                                                e.preventDefault()
+                                                                newTokenNamespaceInput.value = namespace
+                                                                setNamespaceInputValue(namespace)
+                                                                setShowNamespaceSuggestions(false)
+                                                            }}
+                                                        >
+                                                            <span class={styles.SuggestionNamespace}>{namespace}</span>
+                                                        </div>
+                                                    )}
+                                                </For>
+                                            </div>
+                                        </Show>
+                                    </div>
+                                </label>
+                                <label>
+                                    Description
+                                    <input
+                                        ref={newTokenDescriptionInput!}
+                                        type="text"
+                                        required
+                                        placeholder="Description"
+                                        disabled={
+                                            !tokens().find(
+                                                (t) => t.code === rootTokenCode()
+                                            )
+                                        }
+                                    />
+                                </label>
+                                <div class={styles.NewTokenPermissions}>
+                                    <fieldset>
+                                        <legend>
+                                            <span>Permissions</span>
+                                            <Show when={!newTokenReadEnabled()}>
+                                                <span
+                                                    class={
+                                                        styles.NewTokenNoPermissionsWarningSmall
+                                                    }
+                                                >
+                                                    Token has no permissions!
+                                                </span>
+                                            </Show>
+                                        </legend>
+                                        <label>
+                                            Read
+                                            <input
+                                                ref={newTokenReadCheckbox!}
+                                                onchange={(e) => {
+                                                    if (!e.target.checked) {
+                                                        newTokenWriteCheckbox.checked =
+                                                            false
+                                                        newTokenShareReadCheckbox.checked =
+                                                            false
+                                                        newTokenShareWriteCheckbox.checked =
+                                                            false
+                                                    }
+
+                                                    setNewTokenReadEnabled(e.target.checked)
+                                                }}
+                                                type="checkbox"
+                                                checked={newTokenReadEnabled()}
+                                                disabled={
+                                                    !rootTokenCode() ||
+                                                    !tokens().find(
+                                                        (t) => t.code === rootTokenCode()
+                                                    )?.permission_share_read
+                                                }
+                                            />
+                                        </label>
+                                        <label>
+                                            Write
+                                            <input
+                                                ref={newTokenWriteCheckbox!}
+                                                onchange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setNewTokenReadEnabled(true)
+                                                    } else {
+                                                        newTokenShareWriteCheckbox.checked =
+                                                            false
+                                                    }
+                                                }}
+                                                type="checkbox"
+                                                disabled={
+                                                    !rootTokenCode() ||
+                                                    !tokens().find(
+                                                        (t) => t.code === rootTokenCode()
+                                                    )?.permission_share_write
+                                                }
+                                            />
+                                        </label>
+                                        <label>
+                                            Share read
+                                            <input
+                                                ref={newTokenShareReadCheckbox!}
+                                                onchange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setNewTokenReadEnabled(true)
+                                                    } else {
+                                                        newTokenShareWriteCheckbox.checked =
+                                                            false
+                                                    }
+                                                }}
+                                                type="checkbox"
+                                                disabled={
+                                                    !rootTokenCode() ||
+                                                    !tokens().find(
+                                                        (t) => t.code === rootTokenCode()
+                                                    )?.permission_share_read
+                                                }
+                                            />
+                                        </label>
+                                        <label>
+                                            Share write
+                                            <input
+                                                ref={newTokenShareWriteCheckbox!}
+                                                onchange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setNewTokenReadEnabled(true)
+                                                        newTokenWriteCheckbox.checked = true
+                                                        newTokenShareReadCheckbox.checked =
+                                                            true
+                                                    }
+                                                }}
+                                                type="checkbox"
+                                                disabled={
+                                                    !rootTokenCode() ||
+                                                    !tokens().find(
+                                                        (t) => t.code === rootTokenCode()
+                                                    )?.permission_share_write
+                                                }
+                                            />
+                                        </label>
+                                    </fieldset>
+                                </div>
+                                <input type="submit" value={'Create'} />
+                                <Show when={!newTokenReadEnabled()}>
+                                    <span class={styles.NewTokenNoPermissionsWarningLarge}>
+                                        Token has no permissions!
+                                    </span>
+                                </Show>
+                            </form>
                         </div>
                     </div>
-                </div>
+                </Show>
             </main>
             <dialog ref={refreshTokensModel!} class={styles.RefreshTokensModal}>
                 <form onsubmit={(ev) => {

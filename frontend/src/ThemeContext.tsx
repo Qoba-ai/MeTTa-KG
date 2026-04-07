@@ -59,12 +59,15 @@ export const ThemeProvider = (props: { children: JSX.Element }) => {
     }
 
     const root = document.documentElement;
-    
+
+    // Special case for Nord: use darker overlay for modals
+    const overlayColor = schemeName === 'nord' ? s.base00 : s.base02;
+
     // Mapping Base16 to our --rp variables
     const mapping = {
       "--rp-base": s.base00,
       "--rp-surface": s.base01,
-      "--rp-overlay": s.base02,
+      "--rp-overlay": overlayColor,
       "--rp-muted": s.base03,
       "--rp-subtle": s.base04,
       "--rp-text": s.base05,

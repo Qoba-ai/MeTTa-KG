@@ -1,7 +1,5 @@
 @use 'sass:color';
 
-@import 'styles/rose-pine-hsl.css';
-
 html,
 body {
     width: 100%;
@@ -47,7 +45,7 @@ header {
         gap: 16px;
         height: 100%;
 
-        & > * {
+        &>* {
             display: inline-flex;
             align-items: center;
         }
@@ -55,11 +53,45 @@ header {
         .github-link {
             color: var(--rp-subtle);
             transition: all 0.2s;
+
             &:hover {
                 color: var(--rp-text);
                 transform: scale(1.1);
             }
         }
+    }
+}
+
+.NavDivider {
+    width: 1px;
+    height: 32px;
+    background: var(--rp-highlight-med);
+    margin: 0 8px;
+    flex-shrink: 0;
+}
+
+.NavSection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.AuthSection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.NavLinks {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    a,
+    button {
+        font-size: 0.9rem;
+        padding: 6px 12px;
+        transition: all 0.2s;
     }
 }
 
@@ -69,6 +101,20 @@ header {
 
     &:hover {
         color: var(--rp-text);
+    }
+}
+
+.OnlineIndicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--rp-muted);
+    transition: background 0.4s;
+    flex-shrink: 0;
+
+    &.OnlineIndicatorOnline {
+        background: var(--rp-foam);
+        box-shadow: 0 0 5px var(--rp-foam);
     }
 }
 
@@ -219,7 +265,7 @@ dialog {
     padding: 0;
 
     // Prevent backdrop clicks from closing modal when clicking inside
-    & > form {
+    &>form {
         padding: 18px;
     }
 
@@ -268,5 +314,101 @@ legend {
         @extend .Button;
 
         margin-top: 12px;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Responsive Design
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Mobile devices
+@media screen and (max-width: 768px) {
+    header {
+        padding: 0 12px;
+        height: 56px;
+
+        h1 {
+            font-size: 1rem;
+            letter-spacing: -0.3px;
+        }
+
+        nav {
+            gap: 8px;
+
+            a,
+            button {
+                font-size: 0.85rem;
+                padding: 6px 12px;
+            }
+
+            .Icon {
+                font-size: 24px;
+            }
+        }
+    }
+
+    dialog {
+        width: 90vw;
+        max-width: 500px;
+        margin: auto;
+    }
+
+    h1 {
+        font-size: 1.5rem;
+    }
+
+    h2 {
+        font-size: 1.25rem;
+    }
+
+    h3 {
+        font-size: 1.1rem;
+    }
+
+    %button-style {
+        padding: 8px 14px;
+        font-size: 0.85rem;
+    }
+
+    input:not([type='file']),
+    select {
+        padding: 10px 12px;
+        font-size: 0.9rem;
+    }
+}
+
+// Tablets
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+    header {
+        padding: 0 16px;
+
+        h1 {
+            font-size: 1.1rem;
+        }
+
+        nav {
+            gap: 12px;
+        }
+    }
+
+    dialog {
+        width: 80vw;
+        max-width: 600px;
+    }
+}
+
+// Ensure touch targets are large enough on mobile
+@media (hover: none) and (pointer: coarse) {
+
+    button,
+    a,
+    input[type="submit"],
+    input[type="button"] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    .IconButton {
+        padding: 10px;
     }
 }

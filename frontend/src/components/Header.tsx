@@ -37,7 +37,7 @@ export const Header: Component<HeaderProps> = (props) => {
               Tokens
             </A>
             <a href="https://github.com/Qoba-ai/MeTTa-KG" target="_blank" rel="noopener noreferrer" class="github-link">
-              <AiOutlineGithub size={32} />
+              <AiOutlineGithub class={styles.Icon} size={32} />
             </a>
           </>
         )}

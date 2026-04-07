@@ -1,5 +1,81 @@
 @import 'styles/Common.module';
 
+.ConnectedTokenBadge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--rp-highlight-low);
+    border: 1px solid var(--rp-highlight-med);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    transition: background 0.2s;
+
+    &:hover {
+        background: var(--rp-highlight-med);
+    }
+
+    .BadgeLabel {
+        color: var(--rp-foam);
+        font-weight: 600;
+    }
+
+    .BadgeToken {
+        color: var(--rp-subtle);
+        font-family: 'Fira Code', monospace;
+    }
+
+    .BadgePermissions {
+        display: flex;
+        gap: 4px;
+        margin-left: 4px;
+        padding-left: 8px;
+        border-left: 1px solid var(--rp-highlight-med);
+
+        span {
+            font-size: 0.7rem;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+    }
+
+    .PermissionEnabled {
+        background: var(--rp-foam);
+        color: var(--rp-base);
+    }
+
+    .PermissionDisabled {
+        background: var(--rp-muted);
+        color: var(--rp-base);
+        opacity: 0.5;
+    }
+}
+
+.LogoutButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    background: transparent;
+    border: 1px solid var(--rp-love);
+    border-radius: 6px;
+    color: var(--rp-love) !important;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        background: var(--rp-love);
+        color: var(--rp-base) !important;
+    }
+
+    svg {
+        display: block;
+        color: inherit !important;
+        fill: currentColor !important;
+    }
+}
+
 .MainLayout {
     display: flex;
     flex-direction: column;
@@ -360,6 +436,14 @@
     :global(.cm-editor) {
         height: 100%;
     }
+
+    :global(.cm-content) {
+        padding: 8px;
+    }
+
+    :global(.cm-scroller) {
+        padding: 0;
+    }
 }
 
 .ConsoleSection {
@@ -367,15 +451,17 @@
     flex-direction: column;
     height: var(--console-height, 120px);
     flex-shrink: 0;
-    background: var(--rp-surface);
-    border-top: 1px solid var(--rp-highlight-low);
+    background: var(--rp-base);
+    border-top: 2px solid var(--rp-highlight-low);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .ConsoleToolbar {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    padding: 2px 8px;
+    padding: 4px 8px;
+    background: var(--rp-surface);
     border-bottom: 1px solid var(--rp-highlight-low);
     flex-shrink: 0;
 }
@@ -385,30 +471,77 @@
     align-items: center;
     gap: 5px;
     padding: 4px 10px;
-    background: var(--rp-highlight-low);
-    border: none;
+    background: var(--rp-base);
+    border: 1px solid var(--rp-foam);
     border-radius: 4px;
-    color: var(--rp-pine);
+    color: var(--rp-foam);
     font-size: 0.8rem;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition: all 0.15s;
 
     &:hover {
-        background: var(--rp-highlight-med);
-        color: var(--rp-foam);
+        background: var(--rp-foam);
+        color: var(--rp-base);
+        box-shadow: 0 0 8px var(--rp-foam-alpha);
     }
 }
 
 .Console {
     flex: 1;
     width: 100%;
-    padding: 10px 16px;
+    padding: 12px 16px;
     box-sizing: border-box;
     margin: 0;
     overflow-y: auto;
-    font-family: 'Fira Code', monospace;
+    font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
     font-size: 0.9rem;
+    line-height: 1.5;
     color: var(--rp-foam);
+    background: var(--rp-base);
+    text-shadow: 0 0 2px var(--rp-foam-alpha);
+
+    // Terminal-style scrollbar
+    &::-webkit-scrollbar {
+        width: 10px;
+        background: var(--rp-base);
+    }
+
+    &::-webkit-scrollbar-track {
+        background: var(--rp-surface);
+        border-radius: 5px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: var(--rp-highlight-high);
+        border-radius: 5px;
+        border: 2px solid var(--rp-surface);
+
+        &:hover {
+            background: var(--rp-text);
+        }
+    }
+
+    // Override highlight.js colors for terminal look
+    code {
+        color: var(--rp-foam);
+        font-family: inherit;
+
+        .hljs-keyword {
+            color: var(--rp-pine);
+        }
+
+        .hljs-string {
+            color: var(--rp-gold);
+        }
+
+        .hljs-number {
+            color: var(--rp-iris);
+        }
+
+        .hljs-comment {
+            color: var(--rp-muted);
+        }
+    }
 }
 
 .Resizer, .ConsoleResizer {
@@ -437,22 +570,26 @@
     width: var(--trie-width, 300px);
     background: var(--rp-surface);
     border-radius: 12px;
-    padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    border: 1px solid var(--rp-highlight-low);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    border: 1px solid var(--rp-highlight-med);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.08);
     flex-shrink: 0;
     margin: 16px 16px 16px 0;
     overflow: hidden;
+    backdrop-filter: blur(10px);
 
     h3 {
         margin: 0;
-        font-size: 1.1rem;
-        color: var(--rp-gold);
-        border-bottom: 1px solid var(--rp-highlight-low);
-        padding-bottom: 10px;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--rp-text);
+        background: var(--rp-overlay);
+        border-bottom: 2px solid var(--rp-highlight-med);
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
     }
 }
 
@@ -461,24 +598,41 @@
     overflow-y: auto;
     overflow-x: auto;
     font-family: 'Fira Code', monospace;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding-right: 4px;
+    padding: 16px 20px;
+    background: var(--rp-base);
+    position: relative;
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 8px;
+        background: linear-gradient(to bottom, rgba(0, 0, 0, 0.05), transparent);
+        pointer-events: none;
+    }
 
     &::-webkit-scrollbar {
-        width: 4px;
+        width: 10px;
     }
     &::-webkit-scrollbar-track {
-        background: transparent;
+        background: var(--rp-surface);
+        border-radius: 5px;
+        margin: 4px 0;
     }
     &::-webkit-scrollbar-thumb {
-        background: var(--rp-highlight-low);
-        border-radius: 8px;
+        background: var(--rp-highlight-high);
+        border-radius: 5px;
+        border: 2px solid var(--rp-surface);
+        transition: background 0.2s;
     }
     &::-webkit-scrollbar-thumb:hover {
-        background: var(--rp-highlight-med);
+        background: var(--rp-text);
     }
 }
 
@@ -486,16 +640,19 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 8px;
-    border-radius: 4px;
-    transition: all 0.2s;
+    padding: 8px 10px;
+    border-radius: 6px;
+    transition: all 0.15s ease;
     user-select: none;
     width: 100%;
     box-sizing: border-box;
     font-size: 0.9rem;
+    position: relative;
 
     &:hover {
-        background: var(--rp-highlight-low);
+        background: var(--rp-overlay);
+        transform: translateX(2px);
+        box-shadow: -3px 0 0 var(--rp-foam);
 
         .TrieActions {
             opacity: 1;
@@ -504,7 +661,8 @@
 
     &.SelectedNode {
         background: var(--rp-highlight-med);
-        border-left: 3px solid var(--rp-love);
+        box-shadow: -3px 0 0 var(--rp-love);
+        transform: translateX(2px);
     }
 }
 
@@ -581,24 +739,30 @@
 }
 
 .TrieConfigTransform {
-    margin-top: 12px;
-    width: 100%;
-    padding: 10px;
+    margin: 16px 20px;
+    padding: 12px 16px;
     background: var(--rp-love);
     color: var(--rp-base);
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-weight: 600;
+    font-size: 0.9rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
+    box-shadow: 0 2px 8px rgba(235, 111, 146, 0.3);
 
     &:hover {
         background: var(--rp-rose);
         transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(235, 111, 146, 0.4);
+    }
+
+    &:active {
+        transform: translateY(0);
     }
 
     &:disabled {
@@ -1126,5 +1290,149 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Responsive Design
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Mobile devices (portrait phones)
+@media screen and (max-width: 768px) {
+    .Main {
+        --trie-width: 100%;
+        --console-height: 200px;
+    }
+
+    .EditorLayout {
+        flex-direction: column;
+    }
+
+    .Sidebar {
+        width: 100%;
+        min-width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--rp-highlight-low);
+
+        &.SidebarCollapsed {
+            width: 100%;
+            min-width: 100%;
+            max-height: 42px;
+            overflow: hidden;
+        }
+
+        .MettaEditorActions {
+            flex-direction: row;
+            flex-wrap: wrap;
+            overflow-x: auto;
+
+            .ButtonGroup {
+                flex-direction: row;
+            }
+        }
+    }
+
+    .TrieExplorer {
+        width: 100%;
+        max-height: 300px;
+        border-radius: 8px;
+        margin-top: 16px;
+    }
+
+    .Resizer {
+        display: none;
+    }
+
+    .ConsoleSection {
+        --console-height: 180px;
+    }
+
+    .EditorTabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+
+        &::-webkit-scrollbar {
+            height: 6px;
+        }
+    }
+
+    .MettaInputActionsWrapper {
+        flex-direction: column;
+        gap: 8px;
+    }
+}
+
+// Tablets (portrait and landscape)
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+    .Main {
+        --trie-width: 280px;
+        --console-height: 150px;
+    }
+
+    .Sidebar {
+        width: 120px;
+        min-width: 120px;
+
+        &.SidebarCollapsed {
+            width: 42px;
+            min-width: 42px;
+        }
+
+        .MettaEditorActions button span {
+            font-size: 0.8rem;
+        }
+    }
+
+    .TrieExplorer {
+        h3 {
+            font-size: 0.9rem;
+            padding: 12px 16px;
+        }
+    }
+
+    .ConsoleSection {
+        --console-height: 150px;
+    }
+}
+
+// Small desktops
+@media screen and (min-width: 1025px) and (max-width: 1366px) {
+    .Main {
+        --trie-width: 320px;
+        --console-height: 120px;
+    }
+
+    .Sidebar {
+        width: 140px;
+        min-width: 140px;
+    }
+}
+
+// Large desktops
+@media screen and (min-width: 1367px) {
+    .Main {
+        --trie-width: 350px;
+        --console-height: 140px;
+    }
+}
+
+// Handle mobile orientation changes
+@media screen and (max-width: 768px) and (orientation: landscape) {
+    .EditorLayout {
+        flex-direction: row;
+    }
+
+    .TrieExplorer {
+        width: 50%;
+        max-height: none;
+        margin-top: 0;
+    }
+
+    .Resizer {
+        display: block;
+    }
+
+    .ConsoleSection {
+        --console-height: 120px;
     }
 }

@@ -1,6 +1,7 @@
 import type { Component } from 'solid-js'
 import {
     AiFillFolderOpen,
+    AiOutlineGithub,
 } from 'solid-icons/ai'
 import {
     VsPlay,
@@ -17,9 +18,12 @@ import {
     VsWarning,
     VsChevronLeft,
     VsChevronRight,
+    VsSignOut,
+    VsSettings,
 } from 'solid-icons/vs'
 import { createMemo, createSignal, onMount, onCleanup, Show, For, createEffect, batch, on, untrack } from 'solid-js'
 import styles from './Editor.module.scss'
+import commonStyles from './styles/Common.module.scss'
 import { A } from '@solidjs/router'
 import { Toaster } from 'solid-toast'
 import { notify } from './notify'
@@ -143,7 +147,7 @@ import { EditorASTState, astToString, initializeEditorState, emptyEditorState, p
 import { getDisplayContent, getOriginalContent, createASTStateFromTokens, stripNamespacePrefix } from './editorASTUtils'
 
 // Components
-import { Header } from './components/Header'
+import { Navbar } from './components/Navbar'
 import { ConfirmModal } from './components/ConfirmModal'
 import { LoadSpaceModal } from './components/LoadSpaceModal'
 import { ImportModal } from './components/ImportModal'
@@ -222,6 +226,9 @@ const App: Component = () => {
 
     // Space State
     const [token, setToken] = createSignal<Token>()
+    const [rootTokenCode, setRootTokenCode] = createSignal<string | null>(
+        TOKEN || localStorage.getItem('rootToken')
+    )
     const [namespaces, setNamespaces] = createSignal<string[]>([])
 
     // Annotation to skip AST re-parse in updateListener for programmatic edits
@@ -249,6 +256,7 @@ const App: Component = () => {
     // Import State
     const [importSource, setImportSource] = createSignal<ImportSource>(ImportSource.FILE)
     const [importNamespace, setImportNamespace] = createSignal<string>('/')
+    const [isImportModalOpen, setIsImportModalOpen] = createSignal(false)
     const [activeImportFile, setActiveImportFile] = createSignal<File>()
     const [importUrl, setImportUrl] = createSignal<string>('')
     const [importText, setImportText] = createSignal<string>('')
@@ -274,6 +282,7 @@ const App: Component = () => {
     // WebSocket: set of space paths currently locked (import in progress)
     const [lockedPaths, setLockedPaths] = createSignal<Set<string>>(new Set())
     const [spaceStatus, setSpaceStatus] = createSignal<StatusEvent | null>(null)
+    const [online, setOnline] = createSignal(false)
 
     // Confirmation State
     const [confirmData, setConfirmData] = createSignal({
@@ -294,12 +303,25 @@ const App: Component = () => {
         return manualImportFormat() ?? ImportFormat.METTA
     })
 
+    // Sync modal state when dialog closes (ESC key, etc)
     createEffect(() => {
-        const file = activeImportFile()
-        if (file && importFileModal && !importFileModal.open) {
-            openImportModal()
+        if (importFileModal) {
+            const handleClose = () => {
+                setIsImportModalOpen(false)
+            }
+            importFileModal.addEventListener('close', handleClose)
+            onCleanup(() => {
+                importFileModal.removeEventListener('close', handleClose)
+            })
         }
     })
+
+    // Auto-open modal when file is dragged from outside or after file picker closes
+    createEffect(on(activeImportFile, (file) => {
+        if (file && !isImportModalOpen() && importFileModal && !importFileModal.open) {
+            openImportModal(false) // Don't reset namespace on auto-reopen
+        }
+    }, { defer: true }))
 
     const { theme: currentTheme } = useTheme()
 
@@ -453,6 +475,12 @@ const App: Component = () => {
         if (isMounted) return
         isMounted = true
 
+        wsService.connectPing()
+        const unsubOnline = wsService.onOnlineChange(setOnline)
+        onCleanup(() => {
+            unsubOnline()
+        })
+
         const setupModalBackdrop = (modal: HTMLDialogElement) => {
             modal.addEventListener('click', (event) => {
                 const rect = modal.getBoundingClientRect()
@@ -494,8 +522,12 @@ const App: Component = () => {
         window.addEventListener('drop', (e) => e.preventDefault(), false)
     })
 
-    const openImportModal = () => {
-        setImportNamespace(activePanel()?.namespace || '/')
+    const openImportModal = (resetNamespace = true) => {
+        // Only reset namespace if explicitly requested (user-initiated open, not auto-reopen)
+        if (resetNamespace) {
+            setImportNamespace(activePanel()?.namespace || '/')
+        }
+        setIsImportModalOpen(true)
         importFileModal.showModal()
     }
 
@@ -646,6 +678,59 @@ const App: Component = () => {
         }
     }
 
+    const handleTrieNodeClick = (expression: string) => {
+        const p = activePanel()
+        if (!p?.view) return
+
+        const view = p.view
+        const doc = view.state.doc
+        const text = doc.toString()
+
+        // Normalize whitespace for searching - replace multiple spaces/newlines with single space
+        const normalizeWS = (s: string) => s.replace(/\s+/g, ' ')
+        const normalizedExpr = normalizeWS(expression)
+        const normalizedText = normalizeWS(text)
+
+        // Search for the expression in the normalized document
+        const normalizedIndex = normalizedText.indexOf(normalizedExpr)
+        if (normalizedIndex === -1) {
+            console.log('Expression not found:', expression)
+            console.log('Looking for:', normalizedExpr)
+            notify.info(`Expression not found: ${expression}`)
+            return
+        }
+
+        // Map back to original text position by counting actual characters
+        let actualIndex = 0
+        let normalizedCount = 0
+        while (normalizedCount < normalizedIndex && actualIndex < text.length) {
+            if (!/\s/.test(text[actualIndex]) || normalizedText[normalizedCount] === ' ') {
+                normalizedCount++
+            }
+            actualIndex++
+        }
+
+        // Calculate approximate length in original text
+        const from = actualIndex
+        const to = Math.min(actualIndex + expression.length * 2, text.length) // *2 to account for extra whitespace
+
+        // Focus the editor first to ensure it's active
+        view.focus()
+
+        // Use requestAnimationFrame to ensure focus is applied before dispatch
+        requestAnimationFrame(() => {
+            // Scroll to and select the expression
+            view.dispatch({
+                selection: { anchor: from, head: to },
+                scrollIntoView: true,
+                effects: []
+            })
+
+            // Focus again after dispatch to ensure it sticks
+            view.focus()
+        })
+    }
+
     const getParserParameters = (): any => {
         const format = activeImportFileFormat()
         if (format === ImportFormat.CSV) {
@@ -749,6 +834,7 @@ const App: Component = () => {
             setImportText('')
             setImportExamplePath('')
             setManualImportFormat(undefined)
+            setIsImportModalOpen(false)
             importFileModal.close()
         } catch (e) {
             console.error(e)
@@ -807,6 +893,8 @@ const App: Component = () => {
             const self: Token = await resp.json()
             if (self) {
                 setToken(self)
+                setRootTokenCode(tokenStr)
+                localStorage.setItem('rootToken', tokenStr)
                 await addPanel(self.namespace)
                 setEditorMode(EditorMode.EDIT)
             } else if (!silent) notify.error(`Failed to load space`)
@@ -1284,9 +1372,18 @@ const App: Component = () => {
         document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp)
     }
 
+    const handleLogout = () => {
+        setRootTokenCode(null)
+        setToken(undefined)
+        localStorage.removeItem('rootToken')
+        setEditorMode(EditorMode.DEFAULT)
+        setPanels([])
+        notify.success('Logged out successfully')
+    }
+
     return (
         <div class={styles.MainLayout}>
-            <Header />
+            <Navbar currentPage="editor" />
             <main
                 class={styles.Main}
                 style={{ "--trie-width": `${trieWidth()}px`, "--console-height": `${consoleHeight()}px` }}
@@ -1473,6 +1570,7 @@ const App: Component = () => {
                             onExpand={handleTrieExpand}
                             focusTokens={() => focusTokens()}
                             onLoadMore={handleLoadMore}
+                            onNodeClick={handleTrieNodeClick}
                         />
                     </Show>
                 </div>
@@ -1495,6 +1593,7 @@ const App: Component = () => {
                 setImportExamplePath={setImportExamplePath}
                 onCancel={() => {
                     importFileModal.close()
+                    setIsImportModalOpen(false)
                     setActiveImportFile(undefined)
                     setImportUrl('')
                     setImportText('')

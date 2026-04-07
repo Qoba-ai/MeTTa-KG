@@ -2,7 +2,9 @@ use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
+use std::future::Future;
 use std::path::{Component, Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 
 // ─── API Response Types ─────────────────────────────────────────────────────
@@ -497,6 +499,7 @@ impl MorkClient {
         // Phase 1: BFS to discover all subspaces (only on first request)
         // Uses same pattern as DFS so tokens can be reused
         // When it encounters only 1 child with binary s-expression, marks it as visited so DFS skips it
+        let mut bfs_request_count = 0;
         if focus_token.is_empty() {
             let mut subspace_symbols: HashSet<String> = HashSet::new();
             let mut queue: VecDeque<(String, usize)> = VecDeque::new(); // (token, depth)
@@ -512,6 +515,7 @@ impl MorkClient {
                 if depth >= MAX_BFS_DEPTH {
                     continue;
                 }
+                bfs_request_count += 1;
                 let responses = self.explore_raw(&pattern, &current_token).await?;
 
                 // Process all responses to collect subspace symbols
@@ -593,15 +597,18 @@ impl MorkClient {
             }
         }
 
-        println!("{:#?}", skip_tokens);
+        println!("BFS requests: {}", bfs_request_count);
+        println!("Skip tokens: {:#?}", skip_tokens);
 
         // DFS loop
+        let mut dfs_request_count = 0;
         while let Some(current_token) = stack.pop() {
-            // Skip if already visited
+            // Skip if already visited by BFS or DFS, or marked to skip
             if !skip_tokens.insert(current_token.clone()) {
                 continue;
             }
 
+            dfs_request_count += 1;
             let responses = self.explore_raw(&pattern, &current_token).await?;
 
             // Process responses in DFS order
@@ -613,15 +620,15 @@ impl MorkClient {
 
                 let encoded_token = percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
 
-                // Add child token to stack if not visited (DFS: push onto stack)
+                // Add child token to stack if not visited/skipped
                 if !skip_tokens.contains(&encoded_token) {
                     stack.push(encoded_token);
                 }
 
                 // Skip subspaces (already collected in phase 1)
-                // if parse_binary_sexp(&relative_expr).is_some() {
-                //    continue;
-                // }
+                if parse_binary_sexp(&relative_expr).is_some() {
+                    continue;
+                }
 
                 // Add to metta_expressions if not duplicate
                 if !metta_expressions.contains(&relative_expr) {
@@ -645,6 +652,14 @@ impl MorkClient {
             }
         }
 
+        println!("DFS requests: {}", dfs_request_count);
+        println!(
+            "Total requests: {} (BFS: {}, DFS: {})",
+            bfs_request_count + dfs_request_count,
+            bfs_request_count,
+            dfs_request_count
+        );
+
         Ok(ExploreResult {
             namespace: path.clone(),
             metta_expressions,
@@ -656,11 +671,12 @@ impl MorkClient {
     /// Explore namespaces (for namespace selector UI).
     /// Uses BFS to traverse the trie and find all unique subnamespaces.
     /// Stops when encountering only 1 child with a binary s-expression.
-    pub async fn explore_namespaces(
-        &self,
-        perm: &Permission,
-        path: &PathBuf,
-    ) -> Result<NamespaceInfo, MorkError> {
+    pub fn explore_namespaces<'a>(
+        &'a self,
+        perm: &'a Permission,
+        path: &'a PathBuf,
+    ) -> Pin<Box<dyn Future<Output = Result<NamespaceInfo, MorkError>> + Send + 'a>> {
+        Box::pin(async move {
         perm.require_read()?;
         perm.check_namespace(path)?;
 
@@ -670,34 +686,27 @@ impl MorkClient {
         let mut visited_tokens: HashSet<String> = HashSet::new();
         let mut queue: VecDeque<(String, usize)> = VecDeque::new(); // (token, depth)
 
-        // Start BFS with empty token
         queue.push_back((String::new(), 0));
         visited_tokens.insert(String::new());
 
-        // Depth limit for BFS
         const MAX_BFS_DEPTH: usize = 3;
 
         while let Some((current_token, depth)) = queue.pop_front() {
-            // Stop if we've gone too deep
             if depth >= MAX_BFS_DEPTH {
                 continue;
             }
             let responses = self.explore_raw(&pattern, &current_token).await?;
 
-            // First, collect all subspace symbols from responses
             for response in &responses {
                 if let Some(relative_expr) = strip_prefix(&response.expr, path) {
-                    // Collect all unique LHS symbols
                     if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
                         subnamespace_symbols.insert(lhs.to_string());
                     }
                 }
             }
 
-            // Check stopping condition: if first response is binary, skip this token
             if let Some(relative_expr) = strip_prefix(&responses[0].expr, path) {
                 if parse_binary_sexp(&relative_expr).is_some() {
-                    // Mark as visited and don't explore further
                     let encoded_token =
                         percent_encode(&responses[0].token, NON_ALPHANUMERIC).to_string();
                     visited_tokens.insert(encoded_token);
@@ -705,7 +714,6 @@ impl MorkClient {
                 }
             }
 
-            // Continue BFS for remaining responses
             for response in responses {
                 let encoded_token = percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
                 if visited_tokens.insert(encoded_token.clone()) {
@@ -714,17 +722,29 @@ impl MorkClient {
             }
         }
 
-        let subnamespaces: Vec<NamespaceInfo> = subnamespace_symbols
-            .into_iter()
-            .map(|symbol| NamespaceInfo {
-                namespace: path.join(&symbol),
-                subnamespaces: None,
-            })
-            .collect();
+        // Recursively explore each subnamespace
+        let mut subnamespaces: Vec<NamespaceInfo> = Vec::new();
+        for symbol in subnamespace_symbols {
+            let subnamespace_path = path.join(&symbol);
+
+            // Recursively explore this subnamespace
+            match self.explore_namespaces(perm, &subnamespace_path).await {
+                Ok(subnamespace_info) => subnamespaces.push(subnamespace_info),
+                Err(e) => {
+                    // Log the error but continue with other subnamespaces
+                    eprintln!("Error exploring subnamespace {:?}: {:?}", subnamespace_path, e);
+                }
+            }
+        }
 
         Ok(NamespaceInfo {
             namespace: path.clone(),
-            subnamespaces: Some(subnamespaces),
+            subnamespaces: if subnamespaces.is_empty() {
+                None
+            } else {
+                Some(subnamespaces)
+            },
+        })
         })
     }
 }

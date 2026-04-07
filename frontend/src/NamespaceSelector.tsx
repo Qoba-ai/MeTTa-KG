@@ -24,7 +24,6 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
       val = "/" + val.replace(/^\/+/, "");
     }
     props.onInput(val);
-    e.target.value = val;
     setIsExploring(true);
     setExploreFocusIndex(-1);
     const results = await props.fetchExploreResults(val);
@@ -92,7 +91,7 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
         type="text"
         placeholder={props.placeholder || "Namespace"}
         autocomplete="off"
-        value={props.value}
+        prop:value={props.value}
         onInput={handleInput}
         onFocus={handleFocus}
         onBlur={handleBlur}

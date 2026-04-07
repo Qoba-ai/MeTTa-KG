@@ -1,6 +1,6 @@
 import { Component, createSignal, createMemo, For, Show } from "solid-js";
 import styles from "./Editor.module.scss";
-import { VsChevronRight, VsChevronDown, VsSymbolEnum, VsTrash, VsFolderOpened, VsReplace, VsAdd, VsRemove } from "solid-icons/vs";
+import { VsChevronRight, VsChevronDown, VsSymbolEnum, VsTrash, VsFolderOpened, VsReplace, VsAdd, VsRemove, VsArrowDown } from "solid-icons/vs";
 
 export interface TrieNode {
   children: { [key: string]: TrieNode };
@@ -21,6 +21,7 @@ interface TrieExplorerProps {
   onExpand?: (path: string) => void;
   focusTokens?: () => Map<string, string[]>;
   onLoadMore?: (path: string) => void;
+  onNodeClick?: (expression: string) => void;
 }
 
 const tokenize = (s: string): string[] => {
@@ -85,15 +86,38 @@ export const buildTrie = (content: string): TrieNode => {
   return root;
 };
 
-const TerminalLeaf: Component<{ value: string }> = (props) => (
-  <div style={{ "margin-left": "16px" }}>
-    <div class={styles.TrieNode}>
-      <div style={{ width: "16px" }} />
-      <VsSymbolEnum size={16} class={styles.TrieLeafIcon} />
-      <span class={styles.TrieLeafText}>{props.value}</span>
+const TerminalLeaf: Component<{ value: string; depth?: number; onNodeClick?: (expression: string) => void }> = (props) => {
+  const depth = props.depth || 0;
+
+  const handleClick = () => {
+    console.log('TerminalLeaf clicked:', props.value);
+    if (props.onNodeClick) {
+      props.onNodeClick(props.value);
+    }
+  };
+
+  return (
+    <div style={{
+      "margin-left": `${depth > 0 ? 24 : 0}px`,
+      "border-left": depth > 0 ? "2px solid var(--rp-highlight-low)" : "none",
+      "padding-left": depth > 0 ? "8px" : "0"
+    }}>
+      <div style={{ "margin-left": "16px" }}>
+        <div
+          class={styles.TrieNode}
+          onClick={handleClick}
+          style={{ cursor: "pointer" }}
+        >
+          <div style={{ width: "16px" }} />
+          <VsSymbolEnum size={16} class={styles.TrieLeafIcon} />
+          <span class={styles.TrieLeafText}>
+            {props.value}
+          </span>
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const TrieBranch: Component<{
     name: string;
@@ -113,6 +137,9 @@ const TrieBranch: Component<{
     collapsedPaths?: () => Set<string>;
     onCollapse?: (path: string) => void;
     onExpand?: (path: string) => void;
+    focusTokens?: () => Map<string, string[]>;
+    onLoadMore?: (path: string) => void;
+    onNodeClick?: (expression: string) => void;
 }> = (props) => {
 
   const [localOpen, setLocalOpen] = createSignal(false);
@@ -160,6 +187,33 @@ const TrieBranch: Component<{
     if (!isLeaf()) props.onRemoveSelect(props.path);
   };
 
+  const handleNodeClick = () => {
+    console.log('TrieBranch handleNodeClick called', props.path, props.onNodeClick);
+    if (props.onNodeClick && props.path) {
+      // Reconstruct the expression from the path
+      // Path looks like "/a/b/c/", we want "(a (b (c ...)))"
+      const pathParts = props.path.split('/').filter(p => p.length > 0);
+      console.log('Path parts:', pathParts);
+      if (pathParts.length > 0) {
+        // Build nested expression
+        let expr = pathParts[pathParts.length - 1];
+        for (let i = pathParts.length - 2; i >= 0; i--) {
+          expr = `(${pathParts[i]} ${expr})`;
+        }
+        console.log('Calling onNodeClick with expression:', expr);
+        props.onNodeClick(expr);
+      }
+    }
+  };
+
+  const hasMoreToLoad = () => {
+    if (!props.focusTokens) return false;
+    const tokens = props.focusTokens();
+    const pathNormalized = props.path.endsWith('/') ? props.path : props.path + '/';
+    const tokensForPath = tokens.get(pathNormalized) || [];
+    return tokensForPath.length > 0;
+  };
+
   const getBgColor = () => {
     if (props.diffState === "added") return "rgba(156, 207, 216, 0.15)";
     if (props.diffState === "removed") return "rgba(235, 111, 146, 0.15)";
@@ -173,7 +227,11 @@ const TrieBranch: Component<{
   };
 
   return (
-    <div style={{ "margin-left": `${props.depth > 0 ? 16 : 0}px` }}>
+    <div style={{
+      "margin-left": `${props.depth > 0 ? 24 : 0}px`,
+      "border-left": props.depth > 0 ? "2px solid var(--rp-highlight-low)" : "none",
+      "padding-left": props.depth > 0 ? "8px" : "0"
+    }}>
       <div
         class={`${styles.TrieNode} ${props.isSelected ? styles.SelectedNode : ""}`}
         style={{
@@ -191,12 +249,15 @@ const TrieBranch: Component<{
             data-trie-path={props.path}
             data-trie-open={isOpen() ? "true" : "false"}
             data-trie-fringe={props.node.isFringe ? "true" : "false"}
+            style={{ cursor: "pointer" }}
           >
             {isOpen() ? <VsChevronDown size={18} /> : <VsChevronRight size={18} />}
           </div>
         </Show>
         <VsSymbolEnum size={16} class={isLeaf() ? styles.TrieLeafIcon : styles.TrieBranchIcon} />
-        <span class={isLeaf() ? styles.TrieLeafText : styles.TrieBranchText}>{props.name}</span>
+        <span class={isLeaf() ? styles.TrieLeafText : styles.TrieBranchText}>
+          {props.name}
+        </span>
 
         <Show when={props.selectionCount > 0}>
           <span style={{ "font-size": "0.7rem", background: "var(--rp-love)", color: "var(--rp-base)", "padding": "0 4px", "border-radius": "2px", "margin-left": "4px" }}>
@@ -228,6 +289,18 @@ const TrieBranch: Component<{
               title="Remove from selection"
             >
               <VsRemove size={14} />
+            </button>
+          </Show>
+          <Show when={hasMoreToLoad() && props.onLoadMore}>
+            <button
+              class={styles.TrieActionBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onLoadMore?.(props.path);
+              }}
+              title="Load more expressions"
+            >
+              <VsArrowDown size={14} />
             </button>
           </Show>
           <Show when={props.onDelete && props.node.isDeletable}>
@@ -279,6 +352,9 @@ const TrieBranch: Component<{
                 collapsedPaths={props.collapsedPaths}
                 onCollapse={props.onCollapse}
                 onExpand={props.onExpand}
+                focusTokens={props.focusTokens}
+                onLoadMore={props.onLoadMore}
+                onNodeClick={props.onNodeClick}
               />
               </Show>
             );
@@ -287,7 +363,7 @@ const TrieBranch: Component<{
 
         {/* Terminal (leaf) values at this node */}
         <For each={props.node.terminals}>
-          {(terminal) => <TerminalLeaf value={terminal} />}
+          {(terminal) => <TerminalLeaf value={terminal} depth={props.depth + 1} onNodeClick={props.onNodeClick} />}
         </For>
 
         {/* Fringe indicator - clickable to expand unexplored subspace */}
@@ -343,64 +419,96 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
   const isSelected = (path: string) => selectedPaths().includes(path);
   const getSelectionCount = (path: string) => selectedPaths().filter(p => p === path).length;
 
-  const hasMoreToLoad = () => {
-    if (!props.focusTokens) return false;
-    const tokens = props.focusTokens();
-    const rootPathNormalized = rootPath().endsWith('/') ? rootPath() : rootPath() + '/';
-    const tokensForPath = tokens.get(rootPathNormalized) || [];
-    return tokensForPath.length > 0;
-  };
-
   return (
     <div class={styles.TrieExplorer}>
-      <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", "border-bottom": "1px solid var(--rp-highlight-low)", "padding-bottom": "10px" }}>
-        <h3 style={{ border: "none", padding: 0 }}>Trie Explorer</h3>
+      <h3>
+        <span>Trie Explorer</span>
         <Show when={selectedPaths().length > 0}>
           <button
             class={styles.TrieActionBtn}
             onClick={clearSelection}
             title="Clear all selections"
-            style={{ color: "var(--rp-love)", padding: "4px 8px", background: "var(--rp-highlight-low)" }}
+            style={{ color: "var(--rp-love)", padding: "4px 8px", background: "var(--rp-highlight-low)", "margin-left": "auto" }}
           >
             Clear ({selectedPaths().length})
           </button>
         </Show>
-      </div>
+      </h3>
       <div class={styles.TrieContent}>
-        <TrieBranch
-          name={rootPath().replace(/^\/|\/$/g, "") || "/"}
-          node={trie()}
-          originalNode={originalTrie()}
-          diffState={"unchanged"}
-          depth={0}
-          path={rootPath()}
-          onDelete={undefined}
-          onOpenSubspace={props.onOpenSubspace}
-          isSelected={isSelected(rootPath())}
-          selectionCount={getSelectionCount(rootPath())}
-          onAddSelect={addSelect}
-          onRemoveSelect={removeSelect}
-          onIsSelected={isSelected}
-          onGetSelectionCount={getSelectionCount}
-          collapsedPaths={props.collapsedPaths}
-          onCollapse={props.onCollapse}
-          onExpand={props.onExpand}
-        />
+        {/* Render children directly without root wrapper */}
+        <For each={
+          Array.from(new Set([
+            ...Object.keys(trie().children),
+            ...(originalTrie() ? Object.keys(originalTrie().children) : [])
+          ])).sort()
+        }>
+          {(childName) => {
+            const childPath = `${rootPath()}${childName}/`;
+            return (
+              <Show when={trie().children[childName] || originalTrie()?.children?.[childName]}>
+                <TrieBranch
+                  name={childName}
+                  node={trie().children[childName] || originalTrie()!.children[childName]}
+                  originalNode={originalTrie()?.children?.[childName]}
+                  diffState={
+                    (trie().children[childName] && !originalTrie()?.children?.[childName]) ? "added" :
+                    (!trie().children[childName] && originalTrie()?.children?.[childName]) ? "removed" :
+                    (trie().children[childName] && originalTrie()?.children?.[childName] && (
+                      Object.keys(trie().children[childName].children).length !== Object.keys(originalTrie()!.children[childName].children).length ||
+                      trie().children[childName].terminals.length !== originalTrie()!.children[childName].terminals.length
+                    )) ? "modified" : "unchanged"
+                  }
+                  depth={0}
+                  path={childPath}
+                  onDelete={props.onDelete}
+                  onOpenSubspace={props.onOpenSubspace}
+                  isSelected={isSelected(childPath)}
+                  selectionCount={getSelectionCount(childPath)}
+                  onAddSelect={addSelect}
+                  onRemoveSelect={removeSelect}
+                  onIsSelected={isSelected}
+                  onGetSelectionCount={getSelectionCount}
+                  collapsedPaths={props.collapsedPaths}
+                  onCollapse={props.onCollapse}
+                  onExpand={props.onExpand}
+                  focusTokens={props.focusTokens}
+                  onLoadMore={props.onLoadMore}
+                  onNodeClick={props.onNodeClick}
+                />
+              </Show>
+            );
+          }}
+        </For>
+
+        {/* Render terminal values at root level */}
+        <For each={trie().terminals}>
+          {(terminal) => <TerminalLeaf value={terminal} onNodeClick={props.onNodeClick} />}
+        </For>
+
+        {/* Show "Load More" button at root level if needed */}
+        <Show when={(() => {
+          if (!props.focusTokens) return false;
+          const tokens = props.focusTokens();
+          const pathNormalized = rootPath().endsWith('/') ? rootPath() : rootPath() + '/';
+          const tokensForPath = tokens.get(pathNormalized) || [];
+          return tokensForPath.length > 0;
+        })()}>
+          <div style={{ "margin-top": "8px" }}>
+            <button
+              class={styles.TrieLoadMoreBtn}
+              onClick={() => props.onLoadMore?.(rootPath())}
+              title="Load more expressions"
+            >
+              Load More...
+            </button>
+          </div>
+        </Show>
+
         <Show when={Object.keys(trie().children).length === 0 && trie().terminals.length === 0 &&
                     Object.keys(originalTrie().children).length === 0 && originalTrie().terminals.length === 0}>
           <div class={styles.TrieEmpty}>No data to display</div>
         </Show>
       </div>
-
-      <Show when={hasMoreToLoad()}>
-        <button
-          class={styles.TrieLoadMoreBtn}
-          onClick={() => props.onLoadMore?.(rootPath())}
-          title="Load more expressions"
-        >
-          Load More Expressions...
-        </button>
-      </Show>
 
       <Show when={selectedPaths().length >= 2}>
         <button
