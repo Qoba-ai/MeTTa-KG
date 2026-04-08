@@ -1,0 +1,53 @@
+// SelectSpaceModal component styles
+
+.SelectSpaceModal {
+    form {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--gold);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    }
+}
+
+.FieldGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--gold);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    input,
+    :global(.NamespaceSelector) input {
+        width: 100%;
+        padding: 10px 16px;
+        border-radius: 8px;
+        background: var(--base);
+        border: 1px solid var(--highlight-low);
+        color: var(--text);
+        box-sizing: border-box;
+        font-family: 'Fira Code', monospace;
+        font-size: 0.9rem;
+        transition: border-color 0.2s;
+
+        &:focus {
+            border-color: var(--highlight-high);
+            outline: none;
+        }
+    }
+}

@@ -1,7 +1,8 @@
 import { Component, Index, createSignal, createEffect } from "solid-js";
-import styles from "../Editor.module.scss";
-import { NamespaceSelector } from "../NamespaceSelector";
-import { handleAutoClose } from "../utils/editorUtils";
+import styles from "./TransformModal.module.scss";
+import commonStyles from "../../../../../styles/Common.module.scss";
+import { NamespaceSelector } from "../../NamespaceSelector/NamespaceSelector";
+import { handleAutoClose } from "../../../lib/editorUtils";
 import { VsAdd, VsTrash } from "solid-icons/vs";
 
 export interface SpaceConfig {
@@ -55,19 +56,19 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
         onsubmit={(e) => {
           e.preventDefault();
           if (isValid()) {
-              props.setConfigs(localConfigs());
-              props.onTransform(localConfigs());
+            props.setConfigs(localConfigs());
+            props.onTransform(localConfigs());
           }
         }}
       >
         <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", "margin-bottom": "20px" }}>
-            <h2 style={{ margin: 0 }}>Configure Transformation</h2>
-            <button type="button" class={styles.Button} onClick={addSpace} style={{ display: "flex", "align-items": "center", gap: "8px" }}>
-                <VsAdd size={16} />
-                Add Space
-            </button>
+          <h2 style={{ margin: 0 }}>Configure Transformation</h2>
+          <button type="button" class={commonStyles.Button} onClick={addSpace} style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+            <VsAdd size={16} />
+            Add Space
+          </button>
         </div>
-        
+
         <div style={{ "max-height": "60vh", "display": "flex", "flex-direction": "column", "gap": "16px", "padding-bottom": "150px" }}>
           <Index each={localConfigs()}>
             {(config, i) => {
@@ -75,26 +76,26 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
                 <div class={styles.ImportSettingsContainer} style={{ display: "flex", "flex-direction": "column", gap: "12px", position: "relative" }}>
                   <div style={{ display: "flex", "align-items": "center", gap: "12px" }}>
                     <div style={{ flex: 1 }}>
-                      <NamespaceSelector 
-                          value={config().path}
-                          onInput={(val) => updateConfig(i, { path: val })}
-                          fetchExploreResults={props.fetchExploreResults}
+                      <NamespaceSelector
+                        value={config().path}
+                        onInput={(val) => updateConfig(i, { path: val })}
+                        fetchExploreResults={props.fetchExploreResults}
                       />
                     </div>
-                    <select 
-                      value={config().type} 
+                    <select
+                      value={config().type}
                       onchange={(e) => updateConfig(i, { type: (e.target as HTMLSelectElement).value as 'input' | 'output' })}
-                      style={{ padding: "8px", "border-radius": "6px", background: "var(--rp-surface)", color: "var(--rp-text)", border: "1px solid var(--rp-highlight-low)" }}
+                      style={{ padding: "8px", "border-radius": "6px", background: "var(--surface)", color: "var(--text)", border: "1px solid var(--highlight-low)" }}
                     >
                       <option value="input">Input (Pattern)</option>
                       <option value="output">Output (Template)</option>
                     </select>
-                    <button 
-                      type="button" 
-                      class={styles.TrieActionBtn} 
+                    <button
+                      type="button"
+                      class={styles.TrieActionBtn}
                       onClick={() => removeSpace(i)}
                       title="Remove Space"
-                      style={{ color: "var(--rp-love)" }}
+                      style={{ color: "var(--love)" }}
                     >
                       <VsTrash size={18} />
                     </button>
@@ -115,16 +116,16 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
           </Index>
         </div>
 
-        <div class={styles.ModalButtonBar}>
+        <div class={commonStyles.ModalButtonBar}>
           <button
             type="button"
-            class={styles.TextButton}
+            class={commonStyles.TextButton}
             onclick={props.onCancel}
           >
             Cancel
           </button>
-          <div class={styles.Spacer}></div>
-          <button class={styles.Button} type="submit" disabled={!isValid()}>
+          <div class={commonStyles.Spacer}></div>
+          <button class={commonStyles.Button} type="submit" disabled={!isValid()}>
             Transform
           </button>
         </div>

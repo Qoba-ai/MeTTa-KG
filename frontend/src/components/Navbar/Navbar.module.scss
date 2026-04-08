@@ -1,0 +1,125 @@
+// Navbar component styles
+// Navbar-specific styles extracted from Editor.module.scss
+
+.ConnectedTokenBadge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--highlight-low);
+    border: 1px solid var(--highlight-med);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    transition: background 0.2s;
+
+    &:hover {
+        background: var(--highlight-med);
+    }
+
+    .BadgeLabel {
+        color: var(--foam);
+        font-weight: 600;
+    }
+
+    .BadgeToken {
+        color: var(--subtle);
+        font-family: 'Fira Code', monospace;
+    }
+
+    .BadgePermissions {
+        display: flex;
+        gap: 4px;
+        margin-left: 4px;
+        padding-left: 8px;
+        border-left: 1px solid var(--highlight-med);
+
+        span {
+            font-size: 0.7rem;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+    }
+
+    .PermissionEnabled {
+        background: var(--foam);
+        color: var(--base);
+    }
+
+    .PermissionDisabled {
+        background: var(--muted);
+        color: var(--base);
+        opacity: 0.5;
+    }
+}
+
+.LogoutButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    background: transparent;
+    border: 1px solid var(--love);
+    border-radius: 6px;
+    color: var(--love) !important;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        background: var(--love);
+        color: var(--base) !important;
+    }
+
+    svg {
+        display: block;
+        color: inherit !important;
+        fill: currentColor !important;
+    }
+}
+
+.OnlineIndicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.4s;
+    flex-shrink: 0;
+
+    &.OnlineIndicatorOnline {
+        background: var(--foam);
+        box-shadow: 0 0 5px var(--foam);
+    }
+}
+
+.Icon {
+    display: inline-flex;
+    color: var(--subtle) !important;
+    transition: color 0.2s, transform 0.2s;
+
+    &:hover {
+        color: var(--text) !important;
+        transform: scale(1.1);
+    }
+
+    svg {
+        display: block;
+        color: inherit !important;
+        fill: currentColor !important;
+    }
+}
+
+.TextButton {
+    background: transparent;
+    color: var(--text);
+    text-decoration: none;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover:not(:disabled) {
+        background: var(--highlight-low);
+    }
+}

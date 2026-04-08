@@ -1,0 +1,147 @@
+/**
+ * Nord Theme for Material Design 3
+ * Maps Nord color palette to Material Design tokens
+ * Based on https://www.nordtheme.com/
+ */
+
+[data-theme='nord'] {
+  /* ========================================
+     COLOR TOKENS - NORD
+     ======================================== */
+
+  /* Primary (Nord Frost Blue #88C0D0) */
+  --md-sys-color-primary: #88c0d0;
+  --md-sys-color-on-primary: #00363f;
+  --md-sys-color-primary-container: #005662;
+  --md-sys-color-on-primary-container: #b9e6f2;
+
+  /* Secondary (Nord Aurora Purple #B48EAD) */
+  --md-sys-color-secondary: #b48ead;
+  --md-sys-color-on-secondary: #3d2945;
+  --md-sys-color-secondary-container: #543f5c;
+  --md-sys-color-on-secondary-container: #e8d4e2;
+
+  /* Tertiary (Nord Frost Teal #8FBCBB) */
+  --md-sys-color-tertiary: #8fbcbb;
+  --md-sys-color-on-tertiary: #00373f;
+  --md-sys-color-tertiary-container: #004f58;
+  --md-sys-color-on-tertiary-container: #b5e5e3;
+
+  /* Error (Nord Aurora Red #BF616A) */
+  --md-sys-color-error: #bf616a;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffdad6;
+
+  /* Surface & Background (Nord Polar Night #2E3440) */
+  --md-sys-color-surface: #2e3440;
+  --md-sys-color-surface-dim: #2e3440;
+  --md-sys-color-surface-bright: #434c5e;
+  --md-sys-color-surface-container-lowest: #242933;
+  --md-sys-color-surface-container-low: #2e3440;
+  --md-sys-color-surface-container: #3b4252;
+  --md-sys-color-surface-container-high: #434c5e;
+  --md-sys-color-surface-container-highest: #4c566a;
+
+  --md-sys-color-on-surface: #eceff4;
+  --md-sys-color-on-surface-variant: #d8dee9;
+
+  --md-sys-color-background: #2e3440;
+  --md-sys-color-on-background: #eceff4;
+
+  /* Surface Tint */
+  --md-sys-color-surface-tint: var(--md-sys-color-primary);
+
+  /* Outline */
+  --md-sys-color-outline: #d8dee9;
+  --md-sys-color-outline-variant: #4c566a;
+
+  /* Inverse */
+  --md-sys-color-inverse-surface: #eceff4;
+  --md-sys-color-inverse-on-surface: #3b4252;
+  --md-sys-color-inverse-primary: #005662;
+
+  /* Shadow & Scrim */
+  --md-sys-color-shadow: #000000;
+  --md-sys-color-scrim: #000000;
+
+  /* Success (Nord Aurora Green #A3BE8C) */
+  --md-sys-color-success: #a3be8c;
+  --md-sys-color-on-success: #1f3318;
+  --md-sys-color-success-container: #344a2a;
+  --md-sys-color-on-success-container: #c9ddb7;
+
+  /* Warning (Nord Aurora Yellow #EBCB8B) */
+  --md-sys-color-warning: #ebcb8b;
+  --md-sys-color-on-warning: #3d2f00;
+  --md-sys-color-warning-container: #5a4500;
+  --md-sys-color-on-warning-container: #ffe4b3;
+
+  /* Info (Nord Frost #81A1C1) */
+  --md-sys-color-info: #81a1c1;
+  --md-sys-color-on-info: #00314a;
+}
+
+/* Light variant */
+[data-theme='nord-light'] {
+  /* Primary */
+  --md-sys-color-primary: #5e81ac;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #d8e2f0;
+  --md-sys-color-on-primary-container: #001d35;
+
+  /* Secondary */
+  --md-sys-color-secondary: #b48ead;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #f5e8f2;
+  --md-sys-color-on-secondary-container: #3d2945;
+
+  /* Tertiary */
+  --md-sys-color-tertiary: #5e81ac;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #d8e2f0;
+  --md-sys-color-on-tertiary-container: #001d35;
+
+  /* Error */
+  --md-sys-color-error: #bf616a;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container: #410002;
+
+  /* Surface & Background (Nord Snow Storm #ECEFF4) */
+  --md-sys-color-surface: #eceff4;
+  --md-sys-color-surface-dim: #e5e9f0;
+  --md-sys-color-surface-bright: #f9fafc;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #eceff4;
+  --md-sys-color-surface-container: #e5e9f0;
+  --md-sys-color-surface-container-high: #d8dee9;
+  --md-sys-color-surface-container-highest: #d0d7e3;
+
+  --md-sys-color-on-surface: #2e3440;
+  --md-sys-color-on-surface-variant: #3b4252;
+
+  --md-sys-color-background: #eceff4;
+  --md-sys-color-on-background: #2e3440;
+
+  /* Outline */
+  --md-sys-color-outline: #4c566a;
+  --md-sys-color-outline-variant: #d8dee9;
+
+  /* Inverse */
+  --md-sys-color-inverse-surface: #2e3440;
+  --md-sys-color-inverse-on-surface: #eceff4;
+  --md-sys-color-inverse-primary: #88c0d0;
+
+  /* Success */
+  --md-sys-color-success: #a3be8c;
+  --md-sys-color-on-success: #ffffff;
+  --md-sys-color-success-container: #d4e5c7;
+  --md-sys-color-on-success-container: #1f3318;
+
+  /* Warning */
+  --md-sys-color-warning: #d08770;
+  --md-sys-color-on-warning: #ffffff;
+  --md-sys-color-warning-container: #fce4d7;
+  --md-sys-color-on-warning-container: #3d2f00;
+}

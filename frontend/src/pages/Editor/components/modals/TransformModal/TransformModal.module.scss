@@ -1,0 +1,89 @@
+// TransformModal component styles
+
+.TransformModal {
+    width: 700px;
+    max-width: 90vw;
+
+    form {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .TransformIOSpaces {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    .TransformPatterns {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+}
+
+.ImportSettingsContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: var(--surface);
+    padding: 20px;
+    border-radius: 10px;
+    border: 1px solid var(--highlight-low);
+    overflow: visible;
+}
+
+.FieldGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--gold);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    input,
+    .SelectSpaces,
+    :global(.NamespaceSelector) input,
+    .NamespaceSelector input {
+        width: 100%;
+        padding: 10px 16px;
+        border-radius: 8px;
+        background: var(--base);
+        border: 1px solid var(--highlight-low);
+        color: var(--text);
+        box-sizing: border-box;
+        font-family: 'Fira Code', monospace;
+        font-size: 0.9rem;
+        transition: border-color 0.2s;
+
+        &:focus {
+            border-color: var(--highlight-high);
+            outline: none;
+        }
+    }
+}
+
+.TrieActionBtn {
+    background: transparent;
+    border: none;
+    color: var(--subtle);
+    cursor: pointer;
+    padding: 3px 4px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+
+    &:hover {
+        background: var(--highlight-med);
+        color: var(--foam);
+        transform: scale(1.1);
+    }
+}

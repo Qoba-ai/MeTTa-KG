@@ -1,0 +1,32 @@
+// Settings page styles
+
+.MainLayout {
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    background: var(--base);
+}
+
+.Main {
+    width: 100%;
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 16px 20px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-height: calc(100vh - 64px);
+    overflow-y: auto;
+}
+
+.EditorWrapper {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: clamp(20px, 5vw, 40px);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}

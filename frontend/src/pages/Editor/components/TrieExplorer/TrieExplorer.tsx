@@ -1,5 +1,5 @@
 import { Component, createSignal, createMemo, For, Show, onMount, onCleanup } from "solid-js";
-import styles from "./Editor.module.scss";
+import styles from "./TrieExplorer.module.scss";
 import { VsChevronRight, VsChevronDown, VsSymbolEnum, VsTrash, VsFolderOpened, VsReplace } from "solid-icons/vs";
 
 export interface TrieNode {
@@ -150,30 +150,30 @@ const TerminalLeaf: Component<{
 };
 
 const TrieBranch: Component<{
-    name: string;
-    node: TrieNode;
-    depth: number;
-    diffState: "added" | "removed" | "unchanged" | "modified";
-    originalNode?: TrieNode;
-    path: string;
-    onDelete?: (path: string) => void;
-    onOpenSubspace?: (path: string) => void;
-    isSelected: boolean;
-    selectionCount: number;
-    onAddSelect: (path: string) => void;
-    onRemoveSelect: (path: string) => void;
-    onIsSelected: (path: string) => boolean;
-    onGetSelectionCount: (path: string) => number;
-    collapsedPaths?: () => Set<string>;
-    onCollapse?: (path: string) => void;
-    onExpand?: (path: string) => void;
-    focusTokens?: () => Map<string, string[]>;
-    onLoadMore?: (path: string) => void;
-    onNodeClick?: (expression: string) => void;
-    shiftPressed: () => boolean;
-    onDeleteTerminal?: (value: string) => void;
-    treePrefix?: string;
-    isLast?: boolean;
+  name: string;
+  node: TrieNode;
+  depth: number;
+  diffState: "added" | "removed" | "unchanged" | "modified";
+  originalNode?: TrieNode;
+  path: string;
+  onDelete?: (path: string) => void;
+  onOpenSubspace?: (path: string) => void;
+  isSelected: boolean;
+  selectionCount: number;
+  onAddSelect: (path: string) => void;
+  onRemoveSelect: (path: string) => void;
+  onIsSelected: (path: string) => boolean;
+  onGetSelectionCount: (path: string) => number;
+  collapsedPaths?: () => Set<string>;
+  onCollapse?: (path: string) => void;
+  onExpand?: (path: string) => void;
+  focusTokens?: () => Map<string, string[]>;
+  onLoadMore?: (path: string) => void;
+  onNodeClick?: (expression: string) => void;
+  shiftPressed: () => boolean;
+  onDeleteTerminal?: (value: string) => void;
+  treePrefix?: string;
+  isLast?: boolean;
 }> = (props) => {
 
   const [localOpen, setLocalOpen] = createSignal(false);
@@ -276,7 +276,7 @@ const TrieBranch: Component<{
   };
 
   const getBorderColor = () => {
-    if (props.diffState === "added") return "2px solid var(--rp-foam)";
+    if (props.diffState === "added") return "2px solid var(--foam)";
     return "";
   };
 
@@ -303,52 +303,52 @@ const TrieBranch: Component<{
             flex: 1
           }}
         >
-        <Show when={!isLeaf()} fallback={<div style={{ width: "16px" }} />}>
-          <div
-            onClick={toggleOpen}
-            data-testid="trie-toggle"
-            data-trie-path={props.path}
-            data-trie-open={isOpen() ? "true" : "false"}
-            data-trie-fringe={props.node.isFringe ? "true" : "false"}
-            style={{ cursor: "pointer" }}
-          >
-            {isOpen() ? <VsChevronDown size={16} /> : <VsChevronRight size={16} />}
-          </div>
-        </Show>
-        <VsSymbolEnum size={14} class={isLeaf() ? styles.TrieLeafIcon : styles.TrieBranchIcon} />
-        <span class={isLeaf() ? styles.TrieLeafText : styles.TrieBranchText}>
-          {props.name}
-        </span>
-
-        <Show when={props.selectionCount > 0}>
-          <span style={{ "font-size": "0.65rem", background: "var(--rp-love)", color: "var(--rp-base)", "padding": "0 3px", "border-radius": "2px", "margin-left": "4px" }}>
-            {props.selectionCount}
+          <Show when={!isLeaf()} fallback={<div style={{ width: "16px" }} />}>
+            <div
+              onClick={toggleOpen}
+              data-testid="trie-toggle"
+              data-trie-path={props.path}
+              data-trie-open={isOpen() ? "true" : "false"}
+              data-trie-fringe={props.node.isFringe ? "true" : "false"}
+              style={{ cursor: "pointer" }}
+            >
+              {isOpen() ? <VsChevronDown size={16} /> : <VsChevronRight size={16} />}
+            </div>
+          </Show>
+          <VsSymbolEnum size={14} class={isLeaf() ? styles.TrieLeafIcon : styles.TrieBranchIcon} />
+          <span class={isLeaf() ? styles.TrieLeafText : styles.TrieBranchText}>
+            {props.name}
           </span>
-        </Show>
 
-        <Show when={showActions()}>
-          <div class={styles.TrieActions}>
-            <Show when={props.onOpenSubspace}>
-              <button
-                class={styles.TrieActionBtn}
-                onClick={handleOpen}
-                title="Open subspace in new tab"
-              >
-                <VsFolderOpened size={12} />
-              </button>
-            </Show>
-            <Show when={props.onDelete}>
-              <button
-                class={`${styles.TrieActionBtn} ${styles.TrieDeleteBtn}`}
-                onClick={handleDelete}
-                title="Delete subspace"
-              >
-                <VsTrash size={12} />
-              </button>
-            </Show>
-          </div>
-        </Show>
-      </div>
+          <Show when={props.selectionCount > 0}>
+            <span style={{ "font-size": "0.65rem", background: "var(--love)", color: "var(--base)", "padding": "0 3px", "border-radius": "2px", "margin-left": "4px" }}>
+              {props.selectionCount}
+            </span>
+          </Show>
+
+          <Show when={showActions()}>
+            <div class={styles.TrieActions}>
+              <Show when={props.onOpenSubspace}>
+                <button
+                  class={styles.TrieActionBtn}
+                  onClick={handleOpen}
+                  title="Open subspace in new tab"
+                >
+                  <VsFolderOpened size={12} />
+                </button>
+              </Show>
+              <Show when={props.onDelete}>
+                <button
+                  class={`${styles.TrieActionBtn} ${styles.TrieDeleteBtn}`}
+                  onClick={handleDelete}
+                  title="Delete subspace"
+                >
+                  <VsTrash size={12} />
+                </button>
+              </Show>
+            </div>
+          </Show>
+        </div>
       </div>
 
       <Show when={isOpen() && !isLeaf()}>
@@ -378,11 +378,11 @@ const TrieBranch: Component<{
                     originalNode={props.originalNode?.children?.[childName]}
                     diffState={
                       (props.node.children[childName] && !props.originalNode?.children?.[childName]) ? "added" :
-                      (!props.node.children[childName] && props.originalNode?.children?.[childName]) ? "removed" :
-                      (props.node.children[childName] && props.originalNode?.children?.[childName] && (
-                        Object.keys(props.node.children[childName].children).length !== Object.keys(props.originalNode!.children[childName].children).length ||
-                        props.node.children[childName].terminals.length !== props.originalNode!.children[childName].terminals.length
-                      )) ? "modified" : "unchanged"
+                        (!props.node.children[childName] && props.originalNode?.children?.[childName]) ? "removed" :
+                          (props.node.children[childName] && props.originalNode?.children?.[childName] && (
+                            Object.keys(props.node.children[childName].children).length !== Object.keys(props.originalNode!.children[childName].children).length ||
+                            props.node.children[childName].terminals.length !== props.originalNode!.children[childName].terminals.length
+                          )) ? "modified" : "unchanged"
                     }
                     depth={props.depth + 1}
                     path={childPath}
@@ -609,7 +609,7 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
             class={styles.TrieActionBtn}
             onClick={clearSelection}
             title="Clear all selections"
-            style={{ color: "var(--rp-love)", padding: "4px 8px", background: "var(--rp-highlight-low)", "margin-left": "auto" }}
+            style={{ color: "var(--love)", padding: "4px 8px", background: "var(--highlight-low)", "margin-left": "auto" }}
           >
             Clear ({selectedPaths().length})
           </button>
@@ -640,11 +640,11 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
                   originalNode={originalTrie()?.children?.[childName]}
                   diffState={
                     (trie().children[childName] && !originalTrie()?.children?.[childName]) ? "added" :
-                    (!trie().children[childName] && originalTrie()?.children?.[childName]) ? "removed" :
-                    (trie().children[childName] && originalTrie()?.children?.[childName] && (
-                      Object.keys(trie().children[childName].children).length !== Object.keys(originalTrie()!.children[childName].children).length ||
-                      trie().children[childName].terminals.length !== originalTrie()!.children[childName].terminals.length
-                    )) ? "modified" : "unchanged"
+                      (!trie().children[childName] && originalTrie()?.children?.[childName]) ? "removed" :
+                        (trie().children[childName] && originalTrie()?.children?.[childName] && (
+                          Object.keys(trie().children[childName].children).length !== Object.keys(originalTrie()!.children[childName].children).length ||
+                          trie().children[childName].terminals.length !== originalTrie()!.children[childName].terminals.length
+                        )) ? "modified" : "unchanged"
                   }
                   depth={0}
                   path={childPath}
@@ -690,7 +690,7 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
         </For>
 
         <Show when={Object.keys(trie().children).length === 0 && trie().terminals.length === 0 &&
-                    Object.keys(originalTrie().children).length === 0 && originalTrie().terminals.length === 0}>
+          Object.keys(originalTrie().children).length === 0 && originalTrie().terminals.length === 0}>
           <div class={styles.TrieEmpty}>No data to display</div>
         </Show>
       </div>

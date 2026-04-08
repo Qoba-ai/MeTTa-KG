@@ -1,4 +1,4 @@
-@import 'styles/Common.module';
+@import '../../styles/Common.module';
 
 .MainLayout {
     width: 100%;
@@ -6,7 +6,7 @@
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    background: var(--rp-base);
+    background: var(--base);
 }
 
 .ConnectedTokenBadge {
@@ -14,23 +14,23 @@
     align-items: center;
     gap: 8px;
     padding: 6px 12px;
-    background: var(--rp-highlight-low);
-    border: 1px solid var(--rp-highlight-med);
+    background: var(--highlight-low);
+    border: 1px solid var(--highlight-med);
     border-radius: 6px;
     font-size: 0.85rem;
     transition: background 0.2s;
 
     &:hover {
-        background: var(--rp-highlight-med);
+        background: var(--highlight-med);
     }
 
     .BadgeLabel {
-        color: var(--rp-foam);
+        color: var(--foam);
         font-weight: 600;
     }
 
     .BadgeToken {
-        color: var(--rp-subtle);
+        color: var(--subtle);
         font-family: 'Fira Code', monospace;
     }
 
@@ -39,7 +39,7 @@
         gap: 4px;
         margin-left: 4px;
         padding-left: 8px;
-        border-left: 1px solid var(--rp-highlight-med);
+        border-left: 1px solid var(--highlight-med);
 
         span {
             font-size: 0.7rem;
@@ -50,13 +50,13 @@
     }
 
     .PermissionEnabled {
-        background: var(--rp-foam);
-        color: var(--rp-base);
+        background: var(--foam);
+        color: var(--base);
     }
 
     .PermissionDisabled {
-        background: var(--rp-muted);
-        color: var(--rp-base);
+        background: var(--muted);
+        color: var(--base);
         opacity: 0.5;
     }
 }
@@ -67,15 +67,15 @@
     justify-content: center;
     padding: 6px 8px;
     background: transparent;
-    border: 1px solid var(--rp-love);
+    border: 1px solid var(--love);
     border-radius: 6px;
-    color: var(--rp-love) !important;
+    color: var(--love) !important;
     cursor: pointer;
     transition: all 0.2s;
 
     &:hover {
-        background: var(--rp-love);
-        color: var(--rp-base) !important;
+        background: var(--love);
+        color: var(--base) !important;
     }
 
     svg {
@@ -89,23 +89,23 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--rp-muted);
+    background: var(--muted);
     transition: background 0.4s;
     flex-shrink: 0;
 
     &.OnlineIndicatorOnline {
-        background: var(--rp-foam);
-        box-shadow: 0 0 5px var(--rp-foam);
+        background: var(--foam);
+        box-shadow: 0 0 5px var(--foam);
     }
 }
 
 .Icon {
     display: inline-flex;
-    color: var(--rp-subtle) !important;
+    color: var(--subtle) !important;
     transition: color 0.2s, transform 0.2s;
 
     &:hover {
-        color: var(--rp-text) !important;
+        color: var(--text) !important;
         transform: scale(1.1);
     }
 
@@ -119,7 +119,7 @@
 .IconButton {
     background: transparent;
     border: none;
-    color: var(--rp-text) !important;
+    color: var(--text) !important;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -129,12 +129,12 @@
     transition: background 0.2s;
 
     &:hover {
-        background: var(--rp-highlight-low);
+        background: var(--highlight-low);
     }
 
     svg {
         display: block;
-        color: var(--rp-text) !important;
+        color: var(--text) !important;
         fill: currentColor !important;
     }
 }
@@ -194,7 +194,7 @@
     margin: 0;
     font-size: 1.1rem;
     font-weight: 700;
-    color: var(--rp-text);
+    color: var(--text);
     padding-bottom: 12px;
     border-bottom: none;
     flex-shrink: 0;
@@ -209,14 +209,14 @@
         display: block;
         width: 4px;
         height: 24px;
-        background: linear-gradient(180deg, var(--rp-love), var(--rp-rose));
+        background: linear-gradient(180deg, var(--love), var(--rose));
         border-radius: 2px;
     }
 }
 
 .FormDescription {
     margin: 0;
-    color: var(--rp-subtle);
+    color: var(--subtle);
     font-size: 0.9rem;
     line-height: 1.4;
 }
@@ -231,8 +231,8 @@
 .EmptyStateContent {
     max-width: 800px;
     width: 100%;
-    background: var(--rp-surface);
-    border: 2px dashed var(--rp-highlight-med);
+    background: var(--surface);
+    border: 2px dashed var(--highlight-med);
     border-radius: 16px;
     padding: 48px 32px;
     text-align: center;
@@ -241,12 +241,12 @@
         margin: 0 0 16px 0;
         font-size: 1.75rem;
         font-weight: 600;
-        color: var(--rp-text);
+        color: var(--text);
     }
 
-    & > p {
+    &>p {
         margin: 0 0 32px 0;
-        color: var(--rp-subtle);
+        color: var(--subtle);
         font-size: 1.05rem;
         line-height: 1.6;
     }
@@ -260,8 +260,8 @@
 }
 
 .Hint {
-    background: var(--rp-base);
-    border: 1px solid var(--rp-highlight-low);
+    background: var(--base);
+    border: 1px solid var(--highlight-low);
     border-radius: 12px;
     padding: 20px;
     text-align: left;
@@ -270,66 +270,66 @@
     gap: 8px;
 
     strong {
-        color: var(--rp-text);
+        color: var(--text);
         font-size: 1rem;
         font-weight: 600;
     }
 
     span {
-        color: var(--rp-subtle);
+        color: var(--subtle);
         font-size: 0.9rem;
         line-height: 1.5;
     }
 }
 
 .RootTokenForm {
-    background: var(--rp-surface);
+    background: var(--surface);
     padding: 24px;
     border-radius: 12px;
     display: flex;
     flex-direction: column;
     gap: 16px;
-    border: 2px solid var(--rp-highlight-med);
+    border: 2px solid var(--highlight-med);
     box-shadow:
         0px 2px 8px rgba(0, 0, 0, 0.1),
         0px 8px 24px rgba(0, 0, 0, 0.08);
     max-width: 600px;
     width: 100%;
 
-    & > h2 {
+    &>h2 {
         margin: 0;
         font-size: 1.5rem;
         font-weight: 700;
-        color: var(--rp-text);
+        color: var(--text);
         text-align: center;
     }
 
-    & > input[type="search"] {
+    &>input[type="search"] {
         padding: 12px 16px;
         font-size: 0.95rem;
-        border: 2px solid var(--rp-highlight-med);
+        border: 2px solid var(--highlight-med);
         border-radius: 8px;
         transition: border-color 0.2s;
 
         &:focus {
-            border-color: var(--rp-love);
+            border-color: var(--love);
             outline: none;
         }
     }
 
-    & > input[type="submit"] {
+    &>input[type="submit"] {
         padding: 12px 24px;
         font-size: 0.95rem;
         font-weight: 600;
-        background: var(--rp-love);
-        color: var(--rp-base);
+        background: var(--love);
+        color: var(--base);
         border: none;
         border-radius: 8px;
         cursor: pointer;
         transition: all 0.2s;
 
         &:hover {
-            background: var(--rp-text);
+            background: var(--text);
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(235, 111, 146, 0.3);
         }
@@ -337,24 +337,24 @@
 }
 
 .NewTokenForm {
-    background: var(--rp-surface);
+    background: var(--surface);
     padding: 24px;
     border-radius: 16px;
     display: flex;
     flex-direction: column;
     gap: 20px;
-    border: 1px solid var(--rp-highlight-med);
+    border: 1px solid var(--highlight-med);
     box-shadow:
         0px 4px 12px rgba(0, 0, 0, 0.12),
         0px 12px 32px rgba(0, 0, 0, 0.1);
     max-width: 450px;
 
-    & > label {
+    &>label {
         display: flex;
         flex-direction: column;
         gap: 8px;
         font-weight: 600;
-        color: var(--rp-text);
+        color: var(--text);
         font-size: 0.8rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
@@ -364,30 +364,30 @@
             font-size: 0.9rem;
             border-radius: 8px;
             max-width: 100%;
-            border: 2px solid var(--rp-highlight-med);
-            background: var(--rp-base);
-            color: var(--rp-text);
+            border: 2px solid var(--highlight-med);
+            background: var(--base);
+            color: var(--text);
             transition: all 0.2s ease;
 
             &:focus {
                 outline: none;
-                border-color: var(--rp-foam);
+                border-color: var(--foam);
                 box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.15);
             }
 
             &::placeholder {
-                color: var(--rp-muted);
+                color: var(--muted);
             }
         }
     }
 
-    & > input[type="submit"] {
+    &>input[type="submit"] {
         padding: 14px 28px;
         font-size: 0.9rem;
         font-weight: 600;
         margin-top: 8px;
         align-self: flex-start;
-        background: linear-gradient(135deg, var(--rp-love), color-mix(in srgb, var(--rp-love) 80%, var(--rp-rose)));
+        background: linear-gradient(135deg, var(--love), color-mix(in srgb, var(--love) 80%, var(--rose)));
         border: none;
         border-radius: 10px;
         color: white;
@@ -413,15 +413,15 @@
 
     .NewTokenPermissions {
         fieldset {
-            border: 2px solid var(--rp-highlight-med);
+            border: 2px solid var(--highlight-med);
             border-radius: 12px;
             padding: 16px 18px;
-            background: var(--rp-base);
+            background: var(--base);
 
             legend {
                 padding: 0 12px;
                 font-weight: 600;
-                color: var(--rp-text);
+                color: var(--text);
                 font-size: 0.8rem;
                 text-transform: uppercase;
                 letter-spacing: 0.04em;
@@ -438,10 +438,10 @@
                 transition: all 0.15s ease;
                 font-size: 0.9rem;
                 font-weight: 500;
-                color: var(--rp-text);
+                color: var(--text);
 
                 &:hover {
-                    background: var(--rp-highlight-low);
+                    background: var(--highlight-low);
                 }
 
                 input[type="checkbox"] {
@@ -449,7 +449,7 @@
                     width: 18px;
                     height: 18px;
                     flex-shrink: 0;
-                    accent-color: var(--rp-foam);
+                    accent-color: var(--foam);
                 }
             }
         }
@@ -469,8 +469,8 @@
         top: calc(100% + 4px);
         left: 0;
         right: 0;
-        background: var(--rp-overlay);
-        border: 2px solid var(--rp-foam);
+        background: var(--overlay);
+        border: 2px solid var(--foam);
         border-radius: 8px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         max-height: 250px;
@@ -483,16 +483,16 @@
         }
 
         &::-webkit-scrollbar-track {
-            background: var(--rp-surface);
+            background: var(--surface);
             border-radius: 4px;
         }
 
         &::-webkit-scrollbar-thumb {
-            background: var(--rp-highlight-high);
+            background: var(--highlight-high);
             border-radius: 4px;
 
             &:hover {
-                background: var(--rp-text);
+                background: var(--text);
             }
         }
     }
@@ -501,20 +501,20 @@
         padding: 12px 14px;
         cursor: pointer;
         transition: all 0.15s ease;
-        border-bottom: 1px solid var(--rp-highlight-low);
+        border-bottom: 1px solid var(--highlight-low);
 
         &:last-child {
             border-bottom: none;
         }
 
         &:hover {
-            background: var(--rp-highlight-med);
+            background: var(--highlight-med);
         }
     }
 
     .SuggestionNamespace {
         font-family: 'Courier New', monospace;
-        color: var(--rp-foam);
+        color: var(--foam);
         font-size: 0.9rem;
         font-weight: 600;
     }
@@ -524,6 +524,7 @@
             opacity: 0;
             transform: translateY(-8px);
         }
+
         to {
             opacity: 1;
             transform: translateY(0);
@@ -534,7 +535,7 @@
 // allows table to be horizontally scrollable without scrolling the page horizontally
 .TokenTableWrapper {
     border-radius: 16px;
-    border: 1px solid var(--rp-highlight-med);
+    border: 1px solid var(--highlight-med);
     box-shadow:
         0px 4px 12px rgba(0, 0, 0, 0.12),
         0px 12px 32px rgba(0, 0, 0, 0.1);
@@ -542,7 +543,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: var(--rp-surface);
+    background: var(--surface);
     overflow: hidden;
 
     .TokenTableInnerWrapper {
@@ -556,17 +557,17 @@
         }
 
         &::-webkit-scrollbar-track {
-            background: var(--rp-surface);
+            background: var(--surface);
             border-radius: 5px;
         }
 
         &::-webkit-scrollbar-thumb {
-            background: var(--rp-highlight-high);
+            background: var(--highlight-high);
             border-radius: 5px;
-            border: 2px solid var(--rp-surface);
+            border: 2px solid var(--surface);
 
             &:hover {
-                background: var(--rp-text);
+                background: var(--text);
             }
         }
     }
@@ -579,13 +580,13 @@
     border-spacing: 0;
 
     thead {
-        background: linear-gradient(180deg, var(--rp-overlay) 0%, var(--rp-surface) 100%);
+        background: linear-gradient(180deg, var(--overlay) 0%, var(--surface) 100%);
         position: sticky;
         top: 0;
         z-index: 10;
 
         th {
-            border-bottom: 2px solid var(--rp-highlight-med);
+            border-bottom: 2px solid var(--highlight-med);
         }
     }
 
@@ -598,11 +599,11 @@
     }
 
     tbody tr {
-        border-bottom: 1px solid var(--rp-highlight-low);
+        border-bottom: 1px solid var(--highlight-low);
         transition: all 0.15s ease;
 
         &:hover {
-            background: linear-gradient(90deg, var(--rp-highlight-low) 0%, transparent 100%);
+            background: linear-gradient(90deg, var(--highlight-low) 0%, transparent 100%);
         }
 
         &:last-child td {
@@ -610,7 +611,7 @@
         }
 
         td {
-            border-bottom: 1px solid var(--rp-highlight-low);
+            border-bottom: 1px solid var(--highlight-low);
         }
     }
 
@@ -622,7 +623,7 @@
 
     th {
         font-weight: 600;
-        color: var(--rp-text);
+        color: var(--text);
         white-space: nowrap;
         font-size: 0.85rem;
         text-transform: uppercase;
@@ -634,38 +635,49 @@
         width: 18px;
         height: 18px;
         cursor: pointer;
-        accent-color: var(--rp-foam);
+        accent-color: var(--foam);
         border-radius: 4px;
     }
 
     // Compact column widths
-    th:nth-child(1), td:nth-child(1) { // Checkbox
+    th:nth-child(1),
+    td:nth-child(1) {
+        // Checkbox
         width: 40px;
         padding: 14px 10px 14px 20px;
     }
 
-    th:nth-child(2), td:nth-child(2) { // Creation
+    th:nth-child(2),
+    td:nth-child(2) {
+        // Creation
         width: 140px;
         max-width: 140px;
     }
 
-    th:nth-child(3), td:nth-child(3) { // Code
+    th:nth-child(3),
+    td:nth-child(3) {
+        // Code
         width: 200px;
         min-width: 180px;
     }
 
-    th:nth-child(4), td:nth-child(4) { // Namespace
+    th:nth-child(4),
+    td:nth-child(4) {
+        // Namespace
         width: 150px;
         max-width: 150px;
     }
 
-    th:nth-child(5), td:nth-child(5) { // Description
+    th:nth-child(5),
+    td:nth-child(5) {
+        // Description
         width: 180px;
         max-width: 180px;
     }
 
     // Permissions column
-    th:nth-child(6), td:nth-child(6) {
+    th:nth-child(6),
+    td:nth-child(6) {
         width: 200px;
         max-width: 200px;
         padding: 14px 20px 14px 16px;
@@ -676,18 +688,18 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         font-size: 0.85rem;
-        color: var(--rp-subtle);
+        color: var(--subtle);
     }
 
     // Creation date styling
     td:nth-child(2) {
-        color: var(--rp-text);
+        color: var(--text);
         font-weight: 500;
         font-size: 0.8rem;
     }
 
     // token code cells contain 2 elements
-    td > div.CodeCell {
+    td>div.CodeCell {
         display: flex;
         flex-direction: row;
         align-items: center;
@@ -699,27 +711,27 @@
         transition: all 0.15s ease;
 
         .CodeCellIcon {
-            color: var(--rp-muted);
+            color: var(--muted);
             flex-shrink: 0;
             transition: all 0.15s ease;
         }
     }
 
     // make code cells look clickable
-    td > div.CodeCell:hover {
-        background: var(--rp-highlight-low);
+    td>div.CodeCell:hover {
+        background: var(--highlight-low);
 
         .CodeCellIcon {
-            color: var(--rp-foam);
+            color: var(--foam);
             transform: scale(1.15);
         }
 
         &:not(.Copied) .CodeCellContent {
-            color: var(--rp-text);
+            color: var(--text);
         }
     }
 
-    th > * {
+    th>* {
         margin: 8px 0px;
     }
 
@@ -727,17 +739,17 @@
     // header cells are focused on-click to appear 'selected'
     // this is needed due to how browsers distinguish between tab and on-click focusing
     th:focus {
-        outline: 1px var(--rp-highlight-high) solid;
+        outline: 1px var(--highlight-high) solid;
     }
 
     // highlight selected table rows
-    tbody > tr:has(input[type='checkbox']:checked) {
-        background: var(--rp-highlight-med);
+    tbody>tr:has(input[type='checkbox']:checked) {
+        background: var(--highlight-med);
     }
 
     .CopyTooltip {
-        background: var(--rp-foam);
-        color: var(--rp-base);
+        background: var(--foam);
+        color: var(--base);
         padding: 8px 14px;
         border-radius: 8px;
         font-size: 0.8rem;
@@ -759,7 +771,7 @@
             transform: translateX(-50%);
             border-left: 6px solid transparent;
             border-right: 6px solid transparent;
-            border-top: 6px solid var(--rp-foam);
+            border-top: 6px solid var(--foam);
         }
     }
 
@@ -768,6 +780,7 @@
             opacity: 0;
             transform: translateX(-50%) translateY(4px);
         }
+
         to {
             opacity: 1;
             transform: translateX(-50%) translateY(0);
@@ -795,8 +808,8 @@
         white-space: nowrap;
 
         &.PermissionRead {
-            background: linear-gradient(135deg, var(--rp-foam), color-mix(in srgb, var(--rp-foam) 80%, var(--rp-pine)));
-            color: var(--rp-base);
+            background: linear-gradient(135deg, var(--foam), color-mix(in srgb, var(--foam) 80%, var(--pine)));
+            color: var(--base);
             box-shadow: 0 2px 4px rgba(156, 207, 216, 0.25);
 
             &:hover {
@@ -806,8 +819,8 @@
         }
 
         &.PermissionWrite {
-            background: linear-gradient(135deg, var(--rp-gold), color-mix(in srgb, var(--rp-gold) 80%, var(--rp-rose)));
-            color: var(--rp-base);
+            background: linear-gradient(135deg, var(--gold), color-mix(in srgb, var(--gold) 80%, var(--rose)));
+            color: var(--base);
             box-shadow: 0 2px 4px rgba(246, 193, 119, 0.25);
 
             &:hover {
@@ -817,8 +830,8 @@
         }
 
         &.PermissionShareRead {
-            background: linear-gradient(135deg, var(--rp-iris), color-mix(in srgb, var(--rp-iris) 80%, var(--rp-pine)));
-            color: var(--rp-base);
+            background: linear-gradient(135deg, var(--iris), color-mix(in srgb, var(--iris) 80%, var(--pine)));
+            color: var(--base);
             box-shadow: 0 2px 4px rgba(196, 167, 231, 0.25);
 
             &:hover {
@@ -828,7 +841,7 @@
         }
 
         &.PermissionShareWrite {
-            background: linear-gradient(135deg, var(--rp-love), color-mix(in srgb, var(--rp-love) 80%, var(--rp-rose)));
+            background: linear-gradient(135deg, var(--love), color-mix(in srgb, var(--love) 80%, var(--rose)));
             color: white;
             box-shadow: 0 2px 4px rgba(235, 111, 146, 0.25);
 
@@ -840,7 +853,7 @@
     }
 
     .NoPermissions {
-        color: var(--rp-muted);
+        color: var(--muted);
         font-size: 0.8rem;
         font-style: italic;
     }
@@ -883,27 +896,27 @@
 
     .FilterToggle {
         background: transparent;
-        border: 1px solid var(--rp-highlight-med);
+        border: 1px solid var(--highlight-med);
         border-radius: 6px;
         padding: 4px 8px;
         cursor: pointer;
         font-size: 0.8rem;
         transition: all 0.2s ease;
-        color: var(--rp-muted);
+        color: var(--muted);
         display: flex;
         align-items: center;
         justify-content: center;
 
         &:hover {
-            background: var(--rp-highlight-low);
-            border-color: var(--rp-foam);
-            color: var(--rp-text);
+            background: var(--highlight-low);
+            border-color: var(--foam);
+            color: var(--text);
         }
 
         &.FilterActive {
-            background: var(--rp-foam);
-            border-color: var(--rp-foam);
-            color: var(--rp-base);
+            background: var(--foam);
+            border-color: var(--foam);
+            color: var(--base);
             box-shadow: 0 0 8px rgba(156, 207, 216, 0.4);
         }
     }
@@ -922,28 +935,28 @@
         font-size: 0.75rem;
         padding: 8px 10px;
         box-sizing: border-box;
-        border: 2px solid var(--rp-highlight-med);
+        border: 2px solid var(--highlight-med);
         border-radius: 6px;
-        background: var(--rp-base);
-        color: var(--rp-text);
+        background: var(--base);
+        color: var(--text);
         transition: all 0.2s ease;
         font-family: 'Courier New', monospace;
 
         &:focus {
             outline: none;
-            border-color: var(--rp-foam);
+            border-color: var(--foam);
             box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.15);
         }
 
         &::placeholder {
-            color: var(--rp-muted);
+            color: var(--muted);
             font-size: 0.7rem;
             font-family: system-ui, -apple-system, sans-serif;
         }
     }
 
     .ClearFilter {
-        background: var(--rp-love);
+        background: var(--love);
         border: none;
         border-radius: 4px;
         padding: 4px 8px;
@@ -955,7 +968,7 @@
         flex-shrink: 0;
 
         &:hover {
-            background: var(--rp-rose);
+            background: var(--rose);
             transform: scale(1.1);
         }
     }
@@ -972,8 +985,8 @@
 
 .TableButtonBar {
     width: 100%;
-    background: linear-gradient(180deg, var(--rp-surface) 0%, var(--rp-overlay) 100%);
-    border-top: 2px solid var(--rp-highlight-med);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--overlay) 100%);
+    border-top: 2px solid var(--highlight-med);
     padding: 16px 20px;
     display: flex;
     flex-direction: row;
@@ -1007,18 +1020,18 @@
 
 .NewTokenNoPermissionsWarningSmall,
 .NewTokenNoPermissionsWarningLarge {
-    color: var(--rp-gold);
+    color: var(--gold);
     font-weight: 500;
     padding: 8px 12px;
     background: rgba(255, 165, 0, 0.1);
     border-radius: 6px;
-    border: 1px solid var(--rp-gold);
+    border: 1px solid var(--gold);
 }
 
 .RefreshTokensModal,
 .deleteTokensModal {
-    background: var(--rp-surface);
-    border: 1px solid var(--rp-highlight-med);
+    background: var(--surface);
+    border: 1px solid var(--highlight-med);
     border-radius: 12px;
     padding: 32px;
     max-width: 500px;
@@ -1033,14 +1046,14 @@
 
     h2 {
         margin: 0 0 16px 0;
-        color: var(--rp-text);
+        color: var(--text);
         font-size: 1.5rem;
         font-weight: 600;
     }
 
     p {
         margin: 0 0 24px 0;
-        color: var(--rp-subtle);
+        color: var(--subtle);
         line-height: 1.5;
     }
 }
@@ -1073,7 +1086,7 @@
         padding: 20px 16px;
         max-width: 100%;
 
-        & > h2 {
+        &>h2 {
             font-size: 1.3rem;
         }
     }
@@ -1110,24 +1123,33 @@
     .TokenTable {
         font-size: 0.8rem;
 
-        td, th {
+        td,
+        th {
             padding: 8px 6px;
         }
 
         // More compact columns on mobile
-        th:nth-child(3), td:nth-child(3) { // Code
+        th:nth-child(3),
+        td:nth-child(3) {
+            // Code
             max-width: 120px;
         }
 
-        th:nth-child(4), td:nth-child(4) { // Namespace
+        th:nth-child(4),
+        td:nth-child(4) {
+            // Namespace
             max-width: 100px;
         }
 
-        th:nth-child(5), td:nth-child(5) { // Description
+        th:nth-child(5),
+        td:nth-child(5) {
+            // Description
             max-width: 120px;
         }
 
-        th:nth-child(6), td:nth-child(6) { // Permissions
+        th:nth-child(6),
+        td:nth-child(6) {
+            // Permissions
             max-width: 150px;
         }
 

@@ -270,15 +270,27 @@ impl MorkClient {
 
     // ─── Basic Operations ───────────────────────────────────────────────────
 
-    pub async fn import(&self, perm: &Permission, path: &Path, uri: &str) -> Result<(), MorkError> {
+    pub async fn import(
+        &self,
+        perm: &Permission,
+        path: &Path,
+        pattern: &str,
+        template: &str,
+        uri: &str,
+    ) -> Result<(), MorkError> {
         perm.require_write()?;
         perm.check_namespace(path)?;
 
-        let template = path_to_sexpr(path);
+        let path_pattern = path_to_sexpr(path);
+        let pattern = path_pattern.replace("$", pattern);
+
+        let path_template = path_to_sexpr(path);
+        let template = path_template.replace("$", template);
+
         let url = format!(
             "{}/import/{}/{}?uri={}",
             self.base(),
-            encode("$"),
+            encode(&pattern),
             encode(&template),
             encode(uri),
         );
@@ -289,16 +301,27 @@ impl MorkClient {
         Ok(())
     }
 
-    pub async fn export(&self, perm: &Permission, path: &Path) -> Result<String, MorkError> {
+    pub async fn export(
+        &self,
+        perm: &Permission,
+        path: &Path,
+        pattern: &str,
+        template: &str,
+    ) -> Result<String, MorkError> {
         perm.require_read()?;
         perm.check_namespace(path)?;
 
-        let pattern = path_to_sexpr(path);
+        let path_pattern = path_to_sexpr(path);
+        let pattern = path_pattern.replace("$", pattern);
+
+        let path_template = path_to_sexpr(path);
+        let template = path_template.replace("$", template);
+
         let url = format!(
             "{}/export/{}/{}",
             self.base(),
             encode(&pattern),
-            encode("$")
+            encode(&template)
         );
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
@@ -307,18 +330,19 @@ impl MorkClient {
         Ok(resp.text().await?)
     }
 
-    pub async fn clear(&self, perm: &Permission, path: &Path, pattern: Option<&str>) -> Result<(), MorkError> {
+    pub async fn clear(
+        &self,
+        perm: &Permission,
+        path: &Path,
+        pattern: &str,
+    ) -> Result<(), MorkError> {
         perm.require_write()?;
         perm.check_namespace(path)?;
 
-        let pattern_expr = if let Some(pat) = pattern {
-            // User provided a custom pattern, use it as-is
-            pat.to_string()
-        } else {
-            // No pattern provided, clear everything at this path
-            path_to_sexpr(path)
-        };
-        let url = format!("{}/clear/{}", self.base(), encode(&pattern_expr));
+        let path_pattern = path_to_sexpr(path);
+        let pattern = path_pattern.replace("$", pattern);
+
+        let url = format!("{}/clear/{}", self.base(), encode(&pattern));
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -589,13 +613,6 @@ impl MorkClient {
             }
         }
 
-        let original_stack = stack.clone();
-
-        println!("{:?}", stack);
-
-        println!("BFS requests: {}", bfs_request_count);
-        println!("Skip tokens: {:#?}", skip_tokens);
-
         let mut dfs_request_count = 0;
         while let Some(current_token) = stack.pop() {
             if !skip_tokens.insert(current_token.clone()) {
@@ -640,14 +657,6 @@ impl MorkClient {
                 break;
             }
         }
-
-        println!("DFS requests: {}", dfs_request_count);
-        println!(
-            "Total requests: {} (BFS: {}, DFS: {})",
-            bfs_request_count + dfs_request_count,
-            bfs_request_count,
-            dfs_request_count
-        );
 
         Ok(ExploreResult {
             namespace: path.clone(),
@@ -815,7 +824,13 @@ mod tests {
     #[tokio::test]
     async fn import_requires_write() {
         let err = client()
-            .import(&read_only(""), Path::new("space/sub"), "http://x/f.metta")
+            .import(
+                &read_only(""),
+                Path::new("space/sub"),
+                "$",
+                "$",
+                "http://x/f.metta",
+            )
             .await
             .unwrap_err();
         assert!(matches!(
@@ -830,6 +845,8 @@ mod tests {
             .import(
                 &read_write("other"),
                 Path::new("space/sub"),
+                "$",
+                "$",
                 "http://x/f.metta",
             )
             .await
@@ -843,7 +860,7 @@ mod tests {
     #[tokio::test]
     async fn export_requires_read() {
         let err = client()
-            .export(&write_only(""), Path::new("space/sub"))
+            .export(&write_only(""), Path::new("space/sub"), "$", "$")
             .await
             .unwrap_err();
         assert!(matches!(
@@ -855,7 +872,7 @@ mod tests {
     #[tokio::test]
     async fn export_rejects_wrong_namespace() {
         let err = client()
-            .export(&read_write("other"), Path::new("space/sub"))
+            .export(&read_write("other"), Path::new("space/sub"), "$", "$")
             .await
             .unwrap_err();
         assert!(matches!(

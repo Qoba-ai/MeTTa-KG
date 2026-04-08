@@ -1,0 +1,248 @@
+// TrieExplorer component styles
+
+.TrieExplorer {
+    width: var(--trie-width, 300px);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--highlight-low);
+    flex-shrink: 0;
+    margin: 0;
+    overflow: hidden;
+
+    h3 {
+        margin: 0;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text);
+        background: var(--surface);
+        border-bottom: 1px solid var(--highlight-low);
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+}
+
+.TrieContent {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 8px 12px;
+    background: var(--surface);
+    position: relative;
+
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 8px;
+        background: linear-gradient(to bottom, rgba(0, 0, 0, 0.05), transparent);
+        pointer-events: none;
+    }
+
+    &::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: var(--surface);
+        border-radius: 5px;
+        margin: 4px 0;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: var(--highlight-high);
+        border-radius: 5px;
+        border: 2px solid var(--surface);
+        transition: background 0.2s;
+    }
+
+    &::-webkit-scrollbar-thumb:hover {
+        background: var(--text);
+    }
+}
+
+.TreePrefix {
+    font-family: monospace;
+    color: var(--muted);
+    font-size: 0.75rem;
+    line-height: 1;
+    white-space: pre;
+    flex-shrink: 0;
+    user-select: none;
+    opacity: 0.6;
+}
+
+.TrieNode {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    user-select: none;
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.8rem;
+    position: relative;
+
+    &:hover {
+        background: var(--overlay);
+        transform: translateX(1px);
+        box-shadow: -2px 0 0 var(--foam);
+    }
+
+    &.SelectedNode {
+        background: var(--highlight-med);
+        box-shadow: -2px 0 0 var(--love);
+        transform: translateX(1px);
+    }
+}
+
+.TrieActions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.TrieActionBtn {
+    background: transparent;
+    border: none;
+    color: var(--subtle);
+    cursor: pointer;
+    padding: 3px 4px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+
+    &:hover {
+        background: var(--highlight-med);
+        color: var(--foam);
+        transform: scale(1.1);
+    }
+}
+
+.Hidden {
+    visibility: hidden !important;
+}
+
+.TrieDeleteBtn:hover {
+    color: var(--love);
+}
+
+.TrieBranchIcon {
+    color: var(--foam);
+    flex-shrink: 0;
+}
+
+.TrieLeafIcon {
+    color: var(--iris);
+    flex-shrink: 0;
+}
+
+.TrieBranchText {
+    color: var(--rose);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.TrieLeafText {
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.TrieFringeIcon {
+    color: var(--gold);
+    flex-shrink: 0;
+}
+
+.TrieFringeText {
+    color: var(--gold);
+    font-weight: 500;
+    font-style: italic;
+}
+
+.TrieConfigTransform {
+    margin: 10px 12px;
+    padding: 8px 12px;
+    background: var(--love);
+    color: var(--base);
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-shadow: 0 2px 8px rgba(235, 111, 146, 0.3);
+
+    &:hover {
+        background: var(--rose);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(235, 111, 146, 0.4);
+    }
+
+    &:active {
+        transform: translateY(0);
+    }
+
+    &:disabled {
+        background: var(--highlight-med);
+        cursor: not-allowed;
+        transform: none;
+        opacity: 0.7;
+    }
+}
+
+.TrieEmpty {
+    padding: 12px;
+    text-align: center;
+    color: var(--subtle);
+    font-style: italic;
+    font-size: 0.8rem;
+}
+
+.TrieLoadMoreBtn {
+    width: 100%;
+    padding: 6px;
+    margin: 6px 0;
+    background: var(--highlight-med);
+    color: var(--text);
+    border: 1px solid var(--highlight-high);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+
+    &:hover {
+        background: var(--highlight-high);
+        color: var(--foam);
+        transform: translateY(-1px);
+    }
+
+    &:active {
+        transform: translateY(0);
+    }
+}

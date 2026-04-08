@@ -2,8 +2,8 @@ import { Component, JSX, createSignal, onMount, onCleanup } from "solid-js";
 import { A } from "@solidjs/router";
 import { AiOutlineGithub } from "solid-icons/ai";
 import { VsSettings } from "solid-icons/vs";
-import styles from "../Editor.module.scss";
-import { wsService } from "../websocket";
+import commonStyles from "../../styles/Common.module.scss";
+import { wsService } from "../../websocket";
 
 interface HeaderProps {
   title?: string;
@@ -26,18 +26,18 @@ export const Header: Component<HeaderProps> = (props) => {
         {props.children || (
           <>
             <div
-              class={styles.OnlineIndicator}
-              classList={{ [styles.OnlineIndicatorOnline]: online() }}
+              class={commonStyles.OnlineIndicator}
+              classList={{ [commonStyles.OnlineIndicatorOnline]: online() }}
               title={online() ? "Connected" : "Disconnected"}
             />
-            <A href="/settings" class={styles.IconButton} title="Settings">
+            <A href="/settings" class={commonStyles.IconButton} title="Settings">
               <VsSettings size={24} />
             </A>
-            <A href="/tokens" class={styles.OutlineButton}>
+            <A href="/tokens" class={commonStyles.OutlineButton}>
               Tokens
             </A>
             <a href="https://github.com/Qoba-ai/MeTTa-KG" target="_blank" rel="noopener noreferrer" class="github-link">
-              <AiOutlineGithub class={styles.Icon} size={32} />
+              <AiOutlineGithub class={commonStyles.Icon} size={32} />
             </a>
           </>
         )}

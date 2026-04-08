@@ -1,6 +1,7 @@
 import { Component, createSignal } from "solid-js";
-import styles from "../Editor.module.scss";
-import { NamespaceSelector } from "../NamespaceSelector";
+import styles from "./SelectSpaceModal.module.scss";
+import commonStyles from "../../../../../styles/Common.module.scss";
+import { NamespaceSelector } from "../../NamespaceSelector/NamespaceSelector";
 
 interface SelectSpaceModalProps {
   ref: HTMLDialogElement | ((el: HTMLDialogElement) => void);
@@ -21,30 +22,30 @@ export const SelectSpaceModal: Component<SelectSpaceModalProps> = (props) => {
   };
 
   return (
-    <dialog ref={props.ref} class={styles.LoadSpaceModal}>
+    <dialog ref={props.ref} class={styles.SelectSpaceModal}>
       <form onsubmit={handleSubmit}>
         <button type="button" autofocus style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;padding:0;border:0;" />
         <h2>Select MeTTa Space</h2>
         <div class={styles.FieldGroup}>
           <label>Space Path</label>
-          <NamespaceSelector 
+          <NamespaceSelector
             value={selectedPath()}
             onInput={setSelectedPath}
             fetchExploreResults={props.fetchExploreResults}
             placeholder="/path/to/space/"
           />
         </div>
-        <div class={styles.ModalButtonBar} style={{ "margin-top": "20px" }}>
+        <div class={commonStyles.ModalButtonBar} style={{ "margin-top": "20px" }}>
           <button
             type="button"
-            class={styles.TextButton}
+            class={commonStyles.TextButton}
             onclick={props.onCancel}
           >
             Cancel
           </button>
-          <div class={styles.Spacer}></div>
+          <div class={commonStyles.Spacer}></div>
           <button
-            class={styles.Button}
+            class={commonStyles.Button}
             type="submit"
             disabled={selectedPath() === ""}
           >

@@ -1,9 +1,10 @@
 import { Component, createSignal, For, Show } from "solid-js";
-import styles from "../Editor.module.scss";
+import styles from "./ImportModal.module.scss";
+import commonStyles from "../../../../../styles/Common.module.scss";
 import { VsCloudUpload, VsFile, VsLink, VsSymbolString, VsChevronRight, VsChevronDown } from "solid-icons/vs";
 import { AiOutlineFolder, AiOutlineFolderOpen, AiOutlineFile } from "solid-icons/ai";
-import { ImportFormat, ImportSource, ImportCSVDirection } from "../types";
-import { NamespaceSelector } from "../NamespaceSelector";
+import { ImportFormat, ImportSource, ImportCSVDirection } from "../../../../../types";
+import { NamespaceSelector } from "../../NamespaceSelector/NamespaceSelector";
 
 const GITHUB_TREE_URL =
     "https://api.github.com/repos/trueagi-io/metta-examples/git/trees/main?recursive=1";
@@ -328,7 +329,7 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
                         <Show when={props.activeFile()}>
                             <div class={styles.ImportSettingsContainer}>
                                 <div class={styles.ActiveFileDisplay}>
-                                    <VsFile size={24} color="var(--rp-gold)" />
+                                    <VsFile size={24} color="var(--gold)" />
                                     <span>{props.activeFile()?.name}</span>
                                 </div>
                                 <FormatSettings
@@ -437,12 +438,12 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
                     onchange={handleFileChange}
                 />
 
-                <div class={styles.ModalButtonBar}>
-                    <button type="button" class={styles.TextButton} onclick={props.onCancel}>
+                <div class={commonStyles.ModalButtonBar}>
+                    <button type="button" class={commonStyles.TextButton} onclick={props.onCancel}>
                         Cancel
                     </button>
-                    <div class={styles.Spacer} />
-                    <button class={styles.Button} type="submit" disabled={!isImportEnabled()}>
+                    <div class={commonStyles.Spacer} />
+                    <button class={commonStyles.Button} type="submit" disabled={!isImportEnabled()}>
                         {importButtonLabel()}
                     </button>
                 </div>

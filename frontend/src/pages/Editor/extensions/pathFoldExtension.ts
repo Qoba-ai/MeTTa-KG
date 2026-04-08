@@ -6,8 +6,6 @@ import {
     Decoration,
     DecorationSet,
     WidgetType,
-    gutter,
-    GutterMarker,
 } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 
@@ -130,8 +128,8 @@ class CollapsedWidget extends WidgetType {
     toDOM() {
         const el = document.createElement('span')
         el.style.cssText =
-            'color:var(--rp-muted);font-style:italic;cursor:pointer;' +
-            'padding:0 6px;border-radius:3px;background:var(--rp-highlight-low);'
+            'color:var(--muted);font-style:italic;cursor:pointer;' +
+            'padding:0 6px;border-radius:3px;background:var(--highlight-low);'
         el.textContent = `\u25B8 (${this.key} \u2026) \u00D7${this.count}`
         el.title = `${this.count} atom${this.count !== 1 ? 's' : ''} hidden \u2014 click to expand`
         return el
@@ -148,8 +146,8 @@ class FringeWidget extends WidgetType {
     toDOM() {
         const el = document.createElement('span')
         el.style.cssText =
-            'color:var(--rp-iris);cursor:pointer;font-weight:bold;' +
-            'padding:0 4px;border-radius:3px;background:var(--rp-highlight-low);'
+            'color:var(--iris);cursor:pointer;font-weight:bold;' +
+            'padding:0 4px;border-radius:3px;background:var(--highlight-low);'
         el.textContent = '|$|'
         el.title = `Click to expand fringe at ${this.path}`
         el.dataset.fringePath = this.path
@@ -260,69 +258,6 @@ const pathFoldPlugin = ViewPlugin.fromClass(
 )
 
 // ---------------------------------------------------------------------------
-// Custom gutter — fold/unfold icons on the first occurrence of each key
-// ---------------------------------------------------------------------------
-
-class PathFoldMarker extends GutterMarker {
-    constructor(readonly sym: string, readonly collapsed: boolean) { super() }
-
-    toDOM() {
-        const el = document.createElement('span')
-        el.style.cssText = 'cursor:pointer;font-size:14px;opacity:0.8;line-height:1;'
-        el.textContent = this.collapsed ? '\u25B8' : '\u25BE'
-        el.title = this.collapsed ? `Expand ${this.sym}` : `Collapse ${this.sym}`
-        return el
-    }
-}
-
-const pathFoldGutter = gutter({
-    class: 'cm-path-fold-gutter',
-    markers(view) {
-        const collapsed = view.state.field(collapsedPathsField)
-        const doc = view.state.doc
-        const builder = new RangeSetBuilder<GutterMarker>()
-        const seen = new Set<string>()
-
-        for (let i = 1; i <= doc.lines; i++) {
-            const line = doc.line(i)
-            const sym = lineFirstSymbol(line.text)
-            if (!sym) continue
-            if (!seen.has(sym)) {
-                seen.add(sym)
-                builder.add(line.from, line.from, new PathFoldMarker(sym, collapsed.has(sym)))
-            }
-        }
-        return builder.finish()
-    },
-    domEventHandlers: {
-        click(view, line) {
-            const sym = lineFirstSymbol(view.state.doc.lineAt(line.from).text)
-            if (!sym) return false
-            const collapsed = view.state.field(collapsedPathsField)
-            const next = new Set(collapsed)
-            if (next.has(sym)) {
-                next.delete(sym)
-            } else {
-                // Fold this key and cascade: find all sub-paths under this key
-                next.add(sym)
-                const doc = view.state.doc
-                for (let i = 1; i <= doc.lines; i++) {
-                    const text = doc.line(i).text
-                    if (!text.startsWith(`(${sym} `)) continue
-                    const tokens = extractLinePathTokens(text)
-                    // Add all intermediate sub-paths
-                    for (let depth = 2; depth <= tokens.length; depth++) {
-                        next.add(tokens.slice(0, depth).join('/'))
-                    }
-                }
-            }
-            view.dispatch({ effects: setCollapsedPathsEffect.of(next) })
-            return true
-        },
-    },
-})
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -338,7 +273,6 @@ export function createPathFoldExtension(
     return [
         collapsedPathsField,
         pathFoldPlugin,
-        pathFoldGutter,
         EditorView.updateListener.of(update => {
             const prev = update.startState.field(collapsedPathsField)
             const next = update.state.field(collapsedPathsField)

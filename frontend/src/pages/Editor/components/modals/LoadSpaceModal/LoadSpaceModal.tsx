@@ -1,5 +1,6 @@
 import { Component, createSignal } from "solid-js";
-import styles from "../Editor.module.scss";
+import styles from "./LoadSpaceModal.module.scss";
+import commonStyles from "../../../../../styles/Common.module.scss";
 
 interface LoadSpaceModalProps {
   ref: HTMLDialogElement | ((el: HTMLDialogElement) => void);
@@ -40,17 +41,17 @@ export const LoadSpaceModal: Component<LoadSpaceModalProps> = (props) => {
             pattern="(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000)"
           />
         </label>
-        <div class={styles.ModalButtonBar}>
+        <div class={commonStyles.ModalButtonBar}>
           <button
             type="button"
-            class={styles.TextButton}
+            class={commonStyles.TextButton}
             onclick={props.onCancel}
           >
             Cancel
           </button>
-          <div class={styles.Spacer}></div>
+          <div class={commonStyles.Spacer}></div>
           <button
-            class={styles.Button}
+            class={commonStyles.Button}
             type="submit"
             disabled={tokenToOpen() === ""}
           >

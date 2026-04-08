@@ -38,54 +38,50 @@ export const ThemeProvider = (props: { children: JSX.Element }) => {
 
     // Special case for Rose Pine: switch between dark (base) and light (dawn)
     if (schemeName === 'rose-pine') {
-        if (theme === 'light') {
-            // Mapping Rose Pine Dawn to Base16-ish slots
-            s = {
-                ...s,
-                base00: '#faf4ed', // base
-                base01: '#fffaf3', // surface
-                base02: '#f2e9e1', // overlay
-                base03: '#9893a5', // muted
-                base04: '#797593', // subtle
-                base05: '#575279', // text
-                base08: '#b4637a', // love
-                base09: '#ea9d34', // gold
-                base0A: '#d7827e', // rose
-                base0B: '#286983', // pine
-                base0C: '#56949f', // foam
-                base0D: '#907aa9', // iris
-            };
-        }
+      if (theme === 'light') {
+        // Mapping Rose Pine Dawn to Base16-ish slots
+        s = {
+          ...s,
+          base00: '#faf4ed', // base
+          base01: '#fffaf3', // surface
+          base02: '#f2e9e1', // overlay
+          base03: '#9893a5', // muted
+          base04: '#797593', // subtle
+          base05: '#575279', // text
+          base08: '#b4637a', // love
+          base09: '#ea9d34', // gold
+          base0A: '#d7827e', // rose
+          base0B: '#286983', // pine
+          base0C: '#56949f', // foam
+          base0D: '#907aa9', // iris
+        };
+      }
     }
 
     const root = document.documentElement;
 
-    // Special case for Nord: use darker overlay for modals
-    const overlayColor = schemeName === 'nord' ? s.base00 : s.base02;
-
-    // Mapping Base16 to our --rp variables
     const mapping = {
-      "--rp-base": s.base00,
-      "--rp-surface": s.base01,
-      "--rp-overlay": overlayColor,
-      "--rp-muted": s.base03,
-      "--rp-subtle": s.base04,
-      "--rp-text": s.base05,
-      "--rp-love": s.base08,
-      "--rp-gold": s.base09,
-      "--rp-rose": s.base0A,
-      "--rp-pine": s.base0B,
-      "--rp-foam": s.base0C,
-      "--rp-iris": s.base0D,
-      "--rp-highlight-low": s.base01,
-      "--rp-highlight-med": s.base02,
-      "--rp-highlight-high": s.base03,
+      "--base": s.base00,
+      "--surface": s.base01,
+      "--overlay": s.base02,
+      "--muted": s.base03,
+      "--subtle": s.base04,
+      "--text": s.base05,
+      "--love": s.base08,
+      "--gold": s.base09,
+      "--rose": s.base0A,
+      "--pine": s.base0B,
+      "--foam": s.base0C,
+      "--iris": s.base0D,
+      "--highlight-low": s.base01,
+      "--highlight-med": s.base02,
+      "--highlight-high": s.base03,
     };
 
     Object.entries(mapping).forEach(([key, value]) => {
       root.style.setProperty(key, value);
     });
-    
+
     // Set color-scheme for native elements
     root.style.setProperty('color-scheme', theme);
   };
@@ -94,10 +90,10 @@ export const ThemeProvider = (props: { children: JSX.Element }) => {
   createEffect(() => {
     const currentTheme = theme();
     const currentScheme = scheme();
-    
+
     document.documentElement.setAttribute("data-theme", currentTheme);
     document.documentElement.setAttribute("data-scheme", currentScheme);
-    
+
     applyScheme(currentScheme, currentTheme);
   });
 

@@ -2,9 +2,9 @@
 import { render } from "solid-js/web";
 import { Route, Router } from "@solidjs/router";
 
-import Editor from "./Editor";
-import Tokens from "./Tokens";
-import Settings from "./Settings";
+import Editor from "./pages/Editor";
+import Tokens from "./pages/Tokens";
+import Settings from "./pages/Settings";
 import { ThemeProvider } from "./ThemeContext";
 
 import './styles/global.scss';

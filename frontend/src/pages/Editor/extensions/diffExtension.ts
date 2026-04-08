@@ -54,7 +54,7 @@ const diffPlugin = ViewPlugin.fromClass(class {
         } else {
           // Line not present in original — user-added content
           builder.add(lineStart, lineStart, Decoration.line({
-            attributes: { style: "background-color: rgba(156, 207, 216, 0.05); border-left: 4px solid var(--rp-foam);" }
+            attributes: { style: "background-color: rgba(156, 207, 216, 0.05); border-left: 4px solid var(--foam);" }
           }))
         }
       }

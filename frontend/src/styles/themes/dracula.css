@@ -1,0 +1,83 @@
+/**
+ * Dracula Theme for Material Design 3
+ * Maps Dracula color palette to Material Design tokens
+ * Based on https://draculatheme.com/
+ */
+
+[data-theme='dracula'] {
+  /* ========================================
+     COLOR TOKENS - DRACULA
+     ======================================== */
+
+  /* Primary (Dracula Pink #FF79C6) */
+  --md-sys-color-primary: #ff79c6;
+  --md-sys-color-on-primary: #3d0019;
+  --md-sys-color-primary-container: #62003b;
+  --md-sys-color-on-primary-container: #ffd9e8;
+
+  /* Secondary (Dracula Cyan #8BE9FD) */
+  --md-sys-color-secondary: #8be9fd;
+  --md-sys-color-on-secondary: #00363f;
+  --md-sys-color-secondary-container: #004e5a;
+  --md-sys-color-on-secondary-container: #d0f4ff;
+
+  /* Tertiary (Dracula Purple #BD93F9) */
+  --md-sys-color-tertiary: #bd93f9;
+  --md-sys-color-on-tertiary: #2d1747;
+  --md-sys-color-tertiary-container: #442d61;
+  --md-sys-color-on-tertiary-container: #e8ddff;
+
+  /* Error (Dracula Red #FF5555) */
+  --md-sys-color-error: #ff5555;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffdad6;
+
+  /* Surface & Background (Dracula Background #282A36) */
+  --md-sys-color-surface: #282a36;
+  --md-sys-color-surface-dim: #282a36;
+  --md-sys-color-surface-bright: #44475a;
+  --md-sys-color-surface-container-lowest: #1a1b26;
+  --md-sys-color-surface-container-low: #282a36;
+  --md-sys-color-surface-container: #383a4a;
+  --md-sys-color-surface-container-high: #44475a;
+  --md-sys-color-surface-container-highest: #565869;
+
+  --md-sys-color-on-surface: #f8f8f2;
+  --md-sys-color-on-surface-variant: #e6e6e0;
+
+  --md-sys-color-background: #282a36;
+  --md-sys-color-on-background: #f8f8f2;
+
+  /* Surface Tint */
+  --md-sys-color-surface-tint: var(--md-sys-color-primary);
+
+  /* Outline */
+  --md-sys-color-outline: #6272a4;
+  --md-sys-color-outline-variant: #44475a;
+
+  /* Inverse */
+  --md-sys-color-inverse-surface: #f8f8f2;
+  --md-sys-color-inverse-on-surface: #383a4a;
+  --md-sys-color-inverse-primary: #62003b;
+
+  /* Shadow & Scrim */
+  --md-sys-color-shadow: #000000;
+  --md-sys-color-scrim: #000000;
+
+  /* Success (Dracula Green #50FA7B) */
+  --md-sys-color-success: #50fa7b;
+  --md-sys-color-on-success: #003914;
+  --md-sys-color-success-container: #005321;
+  --md-sys-color-on-success-container: #b7ffc7;
+
+  /* Warning (Dracula Orange #FFB86C) */
+  --md-sys-color-warning: #ffb86c;
+  --md-sys-color-on-warning: #4d2600;
+  --md-sys-color-warning-container: #6f3800;
+  --md-sys-color-on-warning-container: #ffdcc2;
+
+  /* Info (Dracula Comment #6272A4) */
+  --md-sys-color-info: #6272a4;
+  --md-sys-color-on-info: #ffffff;
+}

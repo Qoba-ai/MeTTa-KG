@@ -2,12 +2,12 @@ import { Component, createSignal, onMount, onCleanup, Show, createResource } fro
 import { A } from '@solidjs/router';
 import { AiOutlineGithub } from 'solid-icons/ai';
 import { VsSignOut } from 'solid-icons/vs';
-import styles from '../Editor.module.scss';
-import commonStyles from '../styles/Common.module.scss';
-import { wsService } from '../websocket';
-import { notify } from '../notify';
-import { Token } from '../types';
-import { BACKEND_URL } from '../urls';
+import styles from './Navbar.module.scss';
+import commonStyles from '../../styles/Common.module.scss';
+import { wsService } from '../../websocket';
+import { notify } from '../../notify';
+import { Token } from '../../types';
+import { BACKEND_URL } from '../../urls';
 
 interface NavbarProps {
     title?: string;
@@ -97,21 +97,21 @@ export const Navbar: Component<NavbarProps> = (props) => {
                     <A
                         href="/"
                         class={styles.TextButton}
-                        style={props.currentPage === 'editor' ? { "background": "var(--rp-highlight-med)", "font-weight": "600" } : {}}
+                        style={props.currentPage === 'editor' ? { "background": "var(--highlight-med)", "font-weight": "600" } : {}}
                     >
                         Editor
                     </A>
                     <A
                         href="/tokens"
                         class={styles.TextButton}
-                        style={props.currentPage === 'tokens' ? { "background": "var(--rp-highlight-med)", "font-weight": "600" } : {}}
+                        style={props.currentPage === 'tokens' ? { "background": "var(--highlight-med)", "font-weight": "600" } : {}}
                     >
                         Tokens
                     </A>
                     <A
                         href="/settings"
                         class={styles.TextButton}
-                        style={props.currentPage === 'settings' ? { "background": "var(--rp-highlight-med)", "font-weight": "600" } : {}}
+                        style={props.currentPage === 'settings' ? { "background": "var(--highlight-med)", "font-weight": "600" } : {}}
                     >
                         Settings
                     </A>

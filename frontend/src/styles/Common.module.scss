@@ -9,8 +9,8 @@ body {
 }
 
 body {
-    color: var(--rp-text);
-    background: var(--rp-base);
+    color: var(--text);
+    background: var(--base);
 }
 
 header {
@@ -18,21 +18,21 @@ header {
     top: 0;
     width: 100%;
     z-index: 1000;
-    background: var(--rp-surface);
+    background: var(--surface);
     padding: 0 24px;
     height: 64px;
     box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid var(--rp-highlight-low);
+    border-bottom: 1px solid var(--highlight-low);
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 
     h1 {
         font-size: 1.25rem;
         margin: 0;
         font-weight: 700;
-        color: var(--rp-text);
+        color: var(--text);
         letter-spacing: -0.5px;
     }
 
@@ -51,11 +51,11 @@ header {
         }
 
         .github-link {
-            color: var(--rp-subtle);
+            color: var(--subtle);
             transition: all 0.2s;
 
             &:hover {
-                color: var(--rp-text);
+                color: var(--text);
                 transform: scale(1.1);
             }
         }
@@ -65,7 +65,7 @@ header {
 .NavDivider {
     width: 1px;
     height: 32px;
-    background: var(--rp-highlight-med);
+    background: var(--highlight-med);
     margin: 0 8px;
     flex-shrink: 0;
 }
@@ -96,11 +96,11 @@ header {
 }
 
 .Icon {
-    color: var(--rp-subtle);
+    color: var(--subtle);
     transition: color 0.2s;
 
     &:hover {
-        color: var(--rp-text);
+        color: var(--text);
     }
 }
 
@@ -108,20 +108,20 @@ header {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--rp-muted);
+    background: var(--muted);
     transition: background 0.4s;
     flex-shrink: 0;
 
     &.OnlineIndicatorOnline {
-        background: var(--rp-foam);
-        box-shadow: 0 0 5px var(--rp-foam);
+        background: var(--foam);
+        box-shadow: 0 0 5px var(--foam);
     }
 }
 
 .IconButton {
     background: transparent;
     border: none;
-    color: var(--rp-text);
+    color: var(--text);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -131,27 +131,27 @@ header {
     transition: background 0.2s;
 
     &:hover {
-        background: var(--rp-highlight-low);
+        background: var(--highlight-low);
     }
 }
 
 input:not([type='file']) {
     background: transparent;
-    color: var(--rp-text);
+    color: var(--text);
     border-radius: 2px;
     padding: 8px 16px;
-    border: solid 1px var(--rp-highlight-high);
+    border: solid 1px var(--highlight-high);
 }
 
 input:focus {
-    outline: 1px var(--rp-highlight-high) solid;
+    outline: 1px var(--highlight-high) solid;
 }
 
 %button-style {
     background: transparent;
-    color: var(--rp-love);
+    color: var(--love);
     text-decoration: none;
-    border: solid 1px var(--rp-love);
+    border: solid 1px var(--love);
     border-radius: 6px;
     padding: 8px 16px;
     font-size: 0.9rem;
@@ -159,14 +159,14 @@ input:focus {
     transition: all 0.2s ease-in-out;
 
     &:hover:not(:disabled) {
-        background: var(--rp-love);
-        color: var(--rp-base);
+        background: var(--love);
+        color: var(--base);
         box-shadow: 0 4px 12px rgba(235, 111, 146, 0.2);
     }
 
     &:disabled {
-        border-color: var(--rp-muted);
-        color: var(--rp-muted);
+        border-color: var(--muted);
+        color: var(--muted);
         cursor: not-allowed;
     }
 }
@@ -181,7 +181,7 @@ input:focus {
 
 .TextButton {
     background: transparent;
-    color: var(--rp-text);
+    color: var(--text);
     text-decoration: none;
     border: none;
     border-radius: 6px;
@@ -191,12 +191,12 @@ input:focus {
     transition: all 0.2s;
 
     &:hover:not(:disabled) {
-        background: var(--rp-highlight-low);
+        background: var(--highlight-low);
     }
 }
 
 .TextButton:disabled {
-    color: var(--rp-muted);
+    color: var(--muted);
     cursor: not-allowed;
 }
 
@@ -211,13 +211,13 @@ input[type='checkbox'] {
 
 select {
     background: transparent;
-    color: var(--rp-text);
+    color: var(--text);
     border-radius: 6px;
     padding: 8px 16px;
-    border: solid 1px var(--rp-highlight-high);
+    border: solid 1px var(--highlight-high);
 
     option {
-        background: var(--rp-overlay);
+        background: var(--overlay);
         border: none;
     }
 }
@@ -229,8 +229,8 @@ input[type='file']:invalid::file-selector-button {
 
 input[type='file']:valid::file-selector-button {
     @extend .Button;
-    background: var(--rp-love);
-    color: var(--rp-text);
+    background: var(--love);
+    color: var(--text);
 }
 
 h1 {
@@ -249,13 +249,13 @@ h3 {
 }
 
 .Instructions {
-    color: var(--rp-subtle);
+    color: var(--subtle);
 }
 
 dialog {
     width: 500px;
-    background: var(--rp-overlay);
-    color: var(--rp-text);
+    background: var(--overlay);
+    color: var(--text);
     border: none;
     box-shadow:
         0px 8px 10px -5px rgba(0, 0, 0, 0.2),
@@ -273,7 +273,7 @@ dialog {
         width: 100%;
         padding: 12px;
         margin-bottom: 24px;
-        border-bottom: solid 1px var(--rp-highlight-high);
+        border-bottom: solid 1px var(--highlight-high);
     }
 
     label {
@@ -290,7 +290,7 @@ dialog {
         align-items: center;
         padding: 12px;
         margin-top: 24px;
-        border-top: solid 1px var(--rp-highlight-high);
+        border-top: solid 1px var(--highlight-high);
     }
 }
 
@@ -299,16 +299,38 @@ dialog::backdrop {
 }
 
 fieldset {
-    border: solid 1px var(--rp-highlight-high);
+    border: solid 1px var(--highlight-high);
 }
 
 legend {
-    color: var(--rp-subtle);
+    color: var(--subtle);
+}
+
+.Spacer {
+    flex-grow: 1;
+}
+
+.ModalButtonBar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    margin-top: 12px;
+    padding-top: 20px;
+    border-top: 1px solid var(--highlight-low);
+
+    .TextButton {
+        color: var(--subtle);
+
+        &:hover {
+            color: var(--love);
+        }
+    }
 }
 
 .Toaster {
-    background: var(--rp-overlay) !important;
-    color: var(--rp-text) !important;
+    background: var(--overlay) !important;
+    color: var(--text) !important;
 
     button {
         @extend .Button;

@@ -137,7 +137,7 @@ pub async fn do_import(
         path: event_path.clone(),
     });
 
-    let result = get_mork_client().import(&perm, path, &uri).await;
+    let result = get_mork_client().import(&perm, path, "$", "$", &uri).await;
     let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
 
     result.map(|_| Json(true)).map_err(mork_error_to_status)
@@ -153,7 +153,7 @@ pub async fn export_root(token: Token) -> Result<Json<String>, Status> {
 #[get("/spaces/<path..>")]
 pub async fn export(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
     get_mork_client()
-        .export(&permission_from_token(&token), &path)
+        .export(&permission_from_token(&token), &path, "$", "$")
         .await
         .map(Json)
         .map_err(mork_error_to_status)
@@ -162,14 +162,14 @@ pub async fn export(token: Token, path: PathBuf) -> Result<Json<String>, Status>
 // ─── Clear ───────────────────────────────────────────────────────────────────
 
 #[rocket::delete("/spaces?<pattern>")]
-pub async fn clear_root(token: Token, pattern: Option<String>) -> Result<Json<bool>, Status> {
+pub async fn clear_root(token: Token, pattern: String) -> Result<Json<bool>, Status> {
     clear(token, PathBuf::new(), pattern).await
 }
 
 #[rocket::delete("/spaces/<path..>?<pattern>")]
-pub async fn clear(token: Token, path: PathBuf, pattern: Option<String>) -> Result<Json<bool>, Status> {
+pub async fn clear(token: Token, path: PathBuf, pattern: String) -> Result<Json<bool>, Status> {
     get_mork_client()
-        .clear(&permission_from_token(&token), &path, pattern.as_deref())
+        .clear(&permission_from_token(&token), &path, &pattern)
         .await
         .map(|_| Json(true))
         .map_err(mork_error_to_status)
@@ -370,7 +370,7 @@ pub async fn import_url_metta(
     let _ = bus.0.send(SpaceEvent::Locked {
         path: event_path.clone(),
     });
-    let result = get_mork_client().import(&perm, &path, &url).await;
+    let result = get_mork_client().import(&perm, &path, "$", "$", &url).await;
     let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
     result.map(|_| Json(true)).map_err(mork_error_to_status)
 }

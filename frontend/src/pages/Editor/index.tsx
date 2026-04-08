@@ -23,13 +23,13 @@ import {
 } from 'solid-icons/vs'
 import { createMemo, createSignal, onMount, onCleanup, Show, For, createEffect, batch, on, untrack } from 'solid-js'
 import styles from './Editor.module.scss'
-import commonStyles from './styles/Common.module.scss'
+import commonStyles from '../../styles/Common.module.scss'
 import { A } from '@solidjs/router'
 import { Toaster } from 'solid-toast'
-import { notify } from './notify'
-import { useTheme } from './ThemeContext'
-import { BACKEND_URL, TOKEN } from './urls'
-import { wsService, StatusEvent } from './websocket'
+import { notify } from '../../notify'
+import { useTheme } from '../../ThemeContext'
+import { BACKEND_URL, TOKEN } from '../../urls'
+import { wsService, StatusEvent } from '../../websocket'
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/panda-syntax-dark.css'
 
@@ -130,30 +130,30 @@ import {
     ImportFormat,
     ImportSource,
     Token,
-} from './types'
+} from '../../types'
 import {
     getEditorTheme,
     highlightStyle,
     languageSupport,
     mettaLinter,
     themeCompartment,
-} from './mettaLanguageSupport'
-import { Expression, Symbol, Variable } from './parser/parser.terms'
-import { diffExtension, setOriginalContentEffect } from './diffExtension'
-import { setCollapsedPathsEffect, collapsedPathsField, createPathFoldExtension, getFoldedPaths, extractLinePathTokens } from './pathFoldExtension'
-import { NamespaceSelector } from './NamespaceSelector'
-import { TrieExplorer, buildTrie, TrieNode } from './TrieExplorer'
-import { EditorASTState, astToString, initializeEditorState, emptyEditorState, parseMeTTaString, buildASTFromTokens, mergeTokensIntoAST, unexpandFringe, hasFringeDescendant, computeDiff, ASTNode } from './ast'
-import { getDisplayContent, getOriginalContent, createASTStateFromTokens, stripNamespacePrefix } from './editorASTUtils'
+} from './extensions/mettaLanguageSupport'
+import { Expression, Symbol, Variable } from '../../parser/parser.terms'
+import { diffExtension, setOriginalContentEffect } from './extensions/diffExtension'
+import { setCollapsedPathsEffect, collapsedPathsField, createPathFoldExtension, getFoldedPaths, extractLinePathTokens } from './extensions/pathFoldExtension'
+import { NamespaceSelector } from './components/NamespaceSelector/NamespaceSelector'
+import { TrieExplorer, buildTrie, TrieNode } from './components/TrieExplorer/TrieExplorer'
+import { EditorASTState, astToString, initializeEditorState, emptyEditorState, parseMeTTaString, buildASTFromTokens, mergeTokensIntoAST, unexpandFringe, hasFringeDescendant, computeDiff, ASTNode } from './lib/ast'
+import { getDisplayContent, getOriginalContent, createASTStateFromTokens, stripNamespacePrefix } from './lib/editorASTUtils'
 
 // Components
-import { Navbar } from './components/Navbar'
-import { ConfirmModal } from './components/ConfirmModal'
-import { LoadSpaceModal } from './components/LoadSpaceModal'
-import { ImportModal } from './components/ImportModal'
-import { TransformModal, SpaceConfig } from './components/TransformModal'
-import { SelectSpaceModal } from './components/SelectSpaceModal'
-import { ClearModal } from './components/ClearModal'
+import { Navbar } from '../../components/Navbar/Navbar'
+import { ConfirmModal } from '../../components/ConfirmModal/ConfirmModal'
+import { LoadSpaceModal } from './components/modals/LoadSpaceModal/LoadSpaceModal'
+import { ImportModal } from './components/modals/ImportModal/ImportModal'
+import { TransformModal, SpaceConfig } from './components/modals/TransformModal/TransformModal'
+import { SelectSpaceModal } from './components/modals/SelectSpaceModal/SelectSpaceModal'
+import { ClearModal } from './components/modals/ClearModal/ClearModal'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.').pop()?.toLowerCase()
@@ -1581,19 +1581,19 @@ const App: Component = () => {
                                             return (
                                                 <div class={styles.SpaceStatusBadge} title={s}>
                                                     <Show when={isError}>
-                                                        <VsWarning size={14} style={{ color: 'var(--rp-love)' }} />
+                                                        <VsWarning size={14} style={{ color: 'var(--love)' }} />
                                                         <span>{s}</span>
                                                     </Show>
                                                     <Show when={isLocked}>
-                                                        <VsLock size={14} style={{ color: 'var(--rp-gold)' }} />
+                                                        <VsLock size={14} style={{ color: 'var(--gold)' }} />
                                                         <span>{s}</span>
                                                     </Show>
                                                     <Show when={isCount}>
-                                                        <VsCheck size={14} style={{ color: 'var(--rp-foam)' }} />
+                                                        <VsCheck size={14} style={{ color: 'var(--foam)' }} />
                                                         <span>{String(status().count ?? '')} atoms</span>
                                                     </Show>
                                                     <Show when={s === 'pathClear'}>
-                                                        <VsCheck size={14} style={{ color: 'var(--rp-foam)' }} />
+                                                        <VsCheck size={14} style={{ color: 'var(--foam)' }} />
                                                         <span>ready</span>
                                                     </Show>
                                                 </div>
@@ -1746,7 +1746,7 @@ const App: Component = () => {
                 onCancel={() => clearModal.close()}
             />
 
-            <Toaster toastOptions={{ className: styles.Toaster }} containerStyle={{ 'margin-top': '60px' }} />
+            <Toaster toastOptions={{ className: commonStyles.Toaster }} containerStyle={{ 'margin-top': '60px' }} />
         </div>
     )
 }

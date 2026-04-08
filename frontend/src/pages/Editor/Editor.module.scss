@@ -1,0 +1,698 @@
+@import '../../styles/Common.module';
+
+.MainLayout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+.Main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+    box-sizing: border-box;
+    background: var(--base);
+    overflow: hidden;
+}
+
+.ContentWrapper {
+    flex: 1;
+    padding: 16px;
+    box-sizing: border-box;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.ContentRow {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    overflow: hidden;
+    min-height: 0;
+    background: var(--surface);
+    border: 1px solid var(--highlight-low);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.EditorColumn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--base);
+}
+
+// ── Outside-card sidebar (flush with navbar) ─────────────────────────────────
+
+.Sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 160px;
+    min-width: 160px;
+    background: var(--surface);
+    border-right: 1px solid var(--highlight-low);
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: width 0.2s ease, min-width 0.2s ease;
+    margin: 0;
+    padding: 8px;
+
+    &.SidebarCollapsed {
+        width: 42px;
+        min-width: 42px;
+
+        .MettaEditorActions button {
+            justify-content: center;
+            padding: 9px 0;
+
+            span {
+                display: none;
+            }
+        }
+
+        .ButtonGroup+.ButtonGroup {
+            margin-top: 2px;
+            padding-top: 2px;
+        }
+    }
+
+    .SidebarToggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 32px;
+        flex-shrink: 0;
+        margin-top: auto;
+        background: transparent;
+        border: none;
+        border-top: 1px solid var(--highlight-low);
+        color: var(--subtle);
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+
+        &:hover {
+            background: var(--highlight-low);
+            color: var(--text);
+        }
+    }
+
+    .MettaEditorActions {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        padding: 6px 0 0;
+        overflow-y: auto;
+
+        button {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            padding: 8px 14px;
+            background: transparent;
+            color: var(--subtle);
+            border: none;
+            font-size: 0.82rem;
+            text-align: left;
+            transition: background 0.15s, color 0.15s;
+            cursor: pointer;
+            width: 100%;
+            white-space: nowrap;
+
+            &:hover {
+                background: var(--highlight-low);
+                color: var(--text);
+            }
+
+            svg {
+                flex-shrink: 0;
+                color: var(--iris);
+            }
+        }
+    }
+
+    .ButtonGroup {
+        display: flex;
+        flex-direction: column;
+
+        &+.ButtonGroup {
+            border-top: 1px solid var(--highlight-low);
+            margin-top: 4px;
+            padding-top: 4px;
+        }
+    }
+
+    .ImportParametersForm {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        width: 100%;
+
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--subtle);
+
+            select {
+                width: 100%;
+                padding: 8px;
+                border-radius: 4px;
+                background: var(--base);
+                border: 1px solid var(--highlight-low);
+                color: var(--text);
+            }
+        }
+
+        .Instructions {
+            font-size: 0.85rem;
+            line-height: 1.4;
+            background: var(--base);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 0;
+            border: 1px solid var(--highlight-low);
+        }
+
+        .ImportActions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 8px;
+        }
+    }
+}
+
+.EditorTabs {
+    display: flex;
+    flex-direction: row;
+    background: var(--surface);
+    padding: 8px 16px;
+    gap: 8px;
+    align-items: center;
+    min-height: 48px;
+    overflow-x: auto;
+    width: 100%;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--highlight-low);
+    margin: 0;
+
+    &::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: var(--surface);
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: var(--highlight-high);
+        border-radius: 2px;
+    }
+
+    .AddTab {
+        background: var(--highlight-low);
+        border: 1px solid transparent;
+        border-radius: 50%;
+        color: var(--subtle);
+        cursor: pointer;
+        padding: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        width: 28px;
+        height: 28px;
+
+        &:hover {
+            background: var(--highlight-med);
+            color: var(--text);
+            border-color: var(--highlight-high);
+        }
+    }
+}
+
+.EditorTab {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: var(--highlight-low);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    min-width: 90px;
+    max-width: 240px;
+    transition: all 0.2s;
+    height: auto;
+    position: relative;
+    color: var(--subtle);
+    font-size: 0.85rem;
+
+    &:hover {
+        background: var(--highlight-med);
+        color: var(--text);
+        border-color: var(--highlight-high);
+    }
+
+    &.ActiveTab {
+        background: var(--highlight-med);
+        color: var(--text);
+        border-bottom-color: var(--love);
+        font-weight: 600;
+    }
+
+    .TabTitle {
+        font-size: 0.85rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+    }
+
+    .TabClose {
+        background: transparent;
+        border: none;
+        color: inherit;
+        cursor: pointer;
+        padding: 2px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        opacity: 0.6;
+        transition: all 0.2s;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.2);
+            opacity: 1;
+        }
+    }
+
+    &:hover .TabClose {
+        opacity: 0.8;
+    }
+
+    &.ActiveTab .TabClose {
+        opacity: 0.9;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.15);
+            opacity: 1;
+        }
+    }
+
+    .TabLocked {
+        display: flex;
+        align-items: center;
+        color: var(--gold);
+        font-size: 0.75rem;
+        opacity: 0.85;
+        flex-shrink: 0;
+    }
+}
+
+// ── Connection indicator ──────────────────────────────────────────────────────
+
+.OnlineIndicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.4s;
+    flex-shrink: 0;
+
+    &.OnlineIndicatorOnline {
+        background: var(--foam);
+        box-shadow: 0 0 5px var(--foam);
+    }
+}
+
+.MettaInputActionsWrapper {
+    width: 100%;
+    background: var(--base);
+    border-bottom: 1px solid var(--highlight-low);
+    border-top: 1px solid var(--highlight-low);
+    padding: 8px 16px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+
+.SpaceStatusBadge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: var(--subtle);
+    white-space: nowrap;
+    flex-shrink: 0;
+
+    span {
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+.MettaInput {
+    width: 100%;
+    flex: 1;
+    overflow: hidden;
+    background: var(--base);
+    min-height: 0;
+
+    :global(.cm-editor) {
+        height: 100%;
+    }
+
+    :global(.cm-content) {
+        padding: 12px 16px;
+    }
+
+    :global(.cm-scroller) {
+        padding: 0;
+    }
+}
+
+.ConsoleSection {
+    display: flex;
+    flex-direction: column;
+    height: var(--console-height, 120px);
+    flex-shrink: 0;
+    background: var(--base);
+    border-top: 2px solid var(--highlight-low);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.15);
+    width: 100%;
+    margin: 0;
+}
+
+.ConsoleToolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 6px 16px;
+    background: var(--base);
+    border-bottom: 1px solid var(--highlight-low);
+    flex-shrink: 0;
+}
+
+.RunButton {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: var(--base);
+    border: 1px solid var(--foam);
+    border-radius: 4px;
+    color: var(--foam);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.15s;
+
+    &:hover {
+        background: var(--foam);
+        color: var(--base);
+        box-shadow: 0 0 8px var(--foam-alpha);
+    }
+}
+
+.Console {
+    flex: 1;
+    width: 100%;
+    padding: 12px 16px;
+    box-sizing: border-box;
+    margin: 0;
+    overflow-y: auto;
+    font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--foam);
+    background: var(--base);
+    text-shadow: 0 0 2px var(--foam-alpha);
+
+    // Terminal-style scrollbar
+    &::-webkit-scrollbar {
+        width: 10px;
+        background: var(--base);
+    }
+
+    &::-webkit-scrollbar-track {
+        background: var(--surface);
+        border-radius: 5px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: var(--highlight-high);
+        border-radius: 5px;
+        border: 2px solid var(--surface);
+
+        &:hover {
+            background: var(--text);
+        }
+    }
+
+    // Override highlight.js colors for terminal look
+    code {
+        color: var(--foam);
+        font-family: inherit;
+
+        .hljs-keyword {
+            color: var(--pine);
+        }
+
+        .hljs-string {
+            color: var(--gold);
+        }
+
+        .hljs-number {
+            color: var(--iris);
+        }
+
+        .hljs-comment {
+            color: var(--muted);
+        }
+    }
+}
+
+.Resizer,
+.ConsoleResizer {
+    background: transparent;
+    transition: background 0.3s;
+    z-index: 10;
+
+    &:hover,
+    &.Resizing {
+        background: var(--love);
+    }
+}
+
+.Resizer {
+    width: 4px;
+    cursor: col-resize;
+    margin: 0;
+    display: block;
+}
+
+.ConsoleResizer {
+    height: 4px;
+    cursor: row-resize;
+    margin: -2px 0;
+}
+
+.Footer {
+    height: 16px;
+    width: 100%;
+    background: var(--highlight-low);
+    flex-shrink: 0;
+}
+
+.Spacer {
+    flex-grow: 1;
+}
+
+.NewSessionDiv {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    background: var(--base);
+
+    .ImportButton {
+        background: var(--surface);
+        border: 1px solid var(--highlight-high);
+        color: var(--text);
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        padding: 20px 40px;
+        border-radius: 12px;
+        gap: 16px;
+        font-size: 1.5rem;
+        transition: all 0.3s;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+
+        &:hover {
+            transform: translateY(-4px);
+            border-color: var(--love);
+            color: var(--love);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+        }
+    }
+}
+
+.Icon {
+    display: inline-flex;
+    color: var(--subtle) !important;
+    transition: color 0.2s, transform 0.2s;
+
+    &:hover {
+        color: var(--text) !important;
+        transform: scale(1.1);
+    }
+
+    svg {
+        display: block;
+        color: inherit !important;
+        fill: currentColor !important;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Responsive Design
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Mobile devices (portrait phones)
+@media screen and (max-width: 768px) {
+    .Main {
+        --trie-width: 100%;
+        --console-height: 200px;
+    }
+
+    .EditorLayout {
+        flex-direction: column;
+    }
+
+    .Sidebar {
+        width: 100%;
+        min-width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--highlight-low);
+
+        &.SidebarCollapsed {
+            width: 100%;
+            min-width: 100%;
+            max-height: 42px;
+            overflow: hidden;
+        }
+
+        .MettaEditorActions {
+            flex-direction: row;
+            flex-wrap: wrap;
+            overflow-x: auto;
+
+            .ButtonGroup {
+                flex-direction: row;
+            }
+        }
+    }
+
+    .Resizer {
+        display: none;
+    }
+
+    .ConsoleSection {
+        --console-height: 180px;
+    }
+
+    .EditorTabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+
+        &::-webkit-scrollbar {
+            height: 6px;
+        }
+    }
+
+    .MettaInputActionsWrapper {
+        flex-direction: column;
+        gap: 8px;
+    }
+}
+
+// Tablets (portrait and landscape)
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+    .Main {
+        --trie-width: 280px;
+        --console-height: 150px;
+    }
+
+    .Sidebar {
+        width: 120px;
+        min-width: 120px;
+
+        &.SidebarCollapsed {
+            width: 42px;
+            min-width: 42px;
+        }
+
+        .MettaEditorActions button span {
+            font-size: 0.8rem;
+        }
+    }
+
+    .ConsoleSection {
+        --console-height: 150px;
+    }
+}
+
+// Small desktops
+@media screen and (min-width: 1025px) and (max-width: 1366px) {
+    .Main {
+        --trie-width: 320px;
+        --console-height: 120px;
+    }
+
+    .Sidebar {
+        width: 140px;
+        min-width: 140px;
+    }
+}
+
+// Large desktops
+@media screen and (min-width: 1367px) {
+    .Main {
+        --trie-width: 350px;
+        --console-height: 140px;
+    }
+}
+
+// Handle mobile orientation changes
+@media screen and (max-width: 768px) and (orientation: landscape) {
+    .EditorLayout {
+        flex-direction: row;
+    }
+
+    .Resizer {
+        display: block;
+    }
+
+    .ConsoleSection {
+        --console-height: 120px;
+    }
+}

@@ -1,7 +1,7 @@
 import { Component, createSignal, For, Show, onCleanup } from "solid-js";
-import styles from "./Editor.module.scss";
+import styles from "./NamespaceSelector.module.scss";
 import { VsFolder } from "solid-icons/vs";
-import { handleAutoClose } from "./utils/editorUtils";
+import { handleAutoClose } from "../../lib/editorUtils";
 
 interface NamespaceSelectorProps {
   value: string;

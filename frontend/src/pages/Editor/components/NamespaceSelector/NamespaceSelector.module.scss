@@ -1,0 +1,86 @@
+// NamespaceSelector component styles
+
+.NamespaceSelector {
+    position: relative;
+    flex: 1;
+
+    input {
+        width: 100%;
+        border-radius: 8px;
+        padding: 10px 16px;
+        background: var(--base);
+        border: 1px solid var(--highlight-low);
+        color: var(--text);
+        box-sizing: border-box;
+        transition: border-color 0.2s;
+
+        &:focus {
+            border-color: var(--highlight-high);
+            outline: none;
+        }
+    }
+}
+
+.ExploreDropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    background: var(--overlay);
+    border: 1px solid var(--highlight-high);
+    border-radius: 10px;
+    z-index: 100;
+    max-height: 300px;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.ExploreItem {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-bottom: 1px solid var(--highlight-low);
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    &:hover,
+    &.ExploreItemFocused {
+        background: var(--highlight-med);
+    }
+
+    .ExploreItemMain {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+
+        .ExploreIcon {
+            color: var(--iris);
+        }
+    }
+
+    .ExploreItemPath {
+        font-weight: 600;
+        color: var(--rose);
+        font-size: 0.9rem;
+    }
+
+    .ExploreItemHint {
+        color: var(--subtle);
+        font-size: 0.75rem;
+        font-family: 'Fira Code', monospace;
+    }
+}
+
+.ExploreItemEmpty {
+    padding: 16px;
+    text-align: center;
+    color: var(--subtle);
+    font-style: italic;
+    font-size: 0.9rem;
+}

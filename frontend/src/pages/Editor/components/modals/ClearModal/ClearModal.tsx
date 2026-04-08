@@ -1,5 +1,5 @@
 import { Component, createSignal } from "solid-js";
-import styles from "../Editor.module.scss";
+import commonStyles from "../../../../../styles/Common.module.scss";
 
 interface ClearModalProps {
   ref: HTMLDialogElement | ((el: HTMLDialogElement) => void);
@@ -19,7 +19,7 @@ export const ClearModal: Component<ClearModalProps> = (props) => {
   };
 
   return (
-    <dialog ref={props.ref} class={styles.ClearModal}>
+    <dialog ref={props.ref}>
       <form onsubmit={handleSubmit}>
         <h2>Clear Space</h2>
         <p>
@@ -38,10 +38,10 @@ export const ClearModal: Component<ClearModalProps> = (props) => {
             Leave empty to clear all data in this space.
           </small>
         </label>
-        <div class={styles.ModalButtonBar}>
+        <div class={commonStyles.ModalButtonBar}>
           <button
             type="button"
-            class={styles.TextButton}
+            class={commonStyles.TextButton}
             onclick={() => {
               setPattern("");
               props.onCancel();
@@ -49,9 +49,9 @@ export const ClearModal: Component<ClearModalProps> = (props) => {
           >
             Cancel
           </button>
-          <div class={styles.Spacer}></div>
+          <div class={commonStyles.Spacer}></div>
           <button
-            class={styles.Button}
+            class={commonStyles.Button}
             type="submit"
           >
             Clear Space
