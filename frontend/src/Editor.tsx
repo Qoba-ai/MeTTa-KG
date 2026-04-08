@@ -153,6 +153,7 @@ import { LoadSpaceModal } from './components/LoadSpaceModal'
 import { ImportModal } from './components/ImportModal'
 import { TransformModal, SpaceConfig } from './components/TransformModal'
 import { SelectSpaceModal } from './components/SelectSpaceModal'
+import { ClearModal } from './components/ClearModal'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.').pop()?.toLowerCase()
@@ -223,6 +224,7 @@ const App: Component = () => {
     let selectSpaceModal: HTMLDialogElement
     let transformModal: HTMLDialogElement
     let confirmModal: HTMLDialogElement
+    let clearModal: HTMLDialogElement
 
     // Space State
     const [token, setToken] = createSignal<Token>()
@@ -329,7 +331,13 @@ const App: Component = () => {
         return getDisplayContent(astState)
     }
 
+    // Track loading state and last loaded tokens for each panel
+    const [editorLoadingPaths, setEditorLoadingPaths] = createSignal<Set<string>>(new Set());
+    const [editorLastLoadedTokens, setEditorLastLoadedTokens] = createSignal<Map<string, string>>(new Map());
+
     const createEditorState = (initialDoc: string, astState: EditorASTState) => {
+        let scrollCheckTimeout: number | undefined;
+
         return EditorState.create({
             doc: initialDoc,
             extensions: [
@@ -363,6 +371,70 @@ const App: Component = () => {
                         untrack(() => {
                             setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, astState: { ...p.astState, ast: newAST } } : p))
                         })
+                    }
+
+                    // Check for infinite scroll on scroll events
+                    if (update.view && update.view.scrollDOM) {
+                        if (scrollCheckTimeout) clearTimeout(scrollCheckTimeout);
+                        scrollCheckTimeout = window.setTimeout(async () => {
+                            const scroller = update.view.scrollDOM;
+                            const scrollTop = scroller.scrollTop;
+                            const scrollHeight = scroller.scrollHeight;
+                            const clientHeight = scroller.clientHeight;
+
+                            // Check if we're near the bottom (within 500px)
+                            if (scrollHeight - scrollTop - clientHeight < 500) {
+                                const p = activePanel();
+                                if (!p) return;
+
+                                const pathWithSlash = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/';
+                                const tokens = focusTokens().get(pathWithSlash) || [];
+
+                                // Check if there are tokens and we're not already loading
+                                if (tokens.length > 0 && !editorLoadingPaths().has(pathWithSlash)) {
+                                    const currentToken = tokens[0];
+
+                                    // Lock this path immediately
+                                    setEditorLoadingPaths(prev => new Set(prev).add(pathWithSlash));
+
+                                    // Save scroll position before loading (distance from bottom)
+                                    const scrollFromBottom = scrollHeight - scrollTop - clientHeight;
+
+                                    try {
+                                        // Trigger load more and wait for it to complete
+                                        await handleLoadMore(p.namespace);
+
+                                        // After loading completes, get the NEW token
+                                        const newTokens = focusTokens().get(pathWithSlash) || [];
+                                        const newToken = newTokens[0] || '';
+
+                                        // Store the new token (or empty if no more)
+                                        setEditorLastLoadedTokens(prev => new Map(prev).set(pathWithSlash, newToken));
+
+                                        // Force scroll adjustment using requestAnimationFrame for Chrome compatibility
+                                        requestAnimationFrame(() => {
+                                            const newScrollHeight = scroller.scrollHeight;
+                                            const newClientHeight = scroller.clientHeight;
+
+                                            // Maintain the same distance from bottom PLUS extra padding to prevent retrigger
+                                            // This ensures we don't stay at the very bottom in Chrome
+                                            const targetScrollTop = newScrollHeight - newClientHeight - scrollFromBottom - 200;
+
+                                            scroller.scrollTop = Math.max(0, targetScrollTop);
+                                        });
+                                    } catch (e) {
+                                        console.error('Load more failed in editor:', e);
+                                    } finally {
+                                        // Always unlock, even if loading failed
+                                        setEditorLoadingPaths(prev => {
+                                            const next = new Set(prev);
+                                            next.delete(pathWithSlash);
+                                            return next;
+                                        });
+                                    }
+                                }
+                            }
+                        }, 150);
                     }
                 }),
                 EditorView.domEventHandlers({
@@ -501,6 +573,7 @@ const App: Component = () => {
         setupModalBackdrop(selectSpaceModal)
         setupModalBackdrop(transformModal)
         setupModalBackdrop(confirmModal)
+        setupModalBackdrop(clearModal)
 
         const effectiveToken = TOKEN || localStorage.getItem('rootToken');
         console.log("Token check:", { VITE_TOKEN: TOKEN, localStorage: localStorage.getItem('rootToken') });
@@ -1284,29 +1357,43 @@ const App: Component = () => {
         return results
     }
 
-    const clearSpace = async () => {
+    const clearSpace = async (pattern?: string) => {
         const p = activePanel()
         if (!p) return
         const path = p.namespace
         const encodedPath = path.split('/').map(encodeURIComponent).join('/')
-        setConfirmData({
-            title: 'Clear Space',
-            message: `Are you sure you want to clear the space '${path}'?`,
-            onConfirm: async () => {
-                try {
-                    const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
-                        method: 'DELETE',
-                        headers: { Authorization: token()?.code ?? '' },
-                    })
-                    if (resp.ok) {
-                        notify.success(`Successfully cleared space '${path}'`)
-                        await read()
-                    } else notify.error(`Failed to clear space '${path}'`)
-                } catch (e) { console.error(e); notify.error(`Error clearing space '${path}'`) }
-                confirmModal.close()
+
+        try {
+            const url = pattern
+                ? `${BACKEND_URL}/spaces${encodedPath}?pattern=${encodeURIComponent(pattern)}`
+                : `${BACKEND_URL}/spaces${encodedPath}`;
+
+            const resp = await fetch(url, {
+                method: 'DELETE',
+                headers: { Authorization: token()?.code ?? '' },
+            })
+
+            if (resp.ok) {
+                const message = pattern
+                    ? `Successfully cleared matching data from space '${path}'`
+                    : `Successfully cleared space '${path}'`;
+                notify.success(message)
+                await read()
+            } else {
+                notify.error(`Failed to clear space '${path}'`)
             }
-        })
-        confirmModal.showModal()
+        } catch (e) {
+            console.error(e);
+            notify.error(`Error clearing space '${path}'`)
+        }
+
+        clearModal.close()
+    }
+
+    const openClearModal = () => {
+        const p = activePanel()
+        if (!p) return
+        clearModal.showModal()
     }
 
     const deleteSubspace = async (path: string) => {
@@ -1444,7 +1531,7 @@ const App: Component = () => {
                                 </button>
                             </div>
                             <div class={styles.ButtonGroup}>
-                                <button onclick={() => clearSpace()}>
+                                <button onclick={() => openClearModal()}>
                                     <VsClearAll size={16} />
                                     <span>Clear</span>
                                 </button>
@@ -1644,12 +1731,19 @@ const App: Component = () => {
                 fetchExploreResults={fetchExploreResults}
             />
 
-            <ConfirmModal 
+            <ConfirmModal
                 ref={confirmModal!}
                 title={confirmData().title}
                 message={confirmData().message}
                 onConfirm={confirmData().onConfirm}
                 onCancel={() => confirmModal.close()}
+            />
+
+            <ClearModal
+                ref={clearModal!}
+                namespace={activePanel()?.namespace || '/'}
+                onConfirm={(pattern) => clearSpace(pattern)}
+                onCancel={() => clearModal.close()}
             />
 
             <Toaster toastOptions={{ className: styles.Toaster }} containerStyle={{ 'margin-top': '60px' }} />

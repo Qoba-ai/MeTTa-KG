@@ -161,15 +161,15 @@ pub async fn export(token: Token, path: PathBuf) -> Result<Json<String>, Status>
 
 // ─── Clear ───────────────────────────────────────────────────────────────────
 
-#[rocket::delete("/spaces")]
-pub async fn clear_root(token: Token) -> Result<Json<bool>, Status> {
-    clear(token, PathBuf::new()).await
+#[rocket::delete("/spaces?<pattern>")]
+pub async fn clear_root(token: Token, pattern: Option<String>) -> Result<Json<bool>, Status> {
+    clear(token, PathBuf::new(), pattern).await
 }
 
-#[rocket::delete("/spaces/<path..>")]
-pub async fn clear(token: Token, path: PathBuf) -> Result<Json<bool>, Status> {
+#[rocket::delete("/spaces/<path..>?<pattern>")]
+pub async fn clear(token: Token, path: PathBuf, pattern: Option<String>) -> Result<Json<bool>, Status> {
     get_mork_client()
-        .clear(&permission_from_token(&token), &path)
+        .clear(&permission_from_token(&token), &path, pattern.as_deref())
         .await
         .map(|_| Json(true))
         .map_err(mork_error_to_status)

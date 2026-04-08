@@ -465,6 +465,11 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
   const rootPath = () => props.rootPath || "/";
   const [selectedPaths, setSelectedPaths] = createSignal<string[]>([]);
   const [shiftPressed, setShiftPressed] = createSignal(false);
+  const [loadingPaths, setLoadingPaths] = createSignal<Set<string>>(new Set());
+  const [lastLoadedTokens, setLastLoadedTokens] = createSignal<Map<string, string>>(new Map());
+
+  let trieContentRef: HTMLDivElement | undefined;
+  let scrollCheckTimeout: number | undefined;
 
   onMount(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -475,9 +480,93 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+
+    // Scroll listener for infinite scroll
+    const handleScroll = async () => {
+      if (!trieContentRef) return;
+
+      // Clear existing timeout
+      if (scrollCheckTimeout) {
+        clearTimeout(scrollCheckTimeout);
+      }
+
+      // Debounce scroll checks
+      scrollCheckTimeout = window.setTimeout(async () => {
+        const scrollTop = trieContentRef.scrollTop;
+        const scrollHeight = trieContentRef.scrollHeight;
+        const clientHeight = trieContentRef.clientHeight;
+
+        // Check if we're near the bottom (within 200px)
+        if (scrollHeight - scrollTop - clientHeight < 200) {
+          const tokens = props.focusTokens?.();
+          if (!tokens) return;
+
+          const pathNormalized = rootPath().endsWith('/') ? rootPath() : rootPath() + '/';
+          const tokensForPath = tokens.get(pathNormalized) || [];
+
+          // Check if there are tokens and we're not already loading this path
+          if (tokensForPath.length > 0 && !loadingPaths().has(pathNormalized)) {
+            const currentToken = tokensForPath[0];
+
+            // Lock this path immediately
+            setLoadingPaths(prev => new Set(prev).add(pathNormalized));
+
+            // Save scroll position before loading (distance from bottom)
+            const scrollFromBottom = scrollHeight - scrollTop - clientHeight;
+
+            try {
+              // Trigger load more and wait for it to complete
+              await props.onLoadMore?.(rootPath());
+
+              // After loading completes, get the NEW token
+              const newTokens = props.focusTokens?.();
+              const newTokensForPath = newTokens?.get(pathNormalized) || [];
+              const newToken = newTokensForPath[0] || '';
+
+              // Store the new token (or empty if no more)
+              setLastLoadedTokens(prev => new Map(prev).set(pathNormalized, newToken));
+
+              // Force scroll adjustment using requestAnimationFrame for Chrome compatibility
+              requestAnimationFrame(() => {
+                if (!trieContentRef) return;
+
+                const newScrollHeight = trieContentRef.scrollHeight;
+                const newClientHeight = trieContentRef.clientHeight;
+
+                // Maintain the same distance from bottom PLUS extra padding to prevent retrigger
+                // This ensures we don't stay at the very bottom in Chrome
+                const targetScrollTop = newScrollHeight - newClientHeight - scrollFromBottom - 150;
+
+                trieContentRef.scrollTop = Math.max(0, targetScrollTop);
+              });
+            } catch (e) {
+              console.error('Load more failed in tree explorer:', e);
+            } finally {
+              // Always unlock, even if loading failed
+              setLoadingPaths(prev => {
+                const next = new Set(prev);
+                next.delete(pathNormalized);
+                return next;
+              });
+            }
+          }
+        }
+      }, 100);
+    };
+
+    if (trieContentRef) {
+      trieContentRef.addEventListener('scroll', handleScroll);
+    }
+
     onCleanup(() => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      if (trieContentRef) {
+        trieContentRef.removeEventListener('scroll', handleScroll);
+      }
+      if (scrollCheckTimeout) {
+        clearTimeout(scrollCheckTimeout);
+      }
     });
   });
 
@@ -526,7 +615,7 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
           </button>
         </Show>
       </h3>
-      <div class={styles.TrieContent}>
+      <div class={styles.TrieContent} ref={trieContentRef}>
         {/* Render branch nodes first (parents/navigable children) */}
         <For each={
           Array.from(new Set([
@@ -599,25 +688,6 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
             />;
           }}
         </For>
-
-        {/* Show "Load More" button at root level if needed */}
-        <Show when={(() => {
-          if (!props.focusTokens) return false;
-          const tokens = props.focusTokens();
-          const pathNormalized = rootPath().endsWith('/') ? rootPath() : rootPath() + '/';
-          const tokensForPath = tokens.get(pathNormalized) || [];
-          return tokensForPath.length > 0;
-        })()}>
-          <div style={{ "margin-top": "8px" }}>
-            <button
-              class={styles.TrieLoadMoreBtn}
-              onClick={() => props.onLoadMore?.(rootPath())}
-              title="Load more expressions"
-            >
-              Load More...
-            </button>
-          </div>
-        </Show>
 
         <Show when={Object.keys(trie().children).length === 0 && trie().terminals.length === 0 &&
                     Object.keys(originalTrie().children).length === 0 && originalTrie().terminals.length === 0}>

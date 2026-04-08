@@ -13,6 +13,7 @@ use std::sync::Arc;
 pub struct MORKExploreResponse {
     pub expr: String,
     pub token: Vec<u8>,
+    pub cnt: usize,
 }
 
 // ─── Public Result Types ────────────────────────────────────────────────────
@@ -306,12 +307,18 @@ impl MorkClient {
         Ok(resp.text().await?)
     }
 
-    pub async fn clear(&self, perm: &Permission, path: &Path) -> Result<(), MorkError> {
+    pub async fn clear(&self, perm: &Permission, path: &Path, pattern: Option<&str>) -> Result<(), MorkError> {
         perm.require_write()?;
         perm.check_namespace(path)?;
 
-        let pattern = path_to_sexpr(path);
-        let url = format!("{}/clear/{}", self.base(), encode(&pattern));
+        let pattern_expr = if let Some(pat) = pattern {
+            // User provided a custom pattern, use it as-is
+            pat.to_string()
+        } else {
+            // No pattern provided, clear everything at this path
+            path_to_sexpr(path)
+        };
+        let url = format!("{}/clear/{}", self.base(), encode(&pattern_expr));
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -486,19 +493,15 @@ impl MorkClient {
         perm.check_namespace(path)?;
 
         let pattern = path_to_sexpr(path);
-        const PAGE_SIZE: usize = 250;
+        const PAGE_SIZE: usize = 100;
 
         let mut subspaces: Vec<(String, PathBuf)> = Vec::new();
         let mut metta_expressions: Vec<String> = Vec::new();
         let mut next_focus_token: Option<String> = None;
 
-        // Shared visited tokens between BFS and DFS phases
         let mut visited_tokens: HashSet<String> = HashSet::new();
         let mut skip_tokens: HashSet<String> = HashSet::new();
 
-        // Phase 1: BFS to discover all subspaces (only on first request)
-        // Uses same pattern as DFS so tokens can be reused
-        // When it encounters only 1 child with binary s-expression, marks it as visited so DFS skips it
         let mut bfs_request_count = 0;
         if focus_token.is_empty() {
             let mut subspace_symbols: HashSet<String> = HashSet::new();
@@ -507,18 +510,15 @@ impl MorkClient {
             queue.push_back((String::new(), 0));
             visited_tokens.insert(String::new());
 
-            // Depth limit for BFS - prevents exploring too deep in nested namespaces
             const MAX_BFS_DEPTH: usize = 2;
 
             while let Some((current_token, depth)) = queue.pop_front() {
-                // Stop if we've gone too deep
                 if depth >= MAX_BFS_DEPTH {
                     continue;
                 }
                 bfs_request_count += 1;
                 let responses = self.explore_raw(&pattern, &current_token).await?;
 
-                // Process all responses to collect subspace symbols
                 for response in &responses {
                     if let Some(relative_expr) = strip_prefix(&response.expr, path) {
                         // Collect all unique LHS symbols
@@ -557,12 +557,10 @@ impl MorkClient {
                     continue;
                 }
 
-                // Multiple responses or non-binary → continue BFS
                 for response in responses {
                     let encoded_token =
                         percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
 
-                    // Continue BFS if not already visited
                     if visited_tokens.insert(encoded_token.clone()) {
                         queue.push_back((encoded_token, depth + 1));
                     }
@@ -579,31 +577,27 @@ impl MorkClient {
                 .collect();
         }
 
-        // Phase 2: DFS to collect metta_expressions with pagination
-        // Skips tokens already visited/marked-to-skip in BFS phase
         let mut stack: Vec<String> = Vec::new();
 
-        // Initialize stack from focus_token
         if focus_token.is_empty() {
-            // Start DFS from root - will skip tokens marked by BFS
             stack.push(String::new());
         } else {
-            // Decode focus_token as JSON array of tokens (DFS stack state)
             if let Ok(tokens) = serde_json::from_str::<Vec<String>>(focus_token) {
                 stack = tokens;
             } else {
-                // Fallback for invalid token
                 stack.push(String::new());
             }
         }
 
+        let original_stack = stack.clone();
+
+        println!("{:?}", stack);
+
         println!("BFS requests: {}", bfs_request_count);
         println!("Skip tokens: {:#?}", skip_tokens);
 
-        // DFS loop
         let mut dfs_request_count = 0;
         while let Some(current_token) = stack.pop() {
-            // Skip if already visited by BFS or DFS, or marked to skip
             if !skip_tokens.insert(current_token.clone()) {
                 continue;
             }
@@ -611,7 +605,8 @@ impl MorkClient {
             dfs_request_count += 1;
             let responses = self.explore_raw(&pattern, &current_token).await?;
 
-            // Process responses in DFS order
+            let nr_of_responses = responses.len();
+
             for response in responses {
                 let relative_expr = match strip_prefix(&response.expr, path) {
                     Some(s) => s,
@@ -620,33 +615,27 @@ impl MorkClient {
 
                 let encoded_token = percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
 
-                // Add child token to stack if not visited/skipped
-                if !skip_tokens.contains(&encoded_token) {
-                    stack.push(encoded_token);
-                }
-
-                // Skip subspaces (already collected in phase 1)
                 if parse_binary_sexp(&relative_expr).is_some() {
                     continue;
                 }
 
-                // Add to metta_expressions if not duplicate
-                if !metta_expressions.contains(&relative_expr) {
+                if !metta_expressions.contains(&relative_expr) && nr_of_responses == 1 {
                     metta_expressions.push(relative_expr);
 
-                    // Check if we hit page limit
                     if metta_expressions.len() >= PAGE_SIZE {
-                        // Save remaining stack as focus_token for continuation
                         if !stack.is_empty() {
                             next_focus_token =
                                 Some(serde_json::to_string(&stack).unwrap_or_default());
                         }
                         break;
                     }
+                } else {
+                    if !skip_tokens.contains(&encoded_token) {
+                        stack.push(encoded_token);
+                    }
                 }
             }
 
-            // Break outer loop if we hit limit
             if metta_expressions.len() >= PAGE_SIZE {
                 break;
             }
@@ -878,7 +867,7 @@ mod tests {
     #[tokio::test]
     async fn clear_requires_write() {
         let err = client()
-            .clear(&read_only(""), Path::new("space/sub"))
+            .clear(&read_only(""), Path::new("space/sub"), None)
             .await
             .unwrap_err();
         assert!(matches!(
@@ -890,7 +879,7 @@ mod tests {
     #[tokio::test]
     async fn clear_rejects_wrong_namespace() {
         let err = client()
-            .clear(&read_write("other"), Path::new("space/sub"))
+            .clear(&read_write("other"), Path::new("space/sub"), None)
             .await
             .unwrap_err();
         assert!(matches!(

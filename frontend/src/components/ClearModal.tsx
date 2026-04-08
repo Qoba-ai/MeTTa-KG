@@ -1,0 +1,63 @@
+import { Component, createSignal } from "solid-js";
+import styles from "../Editor.module.scss";
+
+interface ClearModalProps {
+  ref: HTMLDialogElement | ((el: HTMLDialogElement) => void);
+  namespace: string;
+  onConfirm: (pattern?: string) => void;
+  onCancel: () => void;
+}
+
+export const ClearModal: Component<ClearModalProps> = (props) => {
+  const [pattern, setPattern] = createSignal("");
+
+  const handleSubmit = (e: Event) => {
+    e.preventDefault();
+    const trimmedPattern = pattern().trim();
+    props.onConfirm(trimmedPattern || undefined);
+    setPattern(""); // Reset for next time
+  };
+
+  return (
+    <dialog ref={props.ref} class={styles.ClearModal}>
+      <form onsubmit={handleSubmit}>
+        <h2>Clear Space</h2>
+        <p>
+          Are you sure you want to clear the space <strong>'{props.namespace}'</strong>?
+        </p>
+        <label>
+          Pattern (optional)
+          <input
+            type="text"
+            placeholder="e.g., (test (data $v) _) or leave empty to clear all"
+            value={pattern()}
+            onInput={(e) => setPattern(e.target.value)}
+          />
+          <small>
+            Specify a MeTTa expression pattern to clear only matching data.
+            Leave empty to clear all data in this space.
+          </small>
+        </label>
+        <div class={styles.ModalButtonBar}>
+          <button
+            type="button"
+            class={styles.TextButton}
+            onclick={() => {
+              setPattern("");
+              props.onCancel();
+            }}
+          >
+            Cancel
+          </button>
+          <div class={styles.Spacer}></div>
+          <button
+            class={styles.Button}
+            type="submit"
+          >
+            Clear Space
+          </button>
+        </div>
+      </form>
+    </dialog>
+  );
+};
