@@ -35,6 +35,8 @@ impl Fairing for ShutdownFairing {
 
 #[launch]
 fn rocket() -> Rocket<Build> {
+    mork_client::MorkLogger::init("logs");
+
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
     // TODO: move hardcoded allowed origins to database,
@@ -65,6 +67,8 @@ fn rocket() -> Rocket<Build> {
                 routes::translations::create_from_nt,
                 routes::translations::create_from_jsonld,
                 routes::translations::create_from_n3,
+                routes::op_logs::get_log,
+                routes::op_logs::get_logs,
                 routes::tokens::get_all,
                 routes::tokens::get,
                 routes::tokens::create,
@@ -80,7 +84,6 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::import_jsonld,
                 routes::spaces::import_n3,
                 routes::spaces::transform,
-                routes::spaces::busywait,
                 routes::spaces::clear,
                 routes::spaces::clear_root,
                 routes::spaces::status,
@@ -99,7 +102,7 @@ fn rocket() -> Rocket<Build> {
                 routes::events::ws_ping,
                 routes::events::ws_events,
                 routes::events::ws_status_root,
-                routes::events::ws_status,
+                routes::events::ws_status
             ],
         )
         .mount("/public", FileServer::from("static"))

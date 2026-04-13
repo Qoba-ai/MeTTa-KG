@@ -23,14 +23,11 @@ fn validate_token_code(token_code: &str) -> Option<crate::model::Token> {
 /// Namespace is like "/" (root) or "/foo/bar/".
 /// Event path is like "/" or "/foo/bar/baz/".
 fn event_in_namespace(event: &SpaceEvent, namespace: &str) -> bool {
-    let path = match event {
-        SpaceEvent::Locked { path } | SpaceEvent::Unlocked { path } => path.as_str(),
-    };
     // Root namespace receives all events
     if namespace == "/" || namespace.is_empty() {
         return true;
     }
-    path.starts_with(namespace)
+    event.path().starts_with(namespace)
 }
 
 /// Global health/ping WebSocket — no token required.
@@ -153,7 +150,11 @@ async fn ws_status_inner(
     }
 
     // Check the requested path is within the token's namespace
-    let token_ns = token.namespace.strip_prefix('/').unwrap_or(&token.namespace).to_string();
+    let token_ns = token
+        .namespace
+        .strip_prefix('/')
+        .unwrap_or(&token.namespace)
+        .to_string();
     if !token_ns.is_empty() && !path.starts_with(&token_ns) {
         return Err(Status::Unauthorized);
     }
@@ -161,11 +162,11 @@ async fn ws_status_inner(
     let expr = path_to_metta_sexpr(&path);
     let encoded = urlencoding::encode(&expr).into_owned();
 
-    let mork_base = std::env::var("METTA_KG_MORK_URL")
-        .unwrap_or_else(|_| "http://localhost:8001".to_string());
+    let mork_base =
+        std::env::var("METTA_KG_MORK_URL").unwrap_or_else(|_| "http://localhost:8001".to_string());
     let mork_base = mork_base.trim_end_matches('/').to_string();
-    let status_url  = format!("{}/status/{}", mork_base, encoded);
-    let stream_url  = format!("{}/status_stream/{}", mork_base, encoded);
+    let status_url = format!("{}/status/{}", mork_base, encoded);
+    let stream_url = format!("{}/status_stream/{}", mork_base, encoded);
 
     let mut shutdown_rx = shutdown.inner().0.subscribe();
 
@@ -231,12 +232,21 @@ async fn ws_status_inner(
 
 /// Status-stream WebSocket for the root namespace.
 #[rocket::get("/ws/status?<token_code>")]
-pub async fn ws_status_root(ws: ws::WebSocket, token_code: String, shutdown: &State<crate::Shutdown>) -> Result<ws::Channel<'static>, Status> {
+pub async fn ws_status_root(
+    ws: ws::WebSocket,
+    token_code: String,
+    shutdown: &State<crate::Shutdown>,
+) -> Result<ws::Channel<'static>, Status> {
     ws_status_inner(ws, PathBuf::new(), token_code, shutdown).await
 }
 
 /// Status-stream WebSocket for a specific namespace path.
 #[rocket::get("/ws/status/<path..>?<token_code>")]
-pub async fn ws_status(ws: ws::WebSocket, path: PathBuf, token_code: String, shutdown: &State<crate::Shutdown>) -> Result<ws::Channel<'static>, Status> {
+pub async fn ws_status(
+    ws: ws::WebSocket,
+    path: PathBuf,
+    token_code: String,
+    shutdown: &State<crate::Shutdown>,
+) -> Result<ws::Channel<'static>, Status> {
     ws_status_inner(ws, path, token_code, shutdown).await
 }

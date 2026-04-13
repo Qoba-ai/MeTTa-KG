@@ -25,19 +25,6 @@ export const ClearModal: Component<ClearModalProps> = (props) => {
         <p>
           Are you sure you want to clear the space <strong>'{props.namespace}'</strong>?
         </p>
-        <label>
-          Pattern (optional)
-          <input
-            type="text"
-            placeholder="e.g., (test (data $v) _) or leave empty to clear all"
-            value={pattern()}
-            onInput={(e) => setPattern(e.target.value)}
-          />
-          <small>
-            Specify a MeTTa expression pattern to clear only matching data.
-            Leave empty to clear all data in this space.
-          </small>
-        </label>
         <div class={commonStyles.ModalButtonBar}>
           <button
             type="button"

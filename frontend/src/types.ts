@@ -59,6 +59,43 @@ interface JSONLDParserParameters {
     dummy: string
 }
 
+interface OpLogImport {
+    id: number
+    op_log_id: number
+    path: string
+    uri: string
+}
+
+interface OpLogClear {
+    id: number
+    op_log_id: number
+    path: string
+}
+
+interface OpLogCopy {
+    id: number
+    op_log_id: number
+    src: string
+    dst: string
+}
+
+interface OpLogTransform {
+    id: number
+    op_log_id: number
+    input_spaces: unknown
+    output_spaces: unknown
+}
+
+interface OpLogEntry {
+    id: number
+    op_type: string
+    created_at: string
+    import?: OpLogImport
+    clear?: OpLogClear
+    copy?: OpLogCopy
+    transform?: OpLogTransform
+}
+
 export {
     type Token,
     EditorMode,
@@ -69,5 +106,10 @@ export {
     type CSVParserParameters,
     type NTParserParameters,
     type N3ParserParameters,
-    type JSONLDParserParameters
+    type JSONLDParserParameters,
+    type OpLogEntry,
+    type OpLogImport,
+    type OpLogClear,
+    type OpLogCopy,
+    type OpLogTransform,
 }

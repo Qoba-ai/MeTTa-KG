@@ -143,7 +143,7 @@
     width: 100%;
     max-width: 1800px;
     margin: 0 auto;
-    padding: 16px 20px;
+    padding: 24px 40px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -192,25 +192,26 @@
 
 .SectionTitle {
     margin: 0;
-    font-size: 1.1rem;
+    font-size: 0.7rem;
     font-weight: 700;
-    color: var(--text);
+    color: var(--subtle);
     padding-bottom: 12px;
     border-bottom: none;
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.1em;
 
     &::before {
         content: '';
         display: block;
-        width: 4px;
-        height: 24px;
-        background: linear-gradient(180deg, var(--love), var(--rose));
+        width: 2px;
+        height: 14px;
+        background: var(--accent-primary);
         border-radius: 2px;
+        opacity: 0.7;
     }
 }
 
@@ -338,41 +339,37 @@
 
 .NewTokenForm {
     background: var(--surface);
-    padding: 24px;
-    border-radius: 16px;
+    padding: 20px 24px;
+    border-radius: 8px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    border: 1px solid var(--highlight-med);
-    box-shadow:
-        0px 4px 12px rgba(0, 0, 0, 0.12),
-        0px 12px 32px rgba(0, 0, 0, 0.1);
+    gap: 16px;
+    border: 1px solid var(--border-subtle);
     max-width: 450px;
 
     &>label {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
         font-weight: 600;
-        color: var(--text);
-        font-size: 0.8rem;
+        color: var(--subtle);
+        font-size: 0.72rem;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.06em;
 
         input {
-            padding: 12px 14px;
+            padding: 8px 12px;
             font-size: 0.9rem;
-            border-radius: 8px;
+            border-radius: 4px;
             max-width: 100%;
-            border: 2px solid var(--highlight-med);
+            border: 1px solid var(--border-subtle);
             background: var(--base);
             color: var(--text);
-            transition: all 0.2s ease;
+            transition: border-color 0.15s;
 
             &:focus {
                 outline: none;
-                border-color: var(--foam);
-                box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.15);
+                border-color: var(--accent-primary);
             }
 
             &::placeholder {
@@ -382,75 +379,57 @@
     }
 
     &>input[type="submit"] {
-        padding: 14px 28px;
-        font-size: 0.9rem;
+        padding: 8px 20px;
+        font-size: 0.85rem;
         font-weight: 600;
-        margin-top: 8px;
+        margin-top: 4px;
         align-self: flex-start;
-        background: linear-gradient(135deg, var(--love), color-mix(in srgb, var(--love) 80%, var(--rose)));
+        background: var(--accent-primary);
         border: none;
-        border-radius: 10px;
-        color: white;
+        border-radius: 4px;
+        color: var(--base);
         cursor: pointer;
-        transition: all 0.2s ease;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
+        transition: opacity 0.15s;
 
         &:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(235, 111, 146, 0.35);
-        }
-
-        &:active:not(:disabled) {
-            transform: translateY(0);
+            opacity: 0.85;
         }
 
         &:disabled {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: not-allowed;
         }
     }
 
     .NewTokenPermissions {
-        fieldset {
-            border: 2px solid var(--highlight-med);
-            border-radius: 12px;
-            padding: 16px 18px;
-            background: var(--base);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
 
-            legend {
-                padding: 0 12px;
-                font-weight: 600;
-                color: var(--text);
-                font-size: 0.8rem;
-                text-transform: uppercase;
-                letter-spacing: 0.04em;
+        label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 7px 4px;
+            border-radius: 4px;
+            transition: background 0.15s;
+            font-size: 0.88rem;
+            font-weight: 400;
+            color: var(--text);
+            opacity: 0.85;
+
+            &:hover {
+                background: var(--highlight-med);
+                opacity: 1;
             }
 
-            label {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                margin: 4px 0;
+            input[type="checkbox"] {
                 cursor: pointer;
-                padding: 10px 12px;
-                border-radius: 8px;
-                transition: all 0.15s ease;
-                font-size: 0.9rem;
-                font-weight: 500;
-                color: var(--text);
-
-                &:hover {
-                    background: var(--highlight-low);
-                }
-
-                input[type="checkbox"] {
-                    cursor: pointer;
-                    width: 18px;
-                    height: 18px;
-                    flex-shrink: 0;
-                    accent-color: var(--foam);
-                }
+                width: 15px;
+                height: 15px;
+                flex-shrink: 0;
+                accent-color: var(--accent-primary);
             }
         }
     }
@@ -534,16 +513,13 @@
 
 // allows table to be horizontally scrollable without scrolling the page horizontally
 .TokenTableWrapper {
-    border-radius: 16px;
-    border: 1px solid var(--highlight-med);
-    box-shadow:
-        0px 4px 12px rgba(0, 0, 0, 0.12),
-        0px 12px 32px rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: var(--surface);
+    background: var(--base);
     overflow: hidden;
 
     .TokenTableInnerWrapper {
@@ -580,30 +556,30 @@
     border-spacing: 0;
 
     thead {
-        background: linear-gradient(180deg, var(--overlay) 0%, var(--surface) 100%);
+        background: var(--surface);
         position: sticky;
         top: 0;
         z-index: 10;
 
         th {
-            border-bottom: 2px solid var(--highlight-med);
+            border-bottom: 1px solid var(--border-subtle);
         }
     }
 
     th:first-child {
-        border-top-left-radius: 12px;
+        border-top-left-radius: 0;
     }
 
     th:last-child {
-        border-top-right-radius: 12px;
+        border-top-right-radius: 0;
     }
 
     tbody tr {
-        border-bottom: 1px solid var(--highlight-low);
-        transition: all 0.15s ease;
+        border-bottom: 1px solid var(--border-subtle);
+        transition: background 0.1s;
 
         &:hover {
-            background: linear-gradient(90deg, var(--highlight-low) 0%, transparent 100%);
+            background: var(--highlight-low);
         }
 
         &:last-child td {
@@ -611,7 +587,7 @@
         }
 
         td {
-            border-bottom: 1px solid var(--highlight-low);
+            border-bottom: 1px solid var(--border-subtle);
         }
     }
 
@@ -798,57 +774,33 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 5px 11px;
-        border-radius: 7px;
-        font-size: 0.7rem;
-        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 3px;
+        font-size: 0.65rem;
+        font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.03em;
-        transition: all 0.15s ease;
+        letter-spacing: 0.04em;
         white-space: nowrap;
+        opacity: 0.75;
 
         &.PermissionRead {
-            background: linear-gradient(135deg, var(--foam), color-mix(in srgb, var(--foam) 80%, var(--pine)));
+            background: var(--foam);
             color: var(--base);
-            box-shadow: 0 2px 4px rgba(156, 207, 216, 0.25);
-
-            &:hover {
-                box-shadow: 0 3px 8px rgba(156, 207, 216, 0.4);
-                transform: translateY(-1px);
-            }
         }
 
         &.PermissionWrite {
-            background: linear-gradient(135deg, var(--gold), color-mix(in srgb, var(--gold) 80%, var(--rose)));
+            background: var(--gold);
             color: var(--base);
-            box-shadow: 0 2px 4px rgba(246, 193, 119, 0.25);
-
-            &:hover {
-                box-shadow: 0 3px 8px rgba(246, 193, 119, 0.4);
-                transform: translateY(-1px);
-            }
         }
 
         &.PermissionShareRead {
-            background: linear-gradient(135deg, var(--iris), color-mix(in srgb, var(--iris) 80%, var(--pine)));
+            background: var(--iris);
             color: var(--base);
-            box-shadow: 0 2px 4px rgba(196, 167, 231, 0.25);
-
-            &:hover {
-                box-shadow: 0 3px 8px rgba(196, 167, 231, 0.4);
-                transform: translateY(-1px);
-            }
         }
 
         &.PermissionShareWrite {
-            background: linear-gradient(135deg, var(--love), color-mix(in srgb, var(--love) 80%, var(--rose)));
-            color: white;
-            box-shadow: 0 2px 4px rgba(235, 111, 146, 0.25);
-
-            &:hover {
-                box-shadow: 0 3px 8px rgba(235, 111, 146, 0.4);
-                transform: translateY(-1px);
-            }
+            background: var(--love);
+            color: var(--base);
         }
     }
 
@@ -933,19 +885,18 @@
         flex: 1;
         width: 100%;
         font-size: 0.75rem;
-        padding: 8px 10px;
+        padding: 6px 10px;
         box-sizing: border-box;
-        border: 2px solid var(--highlight-med);
-        border-radius: 6px;
+        border: 1px solid var(--border-subtle);
+        border-radius: 4px;
         background: var(--base);
         color: var(--text);
-        transition: all 0.2s ease;
+        transition: border-color 0.15s;
         font-family: 'Courier New', monospace;
 
         &:focus {
             outline: none;
-            border-color: var(--foam);
-            box-shadow: 0 0 0 3px rgba(156, 207, 216, 0.15);
+            border-color: var(--accent-primary);
         }
 
         &::placeholder {
@@ -985,18 +936,18 @@
 
 .TableButtonBar {
     width: 100%;
-    background: linear-gradient(180deg, var(--surface) 0%, var(--overlay) 100%);
-    border-top: 2px solid var(--highlight-med);
-    padding: 16px 20px;
+    background: var(--surface);
+    border-top: 1px solid var(--border-subtle);
+    padding: 10px 16px;
     display: flex;
     flex-direction: row;
     justify-content: flex-start;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
     flex-shrink: 0;
-    border-bottom-left-radius: 16px;
-    border-bottom-right-radius: 16px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
 
     button {
         @extend .Button;
@@ -1073,7 +1024,7 @@
 @media screen and (max-width: 1024px) {
     .Main {
         gap: 20px;
-        padding: 12px;
+        padding: 16px 20px;
         height: auto;
         overflow: visible;
     }
@@ -1182,7 +1133,7 @@
 @media screen and (min-width: 1025px) and (max-width: 1599px) {
     .Main {
         gap: 24px;
-        padding: 20px;
+        padding: 20px 32px;
     }
 
     .TokenManagementSection {
@@ -1203,7 +1154,7 @@
 @media screen and (min-width: 1280px) {
     .Main {
         gap: 20px;
-        padding: 16px 24px;
+        padding: 24px 40px;
     }
 
     .RootTokenSection {
@@ -1237,7 +1188,7 @@
 @media screen and (min-width: 1920px) {
     .Main {
         gap: 24px;
-        padding: 20px 40px;
+        padding: 28px 60px;
     }
 
     .TokenManagementSection {

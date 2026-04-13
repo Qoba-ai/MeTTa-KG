@@ -76,6 +76,8 @@ export const ThemeProvider = (props: { children: JSX.Element }) => {
       "--highlight-low": s.base01,
       "--highlight-med": s.base02,
       "--highlight-high": s.base03,
+      "--border-subtle": s.base02,
+      "--accent-primary": s.base0D,
     };
 
     Object.entries(mapping).forEach(([key, value]) => {

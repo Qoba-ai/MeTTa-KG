@@ -6,6 +6,28 @@ use tokio::sync::broadcast;
 pub enum SpaceEvent {
     Locked { path: String },
     Unlocked { path: String },
+    ImportComplete { path: String },
+    ImportError { path: String, message: String },
+    ClearComplete { path: String },
+    ClearError { path: String, message: String },
+    TransformComplete { path: String },
+    TransformError { path: String, message: String },
+}
+
+impl SpaceEvent {
+    /// Returns the path associated with this event.
+    pub fn path(&self) -> &str {
+        match self {
+            Self::Locked { path }
+            | Self::Unlocked { path }
+            | Self::ImportComplete { path }
+            | Self::ImportError { path, .. }
+            | Self::ClearComplete { path }
+            | Self::ClearError { path, .. }
+            | Self::TransformComplete { path }
+            | Self::TransformError { path, .. } => path,
+        }
+    }
 }
 
 /// Holds the broadcast sender. The Receiver is created per-subscriber.

@@ -130,6 +130,7 @@ import {
     ImportFormat,
     ImportSource,
     Token,
+    type OpLogEntry,
 } from '../../types'
 import {
     getEditorTheme,
@@ -239,7 +240,7 @@ const App: Component = () => {
     // Panels State
     const [panels, setPanels] = createSignal<EditorPanel[]>([])
     const [activePanelId, setActivePanelId] = createSignal<string>('')
-    
+
     const activePanel = () => panels().find(p => p.id === activePanelId())
 
     // Editor Content State
@@ -281,6 +282,28 @@ const App: Component = () => {
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false)
 
+    // History/Logs State
+    const [spaceLogs, setSpaceLogs] = createSignal<OpLogEntry[]>([])
+    const [logsLoading, setLogsLoading] = createSignal(false)
+
+    const fetchSpaceLogs = async () => {
+        const t = token()
+        if (!t) return
+        setLogsLoading(true)
+        try {
+            const res = await fetch(`${BACKEND_URL}/logs?page_size=50`, {
+                headers: { Authorization: t.code },
+            })
+            if (res.ok) {
+                setSpaceLogs(await res.json())
+            }
+        } catch {
+            // ignore
+        } finally {
+            setLogsLoading(false)
+        }
+    }
+
     // WebSocket: set of space paths currently locked (import in progress)
     const [lockedPaths, setLockedPaths] = createSignal<Set<string>>(new Set())
     const [spaceStatus, setSpaceStatus] = createSignal<StatusEvent | null>(null)
@@ -290,7 +313,7 @@ const App: Component = () => {
     const [confirmData, setConfirmData] = createSignal({
         title: '',
         message: '',
-        onConfirm: () => {}
+        onConfirm: () => { }
     })
 
     const activeImportFileFormat = createMemo<ImportFormat | undefined>(() => {
@@ -533,14 +556,20 @@ const App: Component = () => {
     })
 
     // Subscribe to MORK status stream for the active panel's namespace
+    const activePanelNamespace = createMemo(() => activePanel()?.namespace)
     createEffect(() => {
         const t = token()
-        const ns = activePanel()?.namespace
+        const ns = activePanelNamespace()
         if (!t || !ns) { setSpaceStatus(null); return }
         setSpaceStatus(null)
         const unsub = wsService.subscribeStatus(ns, t.code, (event) => setSpaceStatus(event))
         onCleanup(unsub)
     })
+
+    // Fetch logs when active panel changes
+    createEffect(on(activePanelNamespace, (ns) => {
+        if (ns) fetchSpaceLogs()
+    }, { defer: true }))
 
     let isMounted = false
     onMount(() => {
@@ -895,12 +924,13 @@ const App: Component = () => {
             }
 
             if (targetNs === activePanel()?.namespace) {
-                await read()
+                await read();
             } else {
                 await addPanel(targetNs)
             }
 
             notify.success(format === ImportFormat.METTA ? 'Successfully imported to space' : 'Successfully translated and imported to space')
+            fetchSpaceLogs()
             setEditorMode(EditorMode.EDIT)
             setActiveImportFile(undefined)
             setImportUrl('')
@@ -1152,10 +1182,10 @@ const App: Component = () => {
         if (panelToClose?.view) {
             panelToClose.view.destroy()
         }
-        
+
         const remaining = panels().filter(p => p.id !== id)
         setPanels(remaining)
-        
+
         if (activePanelId() === id) {
             if (remaining.length > 0) {
                 setActivePanelId(remaining[remaining.length - 1].id)
@@ -1175,14 +1205,14 @@ const App: Component = () => {
         // Filter AST to only manually entered nodes
         const manualNodes: typeof p.astState.ast = []
         function filterManualNodes(nodes: ASTNode[]): ASTNode[] {
-          return nodes.filter(n => {
-            if (n.source !== 'manual') return false
-            if (n.type === 'expr') {
-              const expr = n as any
-              expr.children = filterManualNodes(expr.children)
-            }
-            return true
-          })
+            return nodes.filter(n => {
+                if (n.source !== 'manual') return false
+                if (n.type === 'expr') {
+                    const expr = n as any
+                    expr.children = filterManualNodes(expr.children)
+                }
+                return true
+            })
         }
         const manualAST = filterManualNodes(JSON.parse(JSON.stringify(p.astState.ast)))
         const diffContent = astToString(manualAST).trim()
@@ -1209,18 +1239,18 @@ const App: Component = () => {
                         // Mark all manual nodes as loaded (sync original)
                         const updatedAST = JSON.parse(JSON.stringify(p.astState.ast))
                         function markLoaded(nodes: ASTNode[]): void {
-                          for (const node of nodes) {
-                            node.source = 'loaded'
-                            if (node.type === 'expr') {
-                              const expr = node as any
-                              markLoaded(expr.children)
+                            for (const node of nodes) {
+                                node.source = 'loaded'
+                                if (node.type === 'expr') {
+                                    const expr = node as any
+                                    markLoaded(expr.children)
+                                }
                             }
-                          }
                         }
                         markLoaded(updatedAST)
                         setPanels(prev => prev.map(item => item.id === p.id
-                          ? { ...item, astState: { ...item.astState, originalAST: updatedAST } }
-                          : item))
+                            ? { ...item, astState: { ...item.astState, originalAST: updatedAST } }
+                            : item))
                     } else notify.error(`Failed to save to space '${path}' (Status: ${resp.status})`)
                 } catch (e) {
                     console.error(e)
@@ -1284,6 +1314,7 @@ const App: Component = () => {
             })
             if (resp.ok) {
                 notify.success('Transformation successfully dispatched')
+                fetchSpaceLogs()
                 transformModal.close()
             } else notify.error(`Transformation failed (Status: ${resp.status})`)
         } catch (e) { console.error(e); notify.error('Error during transformation') }
@@ -1329,7 +1360,7 @@ const App: Component = () => {
             const displayContent = getDisplayContent(p.astState)
             const trie = buildTrie(displayContent)
             const currentParts = path.split('/').filter(p => p.length > 0)
-            
+
             let currentLevel = trie
             for (const part of currentParts) {
                 if (currentLevel.children[part]) {
@@ -1378,6 +1409,7 @@ const App: Component = () => {
                     ? `Successfully cleared matching data from space '${path}'`
                     : `Successfully cleared space '${path}'`;
                 notify.success(message)
+                fetchSpaceLogs()
                 await read()
             } else {
                 notify.error(`Failed to clear space '${path}'`)
@@ -1401,16 +1433,16 @@ const App: Component = () => {
         // results in an empty last segment. We should filter empty segments.
         const segments = path.split('/').filter(p => p.length > 0)
         const encodedPath = segments.map(encodeURIComponent).join('/')
-        
+
         setConfirmData({
             title: 'Delete Subspace',
             message: `Are you sure you want to delete the subspace '${path}'? This will remove all atoms matching this prefix.`,
             onConfirm: async () => {
                 try {
-                    const url = segments.length > 0 
+                    const url = segments.length > 0
                         ? `${BACKEND_URL}/spaces/${encodedPath}`
                         : `${BACKEND_URL}/spaces`;
-                        
+
                     const resp = await fetch(url, {
                         method: 'DELETE',
                         headers: { Authorization: token()?.code ?? '' },
@@ -1519,53 +1551,75 @@ const App: Component = () => {
                         <div class={styles.ContentRow}>
                             {/* Sidebar */}
                             <aside class={`${styles.Sidebar} ${sidebarCollapsed() ? styles.SidebarCollapsed : ''}`}>
-                        <div class={styles.MettaEditorActions}>
-                            <div class={styles.ButtonGroup}>
-                                <button onClick={() => openImportModal()}>
-                                    <VsCloudUpload size={16} />
-                                    <span>Import</span>
+                                <div class={styles.MettaEditorActions}>
+                                    <div class={styles.ButtonGroup}>
+                                        <button onClick={() => openImportModal()}>
+                                            <VsCloudUpload size={16} />
+                                            <span>Import</span>
+                                        </button>
+                                    </div>
+                                    <div class={styles.ButtonGroup}>
+                                        <button onclick={() => openClearModal()}>
+                                            <VsClearAll size={16} />
+                                            <span>Clear</span>
+                                        </button>
+                                        <button onclick={() => {
+                                            if (transformConfigs().length === 0) {
+                                                setTransformConfigs([
+                                                    { path: '/', type: 'input', patternOrTemplate: '' },
+                                                    { path: '/', type: 'output', patternOrTemplate: '' }
+                                                ]);
+                                            }
+                                            transformModal.showModal();
+                                        }}>
+                                            <VsReplace size={16} />
+                                            <span>Transform</span>
+                                        </button>
+                                        <button onclick={() => write()}>
+                                            <VsCloudDownload size={16} />
+                                            <span>Update</span>
+                                        </button>
+                                    </div>
+                                    <div class={styles.ButtonGroup}>
+                                        <button onclick={() => indent()}>
+                                            <VsIndent size={16} />
+                                            <span>Reformat</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class={styles.SidebarHistory}>
+                                    <div class={styles.SidebarHistoryHeader}>
+                                        <span>History</span>
+                                    </div>
+                                    <div class={styles.SidebarHistoryList}>
+                                        <Show when={logsLoading()}>
+                                            <div class={styles.LogEntryLoading}>Loading…</div>
+                                        </Show>
+                                        <For each={spaceLogs()}>
+                                            {(log) => (
+                                                <div class={styles.LogEntry}>
+                                                    <span class={styles.LogEntryType}>{log.op_type}</span>
+                                                    <span class={styles.LogEntryDetail}>
+                                                        {log.import?.path ?? log.clear?.path ?? log.copy?.src ?? ''}
+                                                    </span>
+                                                    <span class={styles.LogEntryTime}>
+                                                        {new Date(log.created_at).toLocaleTimeString()}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </For>
+                                        <Show when={!logsLoading() && spaceLogs().length === 0}>
+                                            <div class={styles.LogEntryEmpty}>No logs yet</div>
+                                        </Show>
+                                    </div>
+                                </div>
+                                <button
+                                    class={styles.SidebarToggle}
+                                    onClick={() => setSidebarCollapsed(v => !v)}
+                                    title={sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'}
+                                >
+                                    {sidebarCollapsed() ? <VsChevronRight size={14} /> : <VsChevronLeft size={14} />}
                                 </button>
-                                <button onclick={() => exportMetta()}>
-                                    <VsSave size={16} />
-                                    <span>Export</span>
-                                </button>
-                            </div>
-                            <div class={styles.ButtonGroup}>
-                                <button onclick={() => openClearModal()}>
-                                    <VsClearAll size={16} />
-                                    <span>Clear</span>
-                                </button>
-                                <button onclick={() => {
-                                    if (transformConfigs().length === 0) {
-                                        setTransformConfigs([
-                                            { path: '/', type: 'input', patternOrTemplate: '' },
-                                            { path: '/', type: 'output', patternOrTemplate: '' }
-                                        ]);
-                                    }
-                                    transformModal.showModal();
-                                }}>
-                                    <VsReplace size={16} />
-                                    <span>Transform</span>
-                                </button>
-                                <button onclick={() => write()}>
-                                    <VsCloudDownload size={16} />
-                                    <span>Update</span>
-                                </button>
-                            </div>
-                            <div class={styles.ButtonGroup}>
-                                <button onclick={() => indent()}>
-                                    <VsIndent size={16} />
-                                    <span>Reformat</span>
-                                </button>
-                            </div>
-                        </div>
-                        <button
-                            class={styles.SidebarToggle}
-                            onClick={() => setSidebarCollapsed(v => !v)}
-                            title={sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'}
-                        >
-                            {sidebarCollapsed() ? <VsChevronRight size={14} /> : <VsChevronLeft size={14} />}
-                            </button>
                             </aside>
 
                             {/* Main editor column */}
@@ -1617,15 +1671,17 @@ const App: Component = () => {
                                 {/* Console - full width at bottom */}
                                 <div class={`${styles.ConsoleResizer} ${isResizingConsole() ? styles.Resizing : ''}`} onMouseDown={startConsoleResizing} />
                                 <div class={styles.ConsoleSection}>
-                                        <div class={styles.ConsoleToolbar}>
-                                            <button onclick={() => run()} class={styles.RunButton} title="Run MeTTa">
-                                                <VsPlay size={14} />
-                                                <span>Run</span>
-                                            </button>
-                                        </div>
                                     <pre class={styles.Console}>
                                         <code class={'language-metta'} innerHTML={hljs.highlight(editorOutput(), { language: 'metta' }).value}></code>
                                     </pre>
+                                </div>
+
+                                {/* Footer action bar */}
+                                <div class={styles.EditorFooter}>
+                                    <button onclick={() => run()} class={styles.RunButton} title="Run MeTTa">
+                                        <VsPlay size={14} />
+                                        <span>Run</span>
+                                    </button>
                                 </div>
                             </div>
 
@@ -1708,13 +1764,13 @@ const App: Component = () => {
                 isTranslating={isTranslating}
             />
 
-            <LoadSpaceModal 
+            <LoadSpaceModal
                 ref={loadSpaceModal!}
                 onLoad={(t) => { loadSpace(t); loadSpaceModal.close() }}
                 onCancel={() => loadSpaceModal.close()}
             />
 
-            <SelectSpaceModal 
+            <SelectSpaceModal
                 ref={selectSpaceModal!}
                 onSelect={(path) => { addPanel(path); selectSpaceModal.close() }}
                 onCancel={() => selectSpaceModal.close()}
@@ -1722,7 +1778,7 @@ const App: Component = () => {
                 initialValue={activePanel()?.namespace || '/'}
             />
 
-            <TransformModal 
+            <TransformModal
                 ref={transformModal!}
                 configs={transformConfigs}
                 setConfigs={setTransformConfigs}

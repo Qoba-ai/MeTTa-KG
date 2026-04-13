@@ -1,11 +1,64 @@
-use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
+use chrono::Local;
+use percent_encoding::{NON_ALPHANUMERIC, percent_decode_str, percent_encode};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
+use std::fs::{self, File};
 use std::future::Future;
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use tokio::sync::Mutex as TokioMutex;
+use uuid::Uuid;
+
+// ─── MorkLogger ─────────────────────────────────────────────────────────────
+
+pub struct MorkLogger {
+    pub session_dir: PathBuf,
+    log_file: TokioMutex<File>,
+}
+
+static GLOBAL_LOGGER: OnceLock<Arc<MorkLogger>> = OnceLock::new();
+
+impl MorkLogger {
+    /// Initialize the global logger. Creates `<logs_base>/<timestamp>/requests.log`.
+    /// Must be called once at process startup before any MORK requests are made.
+    pub fn init(logs_base: impl AsRef<Path>) {
+        let timestamp = Local::now().format("%Y-%m-%dT%H-%M-%S").to_string();
+        let session_dir = logs_base.as_ref().join(&timestamp);
+        fs::create_dir_all(&session_dir).expect("failed to create log session directory");
+        let log_path = session_dir.join("requests.log");
+        let log_file = File::create(&log_path).expect("failed to create requests.log");
+        let logger = Arc::new(MorkLogger {
+            session_dir,
+            log_file: TokioMutex::new(log_file),
+        });
+        let _ = GLOBAL_LOGGER.set(logger);
+    }
+
+    pub fn get() -> Option<&'static Arc<MorkLogger>> {
+        GLOBAL_LOGGER.get()
+    }
+
+    pub async fn log_request(&self, method: &str, url: &str, body: Option<&str>) {
+        let decoded = percent_decode_str(url).decode_utf8_lossy().into_owned();
+        let ts = Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
+        let line = match body {
+            Some(b) => format!("[{}] {} {}\n  BODY: {}\n\n", ts, method, decoded, b),
+            None => format!("[{}] {} {}\n\n", ts, method, decoded),
+        };
+        let mut f = self.log_file.lock().await;
+        let _ = f.write_all(line.as_bytes());
+    }
+
+    /// Copy a file from `static/<filename>` into the session directory.
+    pub fn save_import_file(&self, filename: &str) {
+        let src = PathBuf::from("static").join(filename);
+        let dst = self.session_dir.join(filename);
+        let _ = fs::copy(&src, &dst);
+    }
+}
 
 // ─── API Response Types ─────────────────────────────────────────────────────
 
@@ -153,92 +206,13 @@ fn encode(s: &str) -> String {
     percent_encode(s.as_bytes(), NON_ALPHANUMERIC).to_string()
 }
 
-// ─── Permission ─────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PermissionError {
-    ReadRequired,
-    WriteRequired,
-    NamespaceMismatch { path: String, namespace: String },
-}
-
-impl std::fmt::Display for PermissionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PermissionError::ReadRequired => write!(f, "read permission required"),
-            PermissionError::WriteRequired => write!(f, "write permission required"),
-            PermissionError::NamespaceMismatch { path, namespace } => {
-                write!(
-                    f,
-                    "path '{}' is outside token namespace '{}'",
-                    path, namespace
-                )
-            }
-        }
-    }
-}
-
-/// Permissions derived from a token, used to gate every MORK operation.
-#[derive(Debug, Clone)]
-pub struct Permission {
-    pub namespace: String,
-    pub can_read: bool,
-    pub can_write: bool,
-}
-
-impl Permission {
-    pub fn new(namespace: impl Into<String>, can_read: bool, can_write: bool) -> Self {
-        Self {
-            namespace: namespace.into(),
-            can_read,
-            can_write,
-        }
-    }
-
-    pub fn require_read(&self) -> Result<(), PermissionError> {
-        if self.can_read {
-            Ok(())
-        } else {
-            Err(PermissionError::ReadRequired)
-        }
-    }
-
-    pub fn require_write(&self) -> Result<(), PermissionError> {
-        if self.can_write {
-            Ok(())
-        } else {
-            Err(PermissionError::WriteRequired)
-        }
-    }
-
-    pub fn check_namespace(&self, path: &Path) -> Result<(), PermissionError> {
-        if self.namespace.is_empty() {
-            return Ok(());
-        }
-        if !path.starts_with(&self.namespace) {
-            return Err(PermissionError::NamespaceMismatch {
-                path: path.to_string_lossy().into_owned(),
-                namespace: self.namespace.clone(),
-            });
-        }
-        Ok(())
-    }
-}
-
 // ─── Error ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
 pub enum MorkError {
-    Permission(PermissionError),
     Http(reqwest::Error),
     BadStatus(u16),
     Timeout,
-}
-
-impl From<PermissionError> for MorkError {
-    fn from(e: PermissionError) -> Self {
-        MorkError::Permission(e)
-    }
 }
 
 impl From<reqwest::Error> for MorkError {
@@ -268,21 +242,29 @@ impl MorkClient {
         self.base_url.trim_end_matches('/')
     }
 
+    async fn log_get(&self, url: &str) {
+        if let Some(logger) = MorkLogger::get() {
+            logger.log_request("GET", url, None).await;
+        }
+    }
+
+    async fn log_post(&self, url: &str, body: &str) {
+        if let Some(logger) = MorkLogger::get() {
+            logger.log_request("POST", url, Some(body)).await;
+        }
+    }
+
     // ─── Basic Operations ───────────────────────────────────────────────────
 
     pub async fn import(
         &self,
-        perm: &Permission,
         path: &Path,
         pattern: &str,
         template: &str,
         uri: &str,
     ) -> Result<(), MorkError> {
-        perm.require_write()?;
-        perm.check_namespace(path)?;
-
-        let path_pattern = path_to_sexpr(path);
-        let pattern = path_pattern.replace("$", pattern);
+        // let path_pattern = path_to_sexpr(path);
+        // let pattern = path_pattern.replace("$", pattern);
 
         let path_template = path_to_sexpr(path);
         let template = path_template.replace("$", template);
@@ -294,7 +276,38 @@ impl MorkClient {
             encode(&template),
             encode(uri),
         );
+        self.log_get(&url).await;
+        // Save the imported file to the log session directory if it's a local static file.
+        if let Some(logger) = MorkLogger::get() {
+            if let Some(filename) = uri.rsplit('/').next().filter(|f| !f.is_empty()) {
+                logger.save_import_file(filename);
+            }
+        }
         let resp = self.client.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Err(MorkError::BadStatus(resp.status().as_u16()));
+        }
+        Ok(())
+    }
+
+    pub async fn upload(
+        &self,
+        path: &Path,
+        pattern: &str,
+        template: &str,
+        data: &str,
+    ) -> Result<(), MorkError> {
+        let path_template = path_to_sexpr(path);
+        let template = path_template.replace("$", template);
+
+        let url = format!(
+            "{}/upload/{}/{}",
+            self.base(),
+            encode(&pattern),
+            encode(&template),
+        );
+        self.log_post(&url, &data).await;
+        let resp = self.client.post(&url).body(data.to_string()).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
         }
@@ -303,14 +316,10 @@ impl MorkClient {
 
     pub async fn export(
         &self,
-        perm: &Permission,
         path: &Path,
         pattern: &str,
         template: &str,
     ) -> Result<String, MorkError> {
-        perm.require_read()?;
-        perm.check_namespace(path)?;
-
         let path_pattern = path_to_sexpr(path);
         let pattern = path_pattern.replace("$", pattern);
 
@@ -323,6 +332,7 @@ impl MorkClient {
             encode(&pattern),
             encode(&template)
         );
+        self.log_get(&url).await;
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -330,19 +340,12 @@ impl MorkClient {
         Ok(resp.text().await?)
     }
 
-    pub async fn clear(
-        &self,
-        perm: &Permission,
-        path: &Path,
-        pattern: &str,
-    ) -> Result<(), MorkError> {
-        perm.require_write()?;
-        perm.check_namespace(path)?;
-
+    pub async fn clear(&self, path: &Path, pattern: &str) -> Result<(), MorkError> {
         let path_pattern = path_to_sexpr(path);
         let pattern = path_pattern.replace("$", pattern);
 
         let url = format!("{}/clear/{}", self.base(), encode(&pattern));
+        self.log_get(&url).await;
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -350,18 +353,14 @@ impl MorkClient {
         Ok(())
     }
 
-    pub async fn copy(&self, perm: &Permission, src: &Path, dst: &Path) -> Result<(), MorkError> {
-        perm.require_read()?;
-        perm.require_write()?;
-        perm.check_namespace(src)?;
-        perm.check_namespace(dst)?;
-
+    pub async fn copy(&self, src: &Path, dst: &Path) -> Result<(), MorkError> {
         let url = format!(
             "{}/copy/{}/{}",
             self.base(),
             encode(&path_to_sexpr(src)),
             encode(&path_to_sexpr(dst)),
         );
+        self.log_get(&url).await;
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -371,16 +370,9 @@ impl MorkClient {
 
     pub async fn transform(
         &self,
-        perm: &Permission,
-        input_spaces: &[(&Path, &str)],
-        output_spaces: &[(&Path, &str)],
+        input_spaces: &Vec<(PathBuf, &str)>,
+        output_spaces: &Vec<(PathBuf, &str)>,
     ) -> Result<(), MorkError> {
-        perm.require_read()?;
-        perm.require_write()?;
-        for (path, _) in input_spaces.iter().chain(output_spaces.iter()) {
-            perm.check_namespace(path)?;
-        }
-
         let patterns: Vec<String> = input_spaces
             .iter()
             .map(|(path, pat)| path_to_sexpr(path).replace("$", pat))
@@ -396,6 +388,7 @@ impl MorkClient {
         );
 
         let url = format!("{}/transform", self.base());
+        self.log_post(&url, &body).await;
         let resp = self.client.post(&url).body(body).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -405,18 +398,10 @@ impl MorkClient {
 
     pub async fn busywait(
         &self,
-        perm: &Permission,
         path: &Path,
         millis: u64,
         is_writer: bool,
     ) -> Result<String, MorkError> {
-        perm.check_namespace(path)?;
-        if is_writer {
-            perm.require_write()?;
-        } else {
-            perm.require_read()?;
-        }
-
         let pattern = path_to_sexpr(path);
         let mut url = format!(
             "{}/busywait/{}/?expr1={}",
@@ -427,20 +412,15 @@ impl MorkClient {
         if is_writer {
             url.push_str("&writer1");
         }
+        self.log_get(&url).await;
         let resp = self.client.get(&url).send().await?;
         Ok(resp.text().await?)
     }
 
-    pub async fn status(
-        &self,
-        perm: &Permission,
-        path: &Path,
-    ) -> Result<serde_json::Value, MorkError> {
-        perm.require_read()?;
-        perm.check_namespace(path)?;
-
+    pub async fn status(&self, path: &Path) -> Result<serde_json::Value, MorkError> {
         let pattern = path_to_sexpr(path);
         let url = format!("{}/status/{}", self.base(), encode(&pattern));
+        self.log_get(&url).await;
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -449,14 +429,46 @@ impl MorkClient {
         serde_json::from_str(&text).map_err(|_| MorkError::BadStatus(0))
     }
 
-    pub async fn count(&self, perm: &Permission, path: &Path) -> Result<usize, MorkError> {
-        perm.require_read()?;
-        perm.check_namespace(path)?;
+    /// Polls MORK's `/status/{path}` with exponential backoff until the path is
+    /// no longer temporarily locked (`pathForbiddenTemporary` / `pathReadOnlyTemporary`).
+    ///
+    /// Returns `Ok(())` when the path is available, or `Err(MorkError::Timeout)` if
+    /// `timeout_ms` elapses first.
+    pub async fn wait_for_available(&self, path: &Path, timeout_ms: u64) -> Result<(), MorkError> {
+        use tokio::time::{Duration, Instant, sleep};
 
+        let pattern = path_to_sexpr(path);
+        let url = format!("{}/status/{}", self.base(), encode(&pattern));
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        let mut interval_ms: u64 = 100;
+
+        loop {
+            let resp = self.client.get(&url).send().await?;
+            let text = resp.text().await?;
+
+            // Check if the status indicates a temporary lock
+            let is_locked =
+                text.contains("pathForbiddenTemporary") || text.contains("pathReadOnlyTemporary");
+
+            if !is_locked {
+                return Ok(());
+            }
+
+            if Instant::now() >= deadline {
+                return Err(MorkError::Timeout);
+            }
+
+            sleep(Duration::from_millis(interval_ms)).await;
+            interval_ms = (interval_ms * 2).min(1000); // cap at 1s
+        }
+    }
+
+    pub async fn count(&self, path: &Path) -> Result<usize, MorkError> {
         let pattern = path_to_sexpr(path);
         let count_url = format!("{}/count/{}", self.base(), encode(&pattern));
         let status_url = format!("{}/status/{}", self.base(), encode(&pattern));
 
+        self.log_get(&count_url).await;
         let resp = self.client.get(&count_url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -481,7 +493,6 @@ impl MorkClient {
 
     // ─── Explore Operations ─────────────────────────────────────────────────
 
-    /// Low-level MORK explore call. Returns raw expression/token pairs.
     async fn explore_raw(
         &self,
         pattern: &str,
@@ -493,6 +504,7 @@ impl MorkClient {
             format!("{}/explore/{}/{}/", self.base(), encode(pattern), token)
         };
 
+        self.log_get(&url).await;
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(MorkError::BadStatus(resp.status().as_u16()));
@@ -500,22 +512,12 @@ impl MorkClient {
         Ok(resp.json().await?)
     }
 
-    /// Explore a namespace and return subspaces and plain metta expressions.
-    ///
-    /// Uses two-phase approach to minimize requests on large spaces:
-    /// - Phase 1 (BFS): Discover ALL subspaces (only on first request)
-    /// - Phase 2 (DFS): Collect metta_expressions with pagination (50 per page)
-    ///
-    /// The focus_token encodes the DFS stack state for continuation.
     pub async fn explore(
         &self,
-        perm: &Permission,
         path: &PathBuf,
+        root: &PathBuf,
         focus_token: &str,
     ) -> Result<ExploreResult, MorkError> {
-        perm.require_read()?;
-        perm.check_namespace(path)?;
-
         let pattern = path_to_sexpr(path);
         const PAGE_SIZE: usize = 100;
 
@@ -596,7 +598,11 @@ impl MorkClient {
                 .map(|symbol| {
                     let display = format!("({} |$|)", symbol);
                     let subpath = path.join(&symbol);
-                    (display, subpath)
+                    let stripped = subpath
+                        .strip_prefix(root)
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or(subpath);
+                    (display, stripped)
                 })
                 .collect();
         }
@@ -658,26 +664,24 @@ impl MorkClient {
             }
         }
 
+        let namespace = path
+            .strip_prefix(root)
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|_| path.clone());
         Ok(ExploreResult {
-            namespace: path.clone(),
+            namespace,
             metta_expressions,
             subspaces,
             focus_token: next_focus_token,
         })
     }
 
-    /// Explore namespaces (for namespace selector UI).
-    /// Uses BFS to traverse the trie and find all unique subnamespaces.
-    /// Stops when encountering only 1 child with a binary s-expression.
     pub fn explore_namespaces<'a>(
         &'a self,
-        perm: &'a Permission,
         path: &'a PathBuf,
+        root: &'a PathBuf,
     ) -> Pin<Box<dyn Future<Output = Result<NamespaceInfo, MorkError>> + Send + 'a>> {
         Box::pin(async move {
-            perm.require_read()?;
-            perm.check_namespace(path)?;
-
             let pattern = path_to_sexpr(path);
 
             let mut subnamespace_symbols: HashSet<String> = HashSet::new();
@@ -687,7 +691,14 @@ impl MorkClient {
             queue.push_back((String::new(), 0));
             visited_tokens.insert(String::new());
 
-            const MAX_BFS_DEPTH: usize = 3;
+            const MAX_BFS_DEPTH: usize = 2;
+
+            println!(
+                "path: {:?} root: {:?} pattern:{:?}",
+                path.clone(),
+                &root,
+                &pattern
+            );
 
             while let Some((current_token, depth)) = queue.pop_front() {
                 if depth >= MAX_BFS_DEPTH {
@@ -695,7 +706,11 @@ impl MorkClient {
                 }
                 let responses = self.explore_raw(&pattern, &current_token).await?;
 
+                println!("{} {} {}", current_token, depth, responses.len());
+
                 for response in &responses {
+                    println!("{:?} {:?}", response, strip_prefix(&response.expr, path));
+
                     if let Some(relative_expr) = strip_prefix(&response.expr, path) {
                         if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
                             subnamespace_symbols.insert(lhs.to_string());
@@ -703,12 +718,14 @@ impl MorkClient {
                     }
                 }
 
-                if let Some(relative_expr) = strip_prefix(&responses[0].expr, path) {
-                    if parse_binary_sexp(&relative_expr).is_some() {
-                        let encoded_token =
-                            percent_encode(&responses[0].token, NON_ALPHANUMERIC).to_string();
-                        visited_tokens.insert(encoded_token);
-                        continue;
+                if responses.len() > 0 {
+                    if let Some(relative_expr) = strip_prefix(&responses[0].expr, path) {
+                        if parse_binary_sexp(&relative_expr).is_some() {
+                            let encoded_token =
+                                percent_encode(&responses[0].token, NON_ALPHANUMERIC).to_string();
+                            visited_tokens.insert(encoded_token);
+                            continue;
+                        }
                     }
                 }
 
@@ -727,7 +744,7 @@ impl MorkClient {
                 let subnamespace_path = path.join(&symbol);
 
                 // Recursively explore this subnamespace
-                match self.explore_namespaces(perm, &subnamespace_path).await {
+                match self.explore_namespaces(&subnamespace_path, root).await {
                     Ok(subnamespace_info) => subnamespaces.push(subnamespace_info),
                     Err(e) => {
                         // Log the error but continue with other subnamespaces
@@ -739,8 +756,12 @@ impl MorkClient {
                 }
             }
 
+            let namespace = path
+                .strip_prefix(root)
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|_| path.clone());
             Ok(NamespaceInfo {
-                namespace: path.clone(),
+                namespace,
                 subnamespaces: if subnamespaces.is_empty() {
                     None
                 } else {
@@ -756,20 +777,6 @@ impl MorkClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn client() -> MorkClient {
-        MorkClient::new("http://127.0.0.1:19999")
-    }
-
-    fn read_only(ns: &str) -> Permission {
-        Permission::new(ns, true, false)
-    }
-    fn write_only(ns: &str) -> Permission {
-        Permission::new(ns, false, true)
-    }
-    fn read_write(ns: &str) -> Permission {
-        Permission::new(ns, true, true)
-    }
 
     // ── Arity tests ─────────────────────────────────────────────────────────
 
@@ -819,299 +826,7 @@ mod tests {
         assert_eq!(parse_binary_sexp("x"), None);
     }
 
-    // ── Permission tests ────────────────────────────────────────────────────
-
-    #[tokio::test]
-    async fn import_requires_write() {
-        let err = client()
-            .import(
-                &read_only(""),
-                Path::new("space/sub"),
-                "$",
-                "$",
-                "http://x/f.metta",
-            )
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::WriteRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn import_rejects_wrong_namespace() {
-        let err = client()
-            .import(
-                &read_write("other"),
-                Path::new("space/sub"),
-                "$",
-                "$",
-                "http://x/f.metta",
-            )
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn export_requires_read() {
-        let err = client()
-            .export(&write_only(""), Path::new("space/sub"), "$", "$")
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::ReadRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn export_rejects_wrong_namespace() {
-        let err = client()
-            .export(&read_write("other"), Path::new("space/sub"), "$", "$")
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn clear_requires_write() {
-        let err = client()
-            .clear(&read_only(""), Path::new("space/sub"), None)
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::WriteRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn clear_rejects_wrong_namespace() {
-        let err = client()
-            .clear(&read_write("other"), Path::new("space/sub"), None)
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn copy_requires_read() {
-        let err = client()
-            .copy(&write_only(""), Path::new("a"), Path::new("b"))
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::ReadRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn copy_requires_write() {
-        let err = client()
-            .copy(&read_only(""), Path::new("a"), Path::new("b"))
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::WriteRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn copy_rejects_wrong_namespace_on_src() {
-        let err = client()
-            .copy(
-                &read_write("space"),
-                Path::new("other/x"),
-                Path::new("space/y"),
-            )
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn copy_rejects_wrong_namespace_on_dst() {
-        let err = client()
-            .copy(
-                &read_write("space"),
-                Path::new("space/x"),
-                Path::new("other/y"),
-            )
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn transform_requires_read() {
-        let input = [(Path::new("a") as &Path, "x")];
-        let output = [(Path::new("b") as &Path, "y")];
-        let err = client()
-            .transform(&write_only(""), &input, &output)
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::ReadRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn transform_requires_write() {
-        let input = [(Path::new("a") as &Path, "x")];
-        let output = [(Path::new("b") as &Path, "y")];
-        let err = client()
-            .transform(&read_only(""), &input, &output)
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::WriteRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn transform_rejects_wrong_namespace() {
-        let input = [(Path::new("other/a") as &Path, "x")];
-        let output = [(Path::new("space/b") as &Path, "y")];
-        let err = client()
-            .transform(&read_write("space"), &input, &output)
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn busywait_reader_requires_read() {
-        let err = client()
-            .busywait(&write_only(""), Path::new("space"), 100, false)
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::ReadRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn busywait_writer_requires_write() {
-        let err = client()
-            .busywait(&read_only(""), Path::new("space"), 100, true)
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::WriteRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn busywait_rejects_wrong_namespace() {
-        let err = client()
-            .busywait(&read_write("space"), Path::new("other"), 100, false)
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn status_requires_read() {
-        let err = client()
-            .status(&write_only(""), Path::new("space"))
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::ReadRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn status_rejects_wrong_namespace() {
-        let err = client()
-            .status(&read_write("space"), Path::new("other"))
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn count_requires_read() {
-        let err = client()
-            .count(&write_only(""), Path::new("space"))
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::ReadRequired)
-        ));
-    }
-
-    #[tokio::test]
-    async fn count_rejects_wrong_namespace() {
-        let err = client()
-            .count(&read_write("space"), Path::new("other"))
-            .await
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            MorkError::Permission(PermissionError::NamespaceMismatch { .. })
-        ));
-    }
-
     // ── Path utility tests ──────────────────────────────────────────────────
-
-    #[test]
-    fn empty_namespace_allows_any_path() {
-        let p = read_write("");
-        assert!(p.check_namespace(Path::new("anything/at/all")).is_ok());
-    }
-
-    #[test]
-    fn namespace_allows_exact_match() {
-        let p = read_write("space");
-        assert!(p.check_namespace(Path::new("space")).is_ok());
-    }
-
-    #[test]
-    fn namespace_allows_subpath() {
-        let p = read_write("space");
-        assert!(p.check_namespace(Path::new("space/sub/deep")).is_ok());
-    }
-
-    #[test]
-    fn namespace_rejects_sibling() {
-        let p = read_write("space");
-        assert!(p.check_namespace(Path::new("other")).is_err());
-    }
 
     #[test]
     fn path_to_sexpr_empty() {

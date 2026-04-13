@@ -9,11 +9,86 @@ use std::path::PathBuf;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::routes::path_to_metta_sexpr;
 use crate::{
+    db::establish_connection,
     events::{EventBus, SpaceEvent},
-    model::Token,
+    model::{OpLogClearInsert, OpLogImportInsert, OpLogInsert, OpLogTransformInsert, Token},
+    schema::{op_log, op_log_clear, op_log_import, op_log_transform},
 };
-use mork_client::{ExploreResult, MorkClient, MorkError, NamespaceInfo, Permission};
+use diesel::{RunQueryDsl, SelectableHelper};
+use mork_client::{ExploreResult, MorkClient, MorkError, NamespaceInfo};
+
+// ─── Log helpers ─────────────────────────────────────────────────────────────
+
+fn insert_op_log(op_type: &str) -> Option<i32> {
+    diesel::insert_into(op_log::table)
+        .values(&OpLogInsert {
+            op_type: op_type.to_string(),
+        })
+        .returning(op_log::id)
+        .get_result::<i32>(&mut establish_connection())
+        .ok()
+}
+
+// ─── Permission ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PermissionError {
+    ReadRequired,
+    WriteRequired,
+    NamespaceMismatch { path: String, namespace: String },
+}
+
+#[derive(Debug, Clone)]
+pub struct Permission {
+    pub namespace: String,
+    pub can_read: bool,
+    pub can_write: bool,
+}
+
+impl Permission {
+    pub fn new(namespace: impl Into<String>, can_read: bool, can_write: bool) -> Self {
+        Self {
+            namespace: namespace.into(),
+            can_read,
+            can_write,
+        }
+    }
+
+    pub fn require_read(&self) -> Result<(), PermissionError> {
+        if self.can_read {
+            Ok(())
+        } else {
+            Err(PermissionError::ReadRequired)
+        }
+    }
+
+    pub fn require_write(&self) -> Result<(), PermissionError> {
+        if self.can_write {
+            Ok(())
+        } else {
+            Err(PermissionError::WriteRequired)
+        }
+    }
+
+    pub fn check_namespace(&self, path: &std::path::Path) -> Result<(), PermissionError> {
+        if self.namespace.is_empty() {
+            return Ok(());
+        }
+        if !path.starts_with(&self.namespace) {
+            return Err(PermissionError::NamespaceMismatch {
+                path: path.to_string_lossy().into_owned(),
+                namespace: self.namespace.clone(),
+            });
+        }
+        Ok(())
+    }
+}
+
+fn permission_error_to_status(_: PermissionError) -> Status {
+    Status::Unauthorized
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -28,7 +103,6 @@ fn permission_from_token(token: &Token) -> Permission {
 
 fn mork_error_to_status(e: MorkError) -> Status {
     match e {
-        MorkError::Permission(_) => Status::Unauthorized,
         _ => Status::InternalServerError,
     }
 }
@@ -46,6 +120,47 @@ fn path_to_event_path(path: &PathBuf) -> String {
     }
 }
 
+/// Returns true if a MORK error indicates a lock conflict (path temporarily unavailable).
+fn is_lock_conflict(e: &MorkError) -> bool {
+    matches!(e, MorkError::BadStatus(401))
+}
+
+/// Default wait per retry attempt (5 seconds).
+const LOCK_WAIT_MS: u64 = 5_000;
+/// Default number of retries before giving up.
+const LOCK_MAX_RETRIES: u32 = 2;
+
+/// Retries an async operation if it fails due to a lock conflict.
+///
+/// On each conflict: waits for the path to become available (up to `wait_ms`),
+/// then retries. After `max_retries` exhausted, returns 409 Conflict.
+async fn with_lock_retry<F, Fut, T>(
+    path: &PathBuf,
+    wait_ms: u64,
+    max_retries: u32,
+    operation: F,
+) -> Result<T, Status>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T, MorkError>>,
+{
+    let mut attempts = 0;
+    loop {
+        match operation().await {
+            Ok(val) => return Ok(val),
+            Err(e) if is_lock_conflict(&e) && attempts < max_retries => {
+                attempts += 1;
+                // Wait for the path to become available before retrying
+                let _ = get_mork_client().wait_for_available(path, wait_ms).await;
+            }
+            Err(e) if is_lock_conflict(&e) => {
+                return Err(Status::Conflict);
+            }
+            Err(e) => return Err(mork_error_to_status(e)),
+        }
+    }
+}
+
 // ─── Transform ───────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -60,6 +175,7 @@ pub struct Transformation {
 pub async fn transform(
     token: Token,
     transformation: Json<Transformation>,
+    bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
     if transformation.input_spaces.len() != transformation.patterns.len()
         || transformation.output_spaces.len() != transformation.templates.len()
@@ -68,24 +184,118 @@ pub async fn transform(
     }
 
     let perm = permission_from_token(&token);
-    let input: Vec<(&std::path::Path, &str)> = transformation
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.require_write().map_err(permission_error_to_status)?;
+    for path in transformation
+        .input_spaces
+        .iter()
+        .chain(transformation.output_spaces.iter())
+    {
+        perm.check_namespace(path)
+            .map_err(permission_error_to_status)?;
+    }
+
+    let prefix_path = PathBuf::from("space");
+
+    let input: Vec<(std::path::PathBuf, &str)> = transformation
         .input_spaces
         .iter()
         .zip(transformation.patterns.iter())
-        .map(|(p, pat)| (p.as_path(), pat.as_str()))
+        .map(|(p, pat)| (prefix_path.join(p), pat.as_str()))
         .collect();
-    let output: Vec<(&std::path::Path, &str)> = transformation
+    let output: Vec<(std::path::PathBuf, &str)> = transformation
         .output_spaces
         .iter()
         .zip(transformation.templates.iter())
-        .map(|(p, tmpl)| (p.as_path(), tmpl.as_str()))
+        .map(|(p, tmpl)| (prefix_path.join(p), tmpl.as_str()))
         .collect();
 
-    get_mork_client()
-        .transform(&perm, &input, &output)
-        .await
-        .map(|_| Json(true))
-        .map_err(mork_error_to_status)
+    // Use the first output space as the event path (primary write target)
+    let event_path = transformation
+        .output_spaces
+        .first()
+        .map(|p| {
+            let skipped: PathBuf = p.components().skip(1).collect();
+            path_to_event_path(&skipped)
+        })
+        .unwrap_or_else(|| "/".to_string());
+
+    let _ = bus.0.send(SpaceEvent::Locked {
+        path: event_path.clone(),
+    });
+
+    let result = get_mork_client().transform(&input, &output).await;
+
+    match result {
+        Ok(()) => {
+            if let Some(log_id) = insert_op_log("Transform") {
+                let input_json = serde_json::to_value(
+                    transformation
+                        .input_spaces
+                        .iter()
+                        .zip(transformation.patterns.iter())
+                        .map(|(p, pat)| {
+                            serde_json::json!({"path": p.to_string_lossy(), "pattern": pat})
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap_or_default();
+                let output_json = serde_json::to_value(
+                    transformation
+                        .output_spaces
+                        .iter()
+                        .zip(transformation.templates.iter())
+                        .map(|(p, tmpl)| {
+                            serde_json::json!({"path": p.to_string_lossy(), "template": tmpl})
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap_or_default();
+                let _ = diesel::insert_into(op_log_transform::table)
+                    .values(&OpLogTransformInsert {
+                        op_log_id: log_id,
+                        input_spaces: input_json,
+                        output_spaces: output_json,
+                    })
+                    .execute(&mut establish_connection());
+            }
+
+            let bus_tx = bus.0.clone();
+            let monitor_path = transformation
+                .output_spaces
+                .first()
+                .cloned()
+                .unwrap_or_default();
+            tokio::spawn(async move {
+                match get_mork_client()
+                    .wait_for_available(&monitor_path, MONITOR_TIMEOUT_MS)
+                    .await
+                {
+                    Ok(()) => {
+                        let _ = bus_tx.send(SpaceEvent::TransformComplete {
+                            path: event_path.clone(),
+                        });
+                    }
+                    Err(_) => {
+                        let _ = bus_tx.send(SpaceEvent::TransformError {
+                            path: event_path.clone(),
+                            message: "Timed out waiting for transform to complete".into(),
+                        });
+                    }
+                }
+                let _ = bus_tx.send(SpaceEvent::Unlocked { path: event_path });
+            });
+            Ok(Json(true))
+        }
+        Err(e) => {
+            let _ = bus.0.send(SpaceEvent::TransformError {
+                path: event_path.clone(),
+                message: format!("{:?}", e),
+            });
+            let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
+            Err(mork_error_to_status(e))
+        }
+    }
 }
 
 // ─── Import ──────────────────────────────────────────────────────────────────
@@ -95,7 +305,7 @@ pub async fn import_root(
     token: Token,
     space: String,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     do_import(&token, &PathBuf::new(), &space, &bus.0).await
 }
 
@@ -105,17 +315,23 @@ pub async fn import(
     path: PathBuf,
     space: String,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     do_import(&token, &path, &space, &bus.0).await
 }
+
+/// Default timeout (5 minutes) for monitoring MORK operations.
+const MONITOR_TIMEOUT_MS: u64 = 300_000;
 
 pub async fn do_import(
     token: &Token,
     path: &PathBuf,
     space: &str,
     bus: &broadcast::Sender<SpaceEvent>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     let perm = permission_from_token(token);
+    perm.require_write().map_err(permission_error_to_status)?;
+    perm.check_namespace(path)
+        .map_err(permission_error_to_status)?;
 
     let file_id = Uuid::new_v4();
     let file_path = format!("static/{}.metta", file_id);
@@ -137,10 +353,84 @@ pub async fn do_import(
         path: event_path.clone(),
     });
 
-    let result = get_mork_client().import(&perm, path, "$", "$", &uri).await;
-    let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
+    let client = get_mork_client();
 
-    result.map(|_| Json(true)).map_err(mork_error_to_status)
+    let root = PathBuf::from("space");
+    let augmented_path = if !path.as_os_str().is_empty() {
+        root.join(path.clone())
+    } else {
+        root.clone()
+    };
+
+    let operation_id = Uuid::new_v4();
+
+    let log_path = PathBuf::from("logs");
+
+    let import_path = PathBuf::from(format!("import/{}/imported", operation_id));
+
+    client
+        .import(&import_path, "$", "$", &uri)
+        .await
+        .map_err(|e| mork_error_to_status(e))?;
+
+    let program = "
+    (exec (clocked Z)
+        (, (exec (clocked $ts) $p1 $t1)
+           (state $ts (IC $_)) 
+           ((step $k $ts) $p0 $t0)) 
+        (, (exec ($k $ts) $p0 $t0)
+           (exec (clocked (S $ts)) $p1 $t1))) 
+    ";
+
+    let result = Ok(());
+
+    match result {
+        Ok(()) => {
+            if let Some(log_id) = insert_op_log("Import") {
+                let _ = diesel::insert_into(op_log_import::table)
+                    .values(&OpLogImportInsert {
+                        op_log_id: log_id,
+                        path: path.to_string_lossy().into_owned(),
+                        uri: uri.clone(),
+                    })
+                    .execute(&mut establish_connection());
+            }
+
+            // Spawn background monitor: wait for MORK to finish, then emit events
+            let bus_clone = bus.clone();
+            let monitor_path = augmented_path.clone();
+            tokio::spawn(async move {
+                match get_mork_client()
+                    .wait_for_available(&monitor_path, MONITOR_TIMEOUT_MS)
+                    .await
+                {
+                    Ok(()) => {
+                        let _ = bus_clone.send(SpaceEvent::ImportComplete {
+                            path: event_path.clone(),
+                        });
+                    }
+                    Err(_) => {
+                        let _ = bus_clone.send(SpaceEvent::ImportError {
+                            path: event_path.clone(),
+                            message: "Timed out waiting for import to complete".into(),
+                        });
+                    }
+                }
+                let _ = bus_clone.send(SpaceEvent::Unlocked { path: event_path });
+                // Clean up temp file
+                let _ = std::fs::remove_file(&file_path);
+            });
+            Ok(Json(operation_id.to_string()))
+        }
+        Err(e) => {
+            let _ = bus.send(SpaceEvent::ImportError {
+                path: event_path.clone(),
+                message: format!("{:?}", e),
+            });
+            let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
+            Err(mork_error_to_status(e))
+        }
+    }
 }
 
 // ─── Export ──────────────────────────────────────────────────────────────────
@@ -152,42 +442,131 @@ pub async fn export_root(token: Token) -> Result<Json<String>, Status> {
 
 #[get("/spaces/<path..>")]
 pub async fn export(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
-    get_mork_client()
-        .export(&permission_from_token(&token), &path, "$", "$")
-        .await
-        .map(Json)
-        .map_err(mork_error_to_status)
+    Err(Status::NotImplemented)
+    /*
+    TODO: check this implementation with augmented path
+
+    let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path)
+        .map_err(permission_error_to_status)?;
+    with_lock_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
+        let path = path.clone();
+        async move { get_mork_client().export(&path, "$", "$").await.map(Json) }
+    })
+    .await
+     */
 }
 
 // ─── Clear ───────────────────────────────────────────────────────────────────
 
-#[rocket::delete("/spaces?<pattern>")]
-pub async fn clear_root(token: Token, pattern: String) -> Result<Json<bool>, Status> {
-    clear(token, PathBuf::new(), pattern).await
+#[rocket::delete("/spaces?")]
+pub async fn clear_root(token: Token, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
+    clear(token, PathBuf::new(), bus).await
 }
 
-#[rocket::delete("/spaces/<path..>?<pattern>")]
-pub async fn clear(token: Token, path: PathBuf, pattern: String) -> Result<Json<bool>, Status> {
-    get_mork_client()
-        .clear(&permission_from_token(&token), &path, &pattern)
-        .await
-        .map(|_| Json(true))
-        .map_err(mork_error_to_status)
+#[rocket::delete("/spaces/<path..>")]
+pub async fn clear(
+    token: Token,
+    path: PathBuf,
+    bus: &State<EventBus>,
+) -> Result<Json<bool>, Status> {
+    let perm = permission_from_token(&token);
+    perm.require_write().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path)
+        .map_err(permission_error_to_status)?;
+    let event_path = path_to_event_path(&path);
+    let _ = bus.0.send(SpaceEvent::Locked {
+        path: event_path.clone(),
+    });
+    let root = PathBuf::from("space");
+    let augmented_path = if !path.as_os_str().is_empty() {
+        root.join(path.clone())
+    } else {
+        root.clone()
+    };
+
+    let result = get_mork_client().clear(&augmented_path, "$").await;
+
+    match result {
+        Ok(()) => {
+            if let Some(log_id) = insert_op_log("Clear") {
+                let _ = diesel::insert_into(op_log_clear::table)
+                    .values(&OpLogClearInsert {
+                        op_log_id: log_id,
+                        path: path.to_string_lossy().into_owned(),
+                    })
+                    .execute(&mut establish_connection());
+            }
+
+            // Clear is synchronous in MORK (no spawned task), but we still
+            // monitor status to confirm the lock is released.
+            let bus_tx = bus.0.clone();
+            let monitor_path = augmented_path.clone();
+            tokio::spawn(async move {
+                match get_mork_client()
+                    .wait_for_available(&monitor_path, MONITOR_TIMEOUT_MS)
+                    .await
+                {
+                    Ok(()) => {
+                        let _ = bus_tx.send(SpaceEvent::ClearComplete {
+                            path: event_path.clone(),
+                        });
+                    }
+                    Err(_) => {
+                        let _ = bus_tx.send(SpaceEvent::ClearError {
+                            path: event_path.clone(),
+                            message: "Timed out waiting for clear to complete".into(),
+                        });
+                    }
+                }
+                let _ = bus_tx.send(SpaceEvent::Unlocked { path: event_path });
+            });
+            Ok(Json(true))
+        }
+        Err(e) => {
+            let _ = bus.0.send(SpaceEvent::ClearError {
+                path: event_path.clone(),
+                message: format!("{:?}", e),
+            });
+            let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
+            Err(mork_error_to_status(e))
+        }
+    }
 }
 
 // ─── Copy ────────────────────────────────────────────────────────────────────
 
 #[rocket::post("/spaces/<src_path..>?<dst_path>", rank = 1)]
 pub async fn copy(token: Token, src_path: PathBuf, dst_path: String) -> Result<Json<bool>, Status> {
-    get_mork_client()
-        .copy(
-            &permission_from_token(&token),
-            &src_path,
-            &PathBuf::from(&dst_path),
-        )
-        .await
-        .map(|_| Json(true))
-        .map_err(mork_error_to_status)
+    Err(Status::NotImplemented)
+
+    /*
+        TODO: check this implementation with augmented path
+
+    let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.require_write().map_err(permission_error_to_status)?;
+    let dst = PathBuf::from(&dst_path);
+    perm.check_namespace(&src_path)
+        .map_err(permission_error_to_status)?;
+    perm.check_namespace(&dst)
+        .map_err(permission_error_to_status)?;
+    let result = get_mork_client().copy(&src_path, &dst).await;
+    match result {
+        Ok(op) => {
+            let insert = OpLogInsert {
+                op_type: "Cpy".to_string(),
+                payload: serde_json::to_value(&op).unwrap_or_default(),
+            };
+            let _ = diesel::insert_into(op_log::table)
+                .values(&insert)
+                .execute(&mut establish_connection());
+            Ok(Json(true))
+        }
+        Err(e) => Err(mork_error_to_status(e)),
+    }
+     */
 }
 
 // ─── Explore ─────────────────────────────────────────────────────────────────
@@ -207,12 +586,28 @@ pub async fn explore(
     focus_token: String,
 ) -> Result<Json<ExploreResult>, Status> {
     let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path)
+        .map_err(permission_error_to_status)?;
+    with_lock_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
+        let path = path.clone();
+        let root = PathBuf::from("space");
 
-    get_mork_client()
-        .explore(&perm, &path, &focus_token)
-        .await
-        .map(Json)
-        .map_err(mork_error_to_status)
+        let augmented_path = if !path.as_os_str().is_empty() {
+            root.join(path.clone())
+        } else {
+            root.clone()
+        };
+
+        let focus_token = focus_token.clone();
+        async move {
+            get_mork_client()
+                .explore(&augmented_path, &root, &focus_token)
+                .await
+                .map(Json)
+        }
+    })
+    .await
 }
 
 #[rocket::get("/namespaces/<path..>")]
@@ -221,12 +616,26 @@ pub async fn explore_namespaces(
     path: PathBuf,
 ) -> Result<Json<NamespaceInfo>, Status> {
     let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path)
+        .map_err(permission_error_to_status)?;
+    with_lock_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
+        let root = PathBuf::from("space");
 
-    get_mork_client()
-        .explore_namespaces(&perm, &path)
-        .await
-        .map(Json)
-        .map_err(mork_error_to_status)
+        let augmented_path = if !path.as_os_str().is_empty() {
+            root.join(path.clone())
+        } else {
+            root.clone()
+        };
+
+        async move {
+            get_mork_client()
+                .explore_namespaces(&augmented_path, &root)
+                .await
+                .map(Json)
+        }
+    })
+    .await
 }
 
 // ─── Count ───────────────────────────────────────────────────────────────────
@@ -238,11 +647,23 @@ pub async fn count_root(token: Token) -> Result<Json<usize>, Status> {
 
 #[get("/count/<path..>")]
 pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, Status> {
-    get_mork_client()
-        .count(&permission_from_token(&token), &path)
-        .await
-        .map(Json)
-        .map_err(mork_error_to_status)
+    let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path)
+        .map_err(permission_error_to_status)?;
+    with_lock_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
+        let path = path.clone();
+
+        let root = PathBuf::from("space");
+        let augmented_path = if !path.as_os_str().is_empty() {
+            root.join(path.clone())
+        } else {
+            root.clone()
+        };
+
+        async move { get_mork_client().count(&augmented_path).await.map(Json) }
+    })
+    .await
 }
 
 // ─── Status ──────────────────────────────────────────────────────────────────
@@ -254,29 +675,19 @@ pub async fn status_root(token: Token) -> Result<Json<serde_json::Value>, Status
 
 #[get("/status/<path..>")]
 pub async fn status(token: Token, path: PathBuf) -> Result<Json<serde_json::Value>, Status> {
-    get_mork_client()
-        .status(&permission_from_token(&token), &path)
-        .await
-        .map(Json)
-        .map_err(mork_error_to_status)
-}
+    let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path)
+        .map_err(permission_error_to_status)?;
+    let root = PathBuf::from("space");
+    let augmented_path = if !path.as_os_str().is_empty() {
+        root.join(path.clone())
+    } else {
+        root.clone()
+    };
 
-// ─── Busywait ────────────────────────────────────────────────────────────────
-
-#[get("/busywait/<millis>/<path..>?<writer>")]
-pub async fn busywait(
-    token: Token,
-    millis: u64,
-    path: PathBuf,
-    writer: Option<bool>,
-) -> Result<Json<String>, Status> {
     get_mork_client()
-        .busywait(
-            &permission_from_token(&token),
-            &path,
-            millis,
-            writer.unwrap_or(false),
-        )
+        .status(&augmented_path)
         .await
         .map(Json)
         .map_err(mork_error_to_status)
@@ -291,7 +702,7 @@ pub async fn import_csv(
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::CSVParserParameters,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     let space = crate::routes::translations::create_from_csv(file, parse_parameters)
         .await?
         .into_inner();
@@ -305,7 +716,7 @@ pub async fn import_nt(
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::NTParserParameters,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     let space = crate::routes::translations::create_from_nt(file, parse_parameters)
         .await?
         .into_inner();
@@ -319,7 +730,7 @@ pub async fn import_jsonld(
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::JSONLDParserParameters,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     let space = crate::routes::translations::create_from_jsonld(file, parse_parameters)
         .await?
         .into_inner();
@@ -333,7 +744,7 @@ pub async fn import_n3(
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::N3ParserParameters,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     let space = crate::routes::translations::create_from_n3(file, parse_parameters)
         .await?
         .into_inner();
@@ -366,13 +777,50 @@ pub async fn import_url_metta(
     bus: &State<EventBus>,
 ) -> Result<Json<bool>, Status> {
     let perm = permission_from_token(&token);
+    perm.require_write().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path)
+        .map_err(permission_error_to_status)?;
     let event_path = path_to_event_path(&path);
     let _ = bus.0.send(SpaceEvent::Locked {
         path: event_path.clone(),
     });
-    let result = get_mork_client().import(&perm, &path, "$", "$", &url).await;
-    let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
-    result.map(|_| Json(true)).map_err(mork_error_to_status)
+
+    let result = get_mork_client().import(&path, "$", "$", &url).await;
+
+    match result {
+        Ok(_) => {
+            let bus_tx = bus.0.clone();
+            let monitor_path = path.clone();
+            tokio::spawn(async move {
+                match get_mork_client()
+                    .wait_for_available(&monitor_path, MONITOR_TIMEOUT_MS)
+                    .await
+                {
+                    Ok(()) => {
+                        let _ = bus_tx.send(SpaceEvent::ImportComplete {
+                            path: event_path.clone(),
+                        });
+                    }
+                    Err(_) => {
+                        let _ = bus_tx.send(SpaceEvent::ImportError {
+                            path: event_path.clone(),
+                            message: "Timed out waiting for import to complete".into(),
+                        });
+                    }
+                }
+                let _ = bus_tx.send(SpaceEvent::Unlocked { path: event_path });
+            });
+            Ok(Json(true))
+        }
+        Err(e) => {
+            let _ = bus.0.send(SpaceEvent::ImportError {
+                path: event_path.clone(),
+                message: format!("{:?}", e),
+            });
+            let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
+            Err(mork_error_to_status(e))
+        }
+    }
 }
 
 #[get("/spaces/import/url/csv/<path..>?<url>&<parse_parameters..>")]
@@ -382,7 +830,7 @@ pub async fn import_url_csv(
     url: String,
     parse_parameters: crate::routes::translations::CSVParserParameters,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
         "csv",
@@ -404,7 +852,7 @@ pub async fn import_url_nt(
     path: PathBuf,
     url: String,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
         "nt",
@@ -428,7 +876,7 @@ pub async fn import_url_jsonld(
     path: PathBuf,
     url: String,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
         "jsonld",
@@ -452,7 +900,7 @@ pub async fn import_url_n3(
     path: PathBuf,
     url: String,
     bus: &State<EventBus>,
-) -> Result<Json<bool>, Status> {
+) -> Result<Json<String>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
         "n3",

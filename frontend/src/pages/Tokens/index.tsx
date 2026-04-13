@@ -1021,109 +1021,88 @@ const Tokens: Component = () => {
                                     />
                                 </label>
                                 <div class={styles.NewTokenPermissions}>
-                                    <fieldset>
-                                        <legend>
-                                            <span>Permissions</span>
-                                            <Show when={!newTokenReadEnabled()}>
-                                                <span
-                                                    class={
-                                                        styles.NewTokenNoPermissionsWarningSmall
-                                                    }
-                                                >
-                                                    Token has no permissions!
-                                                </span>
-                                            </Show>
-                                        </legend>
-                                        <label>
-                                            Read
-                                            <input
-                                                ref={newTokenReadCheckbox!}
-                                                onchange={(e) => {
-                                                    if (!e.target.checked) {
-                                                        newTokenWriteCheckbox.checked =
-                                                            false
-                                                        newTokenShareReadCheckbox.checked =
-                                                            false
-                                                        newTokenShareWriteCheckbox.checked =
-                                                            false
-                                                    }
-
-                                                    setNewTokenReadEnabled(e.target.checked)
-                                                }}
-                                                type="checkbox"
-                                                checked={newTokenReadEnabled()}
-                                                disabled={
-                                                    !rootTokenCode() ||
-                                                    !tokens().find(
-                                                        (t) => t.code === rootTokenCode()
-                                                    )?.permission_share_read
+                                    <label>
+                                        <input
+                                            ref={newTokenReadCheckbox!}
+                                            onchange={(e) => {
+                                                if (!e.target.checked) {
+                                                    newTokenWriteCheckbox.checked = false
+                                                    newTokenShareReadCheckbox.checked = false
+                                                    newTokenShareWriteCheckbox.checked = false
                                                 }
-                                            />
-                                        </label>
-                                        <label>
-                                            Write
-                                            <input
-                                                ref={newTokenWriteCheckbox!}
-                                                onchange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setNewTokenReadEnabled(true)
-                                                    } else {
-                                                        newTokenShareWriteCheckbox.checked =
-                                                            false
-                                                    }
-                                                }}
-                                                type="checkbox"
-                                                disabled={
-                                                    !rootTokenCode() ||
-                                                    !tokens().find(
-                                                        (t) => t.code === rootTokenCode()
-                                                    )?.permission_share_write
+                                                setNewTokenReadEnabled(e.target.checked)
+                                            }}
+                                            type="checkbox"
+                                            checked={newTokenReadEnabled()}
+                                            disabled={
+                                                !rootTokenCode() ||
+                                                !tokens().find(
+                                                    (t) => t.code === rootTokenCode()
+                                                )?.permission_share_read
+                                            }
+                                        />
+                                        Read
+                                    </label>
+                                    <label>
+                                        <input
+                                            ref={newTokenWriteCheckbox!}
+                                            onchange={(e) => {
+                                                if (e.target.checked) {
+                                                    setNewTokenReadEnabled(true)
+                                                } else {
+                                                    newTokenShareWriteCheckbox.checked = false
                                                 }
-                                            />
-                                        </label>
-                                        <label>
-                                            Share read
-                                            <input
-                                                ref={newTokenShareReadCheckbox!}
-                                                onchange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setNewTokenReadEnabled(true)
-                                                    } else {
-                                                        newTokenShareWriteCheckbox.checked =
-                                                            false
-                                                    }
-                                                }}
-                                                type="checkbox"
-                                                disabled={
-                                                    !rootTokenCode() ||
-                                                    !tokens().find(
-                                                        (t) => t.code === rootTokenCode()
-                                                    )?.permission_share_read
+                                            }}
+                                            type="checkbox"
+                                            disabled={
+                                                !rootTokenCode() ||
+                                                !tokens().find(
+                                                    (t) => t.code === rootTokenCode()
+                                                )?.permission_share_write
+                                            }
+                                        />
+                                        Write
+                                    </label>
+                                    <label>
+                                        <input
+                                            ref={newTokenShareReadCheckbox!}
+                                            onchange={(e) => {
+                                                if (e.target.checked) {
+                                                    setNewTokenReadEnabled(true)
+                                                } else {
+                                                    newTokenShareWriteCheckbox.checked = false
                                                 }
-                                            />
-                                        </label>
-                                        <label>
-                                            Share write
-                                            <input
-                                                ref={newTokenShareWriteCheckbox!}
-                                                onchange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setNewTokenReadEnabled(true)
-                                                        newTokenWriteCheckbox.checked = true
-                                                        newTokenShareReadCheckbox.checked =
-                                                            true
-                                                    }
-                                                }}
-                                                type="checkbox"
-                                                disabled={
-                                                    !rootTokenCode() ||
-                                                    !tokens().find(
-                                                        (t) => t.code === rootTokenCode()
-                                                    )?.permission_share_write
+                                            }}
+                                            type="checkbox"
+                                            disabled={
+                                                !rootTokenCode() ||
+                                                !tokens().find(
+                                                    (t) => t.code === rootTokenCode()
+                                                )?.permission_share_read
+                                            }
+                                        />
+                                        Share read
+                                    </label>
+                                    <label>
+                                        <input
+                                            ref={newTokenShareWriteCheckbox!}
+                                            onchange={(e) => {
+                                                if (e.target.checked) {
+                                                    setNewTokenReadEnabled(true)
+                                                    newTokenWriteCheckbox.checked = true
+                                                    newTokenShareReadCheckbox.checked = true
                                                 }
-                                            />
-                                        </label>
-                                    </fieldset>
+                                            }}
+                                            type="checkbox"
+                                            disabled={
+                                                !rootTokenCode() ||
+                                                !tokens().find(
+                                                    (t) => t.code === rootTokenCode()
+                                                )?.permission_share_write
+                                            }
+                                        />
+                                        Share write
+                                    </label>
                                 </div>
                                 <input type="submit" value={'Create'} />
                                 <Show when={!newTokenReadEnabled()}>

@@ -5,22 +5,25 @@
     background: var(--surface);
     display: flex;
     flex-direction: column;
-    border-left: 1px solid var(--highlight-low);
+    border-left: 1px solid var(--border-subtle);
     flex-shrink: 0;
     margin: 0;
     overflow: hidden;
 
     h3 {
         margin: 0;
-        font-size: 0.9rem;
+        font-size: 0.82rem;
         font-weight: 600;
         color: var(--text);
+        opacity: 0.6;
         background: var(--surface);
-        border-bottom: 1px solid var(--highlight-low);
-        padding: 10px 14px;
+        border-bottom: 1px solid var(--border-subtle);
+        padding: 8px 14px;
         display: flex;
         align-items: center;
         gap: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 }
 
