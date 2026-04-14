@@ -369,18 +369,9 @@ pub async fn do_import(
     let import_path = PathBuf::from(format!("import/{}/imported", operation_id));
 
     client
-        .import(&import_path, "$", "$", &uri)
+        .import(&augmented_path, "$", "$", &uri)
         .await
         .map_err(|e| mork_error_to_status(e))?;
-
-    let program = "
-    (exec (clocked Z)
-        (, (exec (clocked $ts) $p1 $t1)
-           (state $ts (IC $_)) 
-           ((step $k $ts) $p0 $t0)) 
-        (, (exec ($k $ts) $p0 $t0)
-           (exec (clocked (S $ts)) $p1 $t1))) 
-    ";
 
     let result = Ok(());
 

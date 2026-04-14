@@ -10,7 +10,6 @@ use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex as TokioMutex;
-use uuid::Uuid;
 
 // ─── MorkLogger ─────────────────────────────────────────────────────────────
 

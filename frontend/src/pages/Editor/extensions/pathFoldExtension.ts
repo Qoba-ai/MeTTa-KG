@@ -146,11 +146,29 @@ class FringeWidget extends WidgetType {
     toDOM() {
         const el = document.createElement('span')
         el.style.cssText =
-            'color:var(--iris);cursor:pointer;font-weight:bold;' +
-            'padding:0 4px;border-radius:3px;background:var(--highlight-low);'
-        el.textContent = '|$|'
-        el.title = `Click to expand fringe at ${this.path}`
+            'display:inline-flex;align-items:center;gap:2px;' +
+            'color:var(--iris);cursor:pointer;' +
+            'padding:1px 5px;border-radius:999px;' +
+            'background:var(--highlight-low);border:1px solid var(--iris);' +
+            'font-size:0.75em;font-weight:600;line-height:1.4;vertical-align:middle;'
+        el.title = `Click to load more at ${this.path}`
         el.dataset.fringePath = this.path
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+        svg.setAttribute('width', '12')
+        svg.setAttribute('height', '12')
+        svg.setAttribute('viewBox', '0 0 12 12')
+        svg.setAttribute('fill', 'currentColor')
+        svg.style.pointerEvents = 'none'
+        ;[2, 6, 10].forEach(cx => {
+            const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+            c.setAttribute('cx', String(cx))
+            c.setAttribute('cy', '6')
+            c.setAttribute('r', '1.5')
+            svg.appendChild(c)
+        })
+
+        el.appendChild(svg)
         return el
     }
 

@@ -354,6 +354,9 @@ const App: Component = () => {
         return getDisplayContent(astState)
     }
 
+    // Shared lock: prevents both the editor and trie scroll handlers from loading simultaneously
+    const [isLoadingMore, setIsLoadingMore] = createSignal(false);
+
     // Track loading state and last loaded tokens for each panel
     const [editorLoadingPaths, setEditorLoadingPaths] = createSignal<Set<string>>(new Set());
     const [editorLastLoadedTokens, setEditorLastLoadedTokens] = createSignal<Map<string, string>>(new Map());
@@ -405,55 +408,37 @@ const App: Component = () => {
                             const scrollHeight = scroller.scrollHeight;
                             const clientHeight = scroller.clientHeight;
 
-                            // Check if we're near the bottom (within 500px)
-                            if (scrollHeight - scrollTop - clientHeight < 500) {
+                            // Check if we're near the bottom (within 200px)
+                            if (scrollHeight - scrollTop - clientHeight < 200) {
                                 const p = activePanel();
                                 if (!p) return;
 
                                 const pathWithSlash = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/';
                                 const tokens = focusTokens().get(pathWithSlash) || [];
 
-                                // Check if there are tokens and we're not already loading
-                                if (tokens.length > 0 && !editorLoadingPaths().has(pathWithSlash)) {
-                                    const currentToken = tokens[0];
-
-                                    // Lock this path immediately
+                                // Check if there are tokens and neither the editor nor trie is already loading
+                                if (tokens.length > 0 && !isLoadingMore() && !editorLoadingPaths().has(pathWithSlash)) {
+                                    // Lock both components immediately
+                                    setIsLoadingMore(true);
                                     setEditorLoadingPaths(prev => new Set(prev).add(pathWithSlash));
 
-                                    // Save scroll position before loading (distance from bottom)
-                                    const scrollFromBottom = scrollHeight - scrollTop - clientHeight;
-
                                     try {
-                                        // Trigger load more and wait for it to complete
                                         await handleLoadMore(p.namespace);
 
-                                        // After loading completes, get the NEW token
                                         const newTokens = focusTokens().get(pathWithSlash) || [];
                                         const newToken = newTokens[0] || '';
-
-                                        // Store the new token (or empty if no more)
                                         setEditorLastLoadedTokens(prev => new Map(prev).set(pathWithSlash, newToken));
-
-                                        // Force scroll adjustment using requestAnimationFrame for Chrome compatibility
-                                        requestAnimationFrame(() => {
-                                            const newScrollHeight = scroller.scrollHeight;
-                                            const newClientHeight = scroller.clientHeight;
-
-                                            // Maintain the same distance from bottom PLUS extra padding to prevent retrigger
-                                            // This ensures we don't stay at the very bottom in Chrome
-                                            const targetScrollTop = newScrollHeight - newClientHeight - scrollFromBottom - 200;
-
-                                            scroller.scrollTop = Math.max(0, targetScrollTop);
-                                        });
+                                        // No scroll adjustment needed: incremental insert preserves scrollTop
+                                        // naturally, and new content appears below the current viewport.
                                     } catch (e) {
                                         console.error('Load more failed in editor:', e);
                                     } finally {
-                                        // Always unlock, even if loading failed
                                         setEditorLoadingPaths(prev => {
                                             const next = new Set(prev);
                                             next.delete(pathWithSlash);
                                             return next;
                                         });
+                                        setIsLoadingMore(false);
                                     }
                                 }
                             }
@@ -762,14 +747,21 @@ const App: Component = () => {
 
             // Build new nodes from tokens and append to root
             const { ast: newNodes } = buildASTFromTokens(strippedTokens)
+
+            // Render new nodes BEFORE mutating the AST, so we know exactly what text to append
+            const newText = astToString(newNodes)
+
             astState.ast.push(...newNodes)
             astState.originalAST.push(...newNodes)
 
-            // Re-render
-            const displayContent = getDisplayContentWithPaginationIndicator(astState, p.namespace)
+            // Incremental append: only insert the new text at the end of the document.
+            // A full replacement (from: 0, to: doc.length) resets CodeMirror's viewport,
+            // breaking scroll position. Appending preserves it naturally.
             setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+            const docLength = p.view.state.doc.length
+            const insertText = docLength > 0 ? '\n' + newText : newText
             p.view.dispatch(p.view.state.update({
-                changes: { from: 0, to: p.view.state.doc.length, insert: displayContent },
+                changes: { from: docLength, insert: insertText },
                 annotations: [programmaticEdit.of(true)],
             }))
 
@@ -1708,6 +1700,7 @@ const App: Component = () => {
                                 onExpand={handleTrieExpand}
                                 focusTokens={() => focusTokens()}
                                 onLoadMore={handleLoadMore}
+                                isLoadingMore={() => isLoadingMore()}
                                 onNodeClick={handleTrieNodeClick}
                             />
                         </div>

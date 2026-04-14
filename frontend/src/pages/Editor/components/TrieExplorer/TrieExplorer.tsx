@@ -21,6 +21,7 @@ interface TrieExplorerProps {
   onExpand?: (path: string) => void;
   focusTokens?: () => Map<string, string[]>;
   onLoadMore?: (path: string) => void;
+  isLoadingMore?: () => boolean;
   onNodeClick?: (expression: string) => void;
 }
 
@@ -504,49 +505,38 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
           const pathNormalized = rootPath().endsWith('/') ? rootPath() : rootPath() + '/';
           const tokensForPath = tokens.get(pathNormalized) || [];
 
-          // Check if there are tokens and we're not already loading this path
-          if (tokensForPath.length > 0 && !loadingPaths().has(pathNormalized)) {
-            const currentToken = tokensForPath[0];
-
-            // Lock this path immediately
+          // Check if there are tokens and neither the trie nor editor is already loading
+          if (tokensForPath.length > 0 && !loadingPaths().has(pathNormalized) && !props.isLoadingMore?.()) {
+            // Lock both components immediately
             setLoadingPaths(prev => new Set(prev).add(pathNormalized));
 
-            // Save scroll position before loading (distance from bottom)
-            const scrollFromBottom = scrollHeight - scrollTop - clientHeight;
+            // Save scroll position before load. The trie is sorted, so new nodes can be
+            // inserted anywhere (including above the viewport). Chrome's scroll anchoring
+            // would then adjust scrollTop to compensate, keeping distance-from-bottom the
+            // same and causing the next check to immediately retrigger. Restoring the saved
+            // scrollTop bypasses anchoring: the saved position is now in the middle of the
+            // new (longer) content, so distance-from-bottom = height of new content > 200px.
+            const savedScrollTop = trieContentRef.scrollTop;
 
             try {
-              // Trigger load more and wait for it to complete
               await props.onLoadMore?.(rootPath());
 
-              // After loading completes, get the NEW token
               const newTokens = props.focusTokens?.();
               const newTokensForPath = newTokens?.get(pathNormalized) || [];
               const newToken = newTokensForPath[0] || '';
-
-              // Store the new token (or empty if no more)
               setLastLoadedTokens(prev => new Map(prev).set(pathNormalized, newToken));
-
-              // Force scroll adjustment using requestAnimationFrame for Chrome compatibility
-              requestAnimationFrame(() => {
-                if (!trieContentRef) return;
-
-                const newScrollHeight = trieContentRef.scrollHeight;
-                const newClientHeight = trieContentRef.clientHeight;
-
-                // Maintain the same distance from bottom PLUS extra padding to prevent retrigger
-                // This ensures we don't stay at the very bottom in Chrome
-                const targetScrollTop = newScrollHeight - newClientHeight - scrollFromBottom - 150;
-
-                trieContentRef.scrollTop = Math.max(0, targetScrollTop);
-              });
             } catch (e) {
               console.error('Load more failed in tree explorer:', e);
             } finally {
-              // Always unlock, even if loading failed
               setLoadingPaths(prev => {
                 const next = new Set(prev);
                 next.delete(pathNormalized);
                 return next;
+              });
+              // Restore pre-load scroll position after DOM has updated
+              requestAnimationFrame(() => {
+                if (!trieContentRef) return;
+                trieContentRef.scrollTop = savedScrollTop;
               });
             }
           }
