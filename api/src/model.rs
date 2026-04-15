@@ -51,6 +51,7 @@ pub struct OpLog {
     pub id: i32,
     pub op_type: String,
     pub created_at: NaiveDateTime,
+    pub rolled_back_at: Option<NaiveDateTime>,
 }
 
 // ─── Op Log Import ───────────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ pub struct OpLogImportInsert {
     pub op_log_id: i32,
     pub path: String,
     pub uri: String,
+    pub operation_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Queryable, Selectable)]
@@ -70,6 +72,7 @@ pub struct OpLogImport {
     pub op_log_id: i32,
     pub path: String,
     pub uri: String,
+    pub operation_id: Option<String>,
 }
 
 // ─── Op Log Clear ────────────────────────────────────────────────────────────
@@ -79,6 +82,7 @@ pub struct OpLogImport {
 pub struct OpLogClearInsert {
     pub op_log_id: i32,
     pub path: String,
+    pub operation_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Queryable, Selectable)]
@@ -87,6 +91,7 @@ pub struct OpLogClear {
     pub id: i32,
     pub op_log_id: i32,
     pub path: String,
+    pub operation_id: Option<String>,
 }
 
 // ─── Op Log Copy ─────────────────────────────────────────────────────────────
@@ -97,6 +102,7 @@ pub struct OpLogCopyInsert {
     pub op_log_id: i32,
     pub src: String,
     pub dst: String,
+    pub operation_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Queryable, Selectable)]
@@ -106,6 +112,7 @@ pub struct OpLogCopy {
     pub op_log_id: i32,
     pub src: String,
     pub dst: String,
+    pub operation_id: Option<String>,
 }
 
 // ─── Op Log Transform ────────────────────────────────────────────────────────
@@ -116,6 +123,7 @@ pub struct OpLogTransformInsert {
     pub op_log_id: i32,
     pub input_spaces: serde_json::Value,
     pub output_spaces: serde_json::Value,
+    pub operation_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Queryable, Selectable)]
@@ -125,6 +133,7 @@ pub struct OpLogTransform {
     pub op_log_id: i32,
     pub input_spaces: serde_json::Value,
     pub output_spaces: serde_json::Value,
+    pub operation_id: Option<String>,
 }
 
 // ─── Op Log Entry (API response) ─────────────────────────────────────────────
@@ -134,6 +143,8 @@ pub struct OpLogEntry {
     pub id: i32,
     pub op_type: String,
     pub created_at: NaiveDateTime,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rolled_back_at: Option<NaiveDateTime>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub import: Option<OpLogImport>,
     #[serde(skip_serializing_if = "Option::is_none")]

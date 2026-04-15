@@ -1,3 +1,4 @@
+use diesel::RunQueryDsl;
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
 use rocket::http::Method;
@@ -5,6 +6,7 @@ use rocket::{self, launch, routes, Build, Rocket};
 use rocket_cors::AllowedOrigins;
 use tokio::sync::broadcast;
 
+mod commands;
 mod db;
 mod events;
 mod model;
@@ -12,6 +14,36 @@ mod routes;
 mod schema;
 
 pub struct Shutdown(pub broadcast::Sender<()>);
+
+// ─── Dev-mode fairing ────────────────────────────────────────────────────────
+
+/// When the `METTA_KG_DEV` environment variable is set, clears the entire
+/// operation log on every startup so development runs always start with a
+/// clean history.  The cascade on the detail tables (op_log_import, etc.)
+/// means only `op_log` needs to be deleted.
+struct DevModeFairing;
+
+#[rocket::async_trait]
+impl Fairing for DevModeFairing {
+    fn info(&self) -> Info {
+        Info {
+            name: "Dev Mode — clear op_log on startup",
+            kind: Kind::Liftoff,
+        }
+    }
+
+    async fn on_liftoff(&self, _rocket: &Rocket<rocket::Orbit>) {
+        if std::env::var("METTA_KG_DEV").is_ok() {
+            let conn = &mut db::establish_connection();
+            match diesel::delete(schema::op_log::table).execute(conn) {
+                Ok(n) => log::info!("[dev] cleared {n} op_log row(s) on startup"),
+                Err(e) => log::warn!("[dev] failed to clear op_log on startup: {e}"),
+            }
+        }
+    }
+}
+
+// ─── Shutdown fairing ────────────────────────────────────────────────────────
 
 struct ShutdownFairing;
 
@@ -69,14 +101,14 @@ fn rocket() -> Rocket<Build> {
                 routes::translations::create_from_n3,
                 routes::op_logs::get_log,
                 routes::op_logs::get_logs,
+                routes::op_logs::rollback_log,
+                routes::op_logs::redo_log,
                 routes::tokens::get_all,
                 routes::tokens::get,
                 routes::tokens::create,
                 routes::tokens::update,
                 routes::tokens::delete,
                 routes::tokens::delete_batch,
-                routes::spaces::export,
-                routes::spaces::export_root,
                 routes::spaces::import,
                 routes::spaces::import_root,
                 routes::spaces::import_csv,
@@ -93,7 +125,6 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::explore_namespaces,
                 routes::spaces::count,
                 routes::spaces::count_root,
-                routes::spaces::copy,
                 routes::spaces::import_url_metta,
                 routes::spaces::import_url_csv,
                 routes::spaces::import_url_nt,
@@ -107,5 +138,6 @@ fn rocket() -> Rocket<Build> {
         )
         .mount("/public", FileServer::from("static"))
         .attach(cors)
+        .attach(DevModeFairing)
         .attach(ShutdownFairing)
 }

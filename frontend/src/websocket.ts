@@ -3,6 +3,12 @@ import { BACKEND_URL } from './urls'
 export type SpaceEvent =
     | { type: 'locked'; path: string }
     | { type: 'unlocked'; path: string }
+    | { type: 'importComplete'; path: string }
+    | { type: 'importError'; path: string; message: string }
+    | { type: 'clearComplete'; path: string }
+    | { type: 'clearError'; path: string; message: string }
+    | { type: 'transformComplete'; path: string }
+    | { type: 'transformError'; path: string; message: string }
 
 export type StatusEvent = {
     status: 'pathClear' | 'pathReadOnly' | 'pathReadOnlyTemporary' |

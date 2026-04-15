@@ -1,0 +1,199 @@
+.MainLayout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    background: var(--base);
+}
+
+.Main {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+// ── Graph canvas ──────────────────────────────────────────────────────────────
+
+.GraphContainer {
+    position: absolute;
+    inset: 0;
+    background: var(--base);
+}
+
+// ── Swimlane column headers ───────────────────────────────────────────────────
+
+.LaneHeaders {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    // The 4 lanes must line up with LANE_X constants in index.tsx.
+    // Each header is centred on its lane's x coordinate.
+    // We use justify-content: space-around over a fixed max-width section.
+    pointer-events: none;
+    padding: 0 80px 0 80px;
+    gap: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    background: color-mix(in srgb, var(--base) 80%, transparent);
+    backdrop-filter: blur(6px);
+    z-index: 5;
+}
+
+.LaneHeader {
+    flex: 1;
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.75;
+}
+
+// ── Toolbar ───────────────────────────────────────────────────────────────────
+
+.Toolbar {
+    position: absolute;
+    top: 48px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 10;
+}
+
+.ToolbarButton {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+
+    &:hover {
+        background: var(--highlight-med);
+        border-color: var(--highlight-high);
+    }
+}
+
+// ── Action panel ──────────────────────────────────────────────────────────────
+
+.ActionPanel {
+    position: absolute;
+    top: 48px;
+    right: 60px;
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+    min-width: 160px;
+}
+
+.ActionPanelTitle {
+    font-size: 0.75rem;
+    color: var(--subtle);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.ActionPanelButtons {
+    display: flex;
+    gap: 8px;
+}
+
+.ActionButton {
+    flex: 1;
+    padding: 5px 10px;
+    border-radius: 5px;
+    border: 1px solid var(--border-subtle);
+    background: var(--overlay);
+    color: var(--text);
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+
+    &:hover:not(:disabled) {
+        background: var(--highlight-med);
+        border-color: var(--highlight-high);
+    }
+
+    &:disabled {
+        opacity: 0.35;
+        cursor: default;
+    }
+}
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+
+.Legend {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    z-index: 10;
+}
+
+.LegendItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--subtle);
+}
+
+.LegendDot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.LegendDotRolledBack {
+    background: var(--muted);
+    opacity: 0.4;
+    outline: 1px dashed var(--muted);
+    outline-offset: 1px;
+}
+
+// ── States ────────────────────────────────────────────────────────────────────
+
+.Overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.LoadingText,
+.EmptyText {
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+.ErrorText {
+    font-size: 0.9rem;
+    color: var(--love);
+}

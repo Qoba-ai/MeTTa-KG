@@ -225,6 +225,23 @@ export function buildASTFromTokens(tokenPaths: string[][]): { ast: ASTDocument; 
   const nodeMap = new Map<string, ASTNode>()
   const atoms: ASTNode[] = []
 
+  // Group paths by first key so atoms with the same root key are always contiguous.
+  // Within each key group, non-fringe paths come before fringe paths.
+  // Map preserves insertion order, so the first-seen key ordering is maintained.
+  {
+    const groups = new Map<string, { regular: string[][], fringes: string[][] }>()
+    for (const tp of tokenPaths) {
+      if (tp.length === 0) continue
+      const key = tp[0]
+      if (!groups.has(key)) groups.set(key, { regular: [], fringes: [] })
+      const g = groups.get(key)!
+      if (tp[tp.length - 1] === '|$|') g.fringes.push(tp)
+      else g.regular.push(tp)
+    }
+    tokenPaths = []
+    for (const g of groups.values()) tokenPaths.push(...g.regular, ...g.fringes)
+  }
+
   const fringePaths = tokenPaths.filter(tp => tp.length > 0 && tp[tp.length - 1] === '|$|')
 
   // Build a nested atom from a terminal path: ["a", "b"] → ExprNode("a", [AtomNode("b")])

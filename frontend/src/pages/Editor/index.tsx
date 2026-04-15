@@ -20,6 +20,8 @@ import {
     VsChevronRight,
     VsSignOut,
     VsSettings,
+    VsDiscard,
+    VsRedo,
 } from 'solid-icons/vs'
 import { createMemo, createSignal, onMount, onCleanup, Show, For, createEffect, batch, on, untrack } from 'solid-js'
 import styles from './Editor.module.scss'
@@ -144,7 +146,7 @@ import { diffExtension, setOriginalContentEffect } from './extensions/diffExtens
 import { setCollapsedPathsEffect, collapsedPathsField, createPathFoldExtension, getFoldedPaths, extractLinePathTokens } from './extensions/pathFoldExtension'
 import { NamespaceSelector } from './components/NamespaceSelector/NamespaceSelector'
 import { TrieExplorer, buildTrie, TrieNode } from './components/TrieExplorer/TrieExplorer'
-import { EditorASTState, astToString, initializeEditorState, emptyEditorState, parseMeTTaString, buildASTFromTokens, mergeTokensIntoAST, unexpandFringe, hasFringeDescendant, computeDiff, ASTNode } from './lib/ast'
+import { EditorASTState, astToString, initializeEditorState, emptyEditorState, parseMeTTaString, buildASTFromTokens, mergeTokensIntoAST, unexpandFringe, hasFringeDescendant, computeDiff, ASTNode, ExprNode } from './lib/ast'
 import { getDisplayContent, getOriginalContent, createASTStateFromTokens, stripNamespacePrefix } from './lib/editorASTUtils'
 
 // Components
@@ -273,6 +275,36 @@ const App: Component = () => {
     // Transform State
     const [transformConfigs, setTransformConfigs] = createSignal<SpaceConfig[]>([])
 
+    // Namespace tree — fetched once from /namespaces/ and reused for all NamespaceSelector dropdowns
+    const [namespaceTree, setNamespaceTree] = createSignal<any>(null)
+    let namespaceFetchPromise: Promise<void> | null = null
+
+    const invalidateNamespaceTree = () => {
+        setNamespaceTree(null)
+        namespaceFetchPromise = null
+    }
+
+    const ensureNamespaceTree = async () => {
+        if (namespaceTree()) return
+        if (!namespaceFetchPromise) {
+            namespaceFetchPromise = (async () => {
+                const t = token()
+                if (!t) return
+                try {
+                    const res = await fetch(`${BACKEND_URL}/namespaces/`, {
+                        headers: { Authorization: t.code }
+                    })
+                    if (res.ok) setNamespaceTree(await res.json())
+                } catch (e) {
+                    console.error("Namespace tree fetch failed:", e)
+                } finally {
+                    if (!namespaceTree()) namespaceFetchPromise = null
+                }
+            })()
+        }
+        return namespaceFetchPromise
+    }
+
     // Trie/Editor fold sync state — full paths like "/key/" or "/key/sub/" that are collapsed
     const [collapsedPaths, setCollapsedPaths] = createSignal<Set<string>>(new Set())
 
@@ -304,8 +336,67 @@ const App: Component = () => {
         }
     }
 
-    // WebSocket: set of space paths currently locked (import in progress)
+    // The most recent active (non-rolled-back) log entry — undo target.
+    const undoTargetId = () => spaceLogs().find(l => !l.rolled_back_at)?.id ?? null
+
+    // The oldest entry in the contiguous rolled-back prefix — redo target.
+    // spaceLogs() is desc-sorted, so the prefix starts at index 0.
+    const redoTargetId = (): number | null => {
+        const logs = spaceLogs()
+        let i = 0
+        while (i < logs.length && logs[i].rolled_back_at) i++
+        return i === 0 ? null : logs[i - 1].id
+    }
+
+    const rollbackLog = async (id: number) => {
+        const t = token()
+        if (!t) return
+        setIsUndoRedoInProgress(true)
+        try {
+            const res = await fetch(`${BACKEND_URL}/logs/${id}/rollback`, {
+                method: 'POST',
+                headers: { Authorization: t.code },
+            })
+            if (res.ok) {
+                const updated: OpLogEntry[] = await res.json()
+                setSpaceLogs(prev => prev.map(l => updated.find(u => u.id === l.id) ?? l))
+                read()
+            } else {
+                notify.error('Undo failed')
+            }
+        } catch {
+            notify.error('Undo failed')
+        } finally {
+            setIsUndoRedoInProgress(false)
+        }
+    }
+
+    const redoLog = async (id: number) => {
+        const t = token()
+        if (!t) return
+        setIsUndoRedoInProgress(true)
+        try {
+            const res = await fetch(`${BACKEND_URL}/logs/${id}/redo`, {
+                method: 'POST',
+                headers: { Authorization: t.code },
+            })
+            if (res.ok) {
+                const updated: OpLogEntry[] = await res.json()
+                setSpaceLogs(prev => prev.map(l => updated.find(u => u.id === l.id) ?? l))
+                read()
+            } else {
+                notify.error('Redo failed')
+            }
+        } catch {
+            notify.error('Redo failed')
+        } finally {
+            setIsUndoRedoInProgress(false)
+        }
+    }
+
+    // WebSocket: set of space paths currently locked (import/transform in progress)
     const [lockedPaths, setLockedPaths] = createSignal<Set<string>>(new Set())
+    const [isUndoRedoInProgress, setIsUndoRedoInProgress] = createSignal(false)
     const [spaceStatus, setSpaceStatus] = createSignal<StatusEvent | null>(null)
     const [online, setOnline] = createSignal(false)
 
@@ -525,6 +616,7 @@ const App: Component = () => {
     createEffect(() => {
         const t = token()
         if (!t) return
+        invalidateNamespaceTree()
         wsService.connectEvents(t.code)
         const unsub = wsService.onSpaceEvent((event) => {
             setLockedPaths((prev: Set<string>) => {
@@ -533,6 +625,17 @@ const App: Component = () => {
                 else next.delete(event.path)
                 return next
             })
+            if (
+                event.type === 'transformComplete' ||
+                event.type === 'importComplete' ||
+                event.type === 'clearComplete'
+            ) {
+                invalidateNamespaceTree()
+                const activeNs = activePanelNamespace()
+                if (activeNs && event.path === activeNs) {
+                    read()
+                }
+            }
         })
         onCleanup(() => {
             unsub()
@@ -679,11 +782,11 @@ const App: Component = () => {
             let allTokens: string[][] = []
             if (pathFocusTokens.length === 0) {
                 // No focus tokens, make a single request without token
-                allTokens = await loadFringeAsTokens(path)
+                allTokens = await loadFringeAsTokens(path, undefined, activeNs)
             } else {
                 // Make one request per focus token and combine results
                 for (const focusToken of pathFocusTokens) {
-                    const tokens = await loadFringeAsTokens(path, focusToken)
+                    const tokens = await loadFringeAsTokens(path, focusToken, activeNs)
                     allTokens = allTokens.concat(tokens)
                 }
             }
@@ -710,7 +813,6 @@ const App: Component = () => {
                 annotations: [programmaticEdit.of(true)],
             }))
 
-            notify.success(`Explored space at '${path}'`)
         } catch (e) {
             console.error("Expand exploration failed:", e)
         }
@@ -738,34 +840,58 @@ const App: Component = () => {
             const paginationToken = pathFocusTokens[0]
 
             // Load next page - loadFringeAsTokens will update focusTokens with new token
-            const newTokens = await loadFringeAsTokens(path, paginationToken)
+            const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+            const newTokens = await loadFringeAsTokens(path, paginationToken, activeNs)
 
             // Append new expressions to the AST
             const astState = p.astState
-            const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
             const strippedTokens = stripNamespacePrefix(newTokens, activeNs)
 
-            // Build new nodes from tokens and append to root
+            // Build new nodes from tokens
             const { ast: newNodes } = buildASTFromTokens(strippedTokens)
-
-            // Render new nodes BEFORE mutating the AST, so we know exactly what text to append
             const newText = astToString(newNodes)
 
-            astState.ast.push(...newNodes)
-            astState.originalAST.push(...newNodes)
+            // Determine the root key of the newly loaded nodes
+            const firstKey = newNodes.length > 0 && newNodes[0].type === 'expr'
+                ? (newNodes[0] as ExprNode).key
+                : null
 
-            // Incremental append: only insert the new text at the end of the document.
-            // A full replacement (from: 0, to: doc.length) resets CodeMirror's viewport,
-            // breaking scroll position. Appending preserves it naturally.
+            // Insert into AST after the last node with the same root key, or at end
+            let astInsertIdx = astState.ast.length
+            if (firstKey) {
+                for (let i = astState.ast.length - 1; i >= 0; i--) {
+                    const n = astState.ast[i]
+                    if (n.type === 'expr' && (n as ExprNode).key === firstKey) {
+                        astInsertIdx = i + 1
+                        break
+                    }
+                }
+            }
+            astState.ast.splice(astInsertIdx, 0, ...newNodes)
+            astState.originalAST.splice(astInsertIdx, 0, ...newNodes)
+
+            // Find insertion point in editor: after the last line that belongs to this key
+            const doc = p.view.state.doc
+            let insertPos = doc.length
+            if (firstKey) {
+                const linePrefix = `(${firstKey} `
+                const exactMatch = `(${firstKey})`
+                for (let i = doc.lines; i >= 1; i--) {
+                    const lineText = doc.line(i).text
+                    if (lineText.startsWith(linePrefix) || lineText === exactMatch) {
+                        insertPos = doc.line(i).to
+                        break
+                    }
+                }
+            }
+
             setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
-            const docLength = p.view.state.doc.length
-            const insertText = docLength > 0 ? '\n' + newText : newText
+            const insertText = insertPos > 0 ? '\n' + newText : newText
             p.view.dispatch(p.view.state.update({
-                changes: { from: docLength, insert: insertText },
+                changes: { from: insertPos, insert: insertText },
                 annotations: [programmaticEdit.of(true)],
             }))
 
-            notify.success(`Loaded more expressions`)
         } catch (e) {
             console.error("Load more failed:", e)
             notify.error('Failed to load more expressions')
@@ -999,10 +1125,19 @@ const App: Component = () => {
         }
     }
 
-    const loadFringeAsTokens = async (path: string, focusToken?: string): Promise<string[][]> => {
+    const loadFringeAsTokens = async (path: string, focusToken?: string, tabNamespace?: string): Promise<string[][]> => {
         let ns = path
         if (ns.startsWith('/')) ns = ns.substring(1)
         const encodedNs = ns.split('/').map(encodeURIComponent).join('/')
+
+        // Parts of the tab's namespace (what the editor content is relative to)
+        const tabNsParts = (tabNamespace ?? path)
+            .replace(/^\/|\/$/g, '')
+            .split('/')
+            .filter(p => p.length > 0)
+        // Parts of the current explore path that go beyond the tab namespace
+        const nsParts = ns.replace(/\/$/, '').split('/').filter(p => p.length > 0)
+        const relParts = nsParts.slice(tabNsParts.length)
 
         try {
             // Always pass focus_token parameter, use empty string if not provided
@@ -1052,41 +1187,44 @@ const App: Component = () => {
             // Convert to token format: subspaces first, then metta_expressions
             const result: string[][] = []
 
-            // Helper to convert a path like "/a/c/" to nested S-expr "(a (c |$|))"
-            const pathToNestedSexpr = (subspacePath: string): string => {
-                const parts = subspacePath.split('/').filter(p => p.length > 0)
-                if (parts.length === 0) return '|$|'
+            // Convert a subspace path (relative to root) to a nested s-expr relative to
+            // the tab namespace. e.g. tabNs="home/tim", subspacePath="home/tim/projects/sub"
+            // → "(projects (sub |$|))"
+            const subspaceToRelSexpr = (subspacePath: string): string => {
+                const allParts = subspacePath.split('/').filter(p => p.length > 0)
+                const relativeParts = allParts.slice(tabNsParts.length)
+                if (relativeParts.length === 0) return '|$|'
                 let sexpr = '|$|'
-                for (let i = parts.length - 1; i >= 0; i--) {
-                    sexpr = `(${parts[i]} ${sexpr})`
+                for (let i = relativeParts.length - 1; i >= 0; i--) {
+                    sexpr = `(${relativeParts[i]} ${sexpr})`
                 }
                 return sexpr
             }
 
-            // Add subspaces at the top - use the full path to generate proper nested expression
+            // Add subspaces at the top, expressed relative to the tab namespace
             for (const [_mettaString, subspacePath] of subspaces) {
                 if (subspacePath) {
-                    const fullSexpr = pathToNestedSexpr(subspacePath)
-                    result.push(["!", fullSexpr])
+                    result.push(["!", subspaceToRelSexpr(subspacePath)])
                 }
             }
 
-            // Helper to wrap an expression with the namespace prefix
-            // e.g., for path "/a/" and expr "b", returns "(a b)"
-            const wrapWithNamespace = (expr: string): string => {
-                const parts = ns.split('/').filter(p => p.length > 0)
-                if (parts.length === 0) return expr
+            // Wrap an expression with the path segments between the tab namespace and the
+            // current explore path.  e.g. relParts=["projects"] and expr="foo bar"
+            // → "(projects foo bar)".  When exploring at the tab root, relParts is empty
+            // and the expression is returned as-is.
+            const wrapWithRelPath = (expr: string): string => {
+                if (relParts.length === 0) return expr
                 let wrapped = expr
-                for (let i = parts.length - 1; i >= 0; i--) {
-                    wrapped = `(${parts[i]} ${wrapped})`
+                for (let i = relParts.length - 1; i >= 0; i--) {
+                    wrapped = `(${relParts[i]} ${wrapped})`
                 }
                 return wrapped
             }
 
-            // Add metta_expressions below in reverse order, wrapped with namespace
+            // Add metta_expressions below in reverse order, wrapped with the relative path
             for (const expr of mettaExpressions.reverse()) {
                 if (expr) {
-                    result.push(["!", wrapWithNamespace(expr)])
+                    result.push(["!", wrapWithRelPath(expr)])
                 }
             }
 
@@ -1146,7 +1284,7 @@ const App: Component = () => {
             setFocusTokens(newTokens)
 
             // Now load the space content using the root token
-            const fringeTokens = await loadFringeAsTokens(ns, namespaceInfo.token)
+            const fringeTokens = await loadFringeAsTokens(ns, namespaceInfo.token, ns)
             const astState = createASTStateFromTokens(fringeTokens, ns)
 
             const newPanel: EditorPanel = {
@@ -1161,7 +1299,6 @@ const App: Component = () => {
                 setEditorMode(EditorMode.EDIT)
             })
 
-            notify.success(`Loaded space '${ns}'`)
         } catch (e) {
             console.error(e)
             notify.error(`Failed to load space '${ns}'`)
@@ -1274,7 +1411,7 @@ const App: Component = () => {
             setFocusTokens(newTokens)
 
             // Now load the space content using the root token
-            const tokens = await loadFringeAsTokens(path, namespaceInfo.token)
+            const tokens = await loadFringeAsTokens(path, namespaceInfo.token, path)
 
             if (p && !ns) {
                 // Update current panel
@@ -1282,7 +1419,6 @@ const App: Component = () => {
                 const displayContent = getDisplayContentWithPaginationIndicator(astState, path)
                 setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
                 p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: displayContent } }))
-                notify.success(`Reloaded space '${path}'`)
             } else {
                 addPanel(path)
             }
@@ -1314,37 +1450,41 @@ const App: Component = () => {
 
     const fetchExploreResults = async (path: string) => {
         if (!token()) return []
-        let ns = path
-        if (ns.startsWith('/')) ns = ns.substring(1)
-        const encodedNs = ns.split('/').map(encodeURIComponent).join('/')
+
+        await ensureNamespaceTree()
 
         const results: any[] = []
-        const uniqueNextLevelPaths = new Set<string>()
+        const uniquePaths = new Set<string>()
 
-        try {
-            const res = await fetch(`${BACKEND_URL}/namespaces/${encodedNs}`, {
-                headers: { Authorization: token()?.code ?? '' }
-            })
-            if (res.ok) {
-                const data: any = await res.json()
-                const subnamespaces = data.subnamespaces || []
+        // Traverse the cached namespace tree to find children at `path`
+        const tree = namespaceTree()
+        if (tree) {
+            let ns = path
+            if (ns.startsWith('/')) ns = ns.substring(1)
+            if (ns.endsWith('/')) ns = ns.slice(0, -1)
+            const parts = ns.split('/').filter(p => p.length > 0)
 
-                // Convert NamespaceInfo objects to the format expected by NamespaceSelector
-                for (const info of subnamespaces) {
-                    // Convert namespace like "a/b" to path format "/a/b/"
-                    const namespace = info.namespace || ''
-                    const resultPath = namespace.startsWith('/') ? namespace : '/' + namespace
-                    const normalizedPath = resultPath.endsWith('/') ? resultPath : resultPath + '/'
+            // Walk the tree to the node matching `parts`
+            let node: any = tree
+            for (const part of parts) {
+                const subs: any[] = node?.subnamespaces || []
+                node = subs.find((s: any) => {
+                    const subNs: string = (s.namespace || '').toString().replace(/\\/g, '/')
+                    const leaf = subNs.split('/').filter((x: string) => x.length > 0).pop() ?? ''
+                    return leaf === part
+                }) ?? null
+                if (!node) break
+            }
 
-                    if (!uniqueNextLevelPaths.has(normalizedPath)) {
-                        uniqueNextLevelPaths.add(normalizedPath)
-                        // Generate a simple display expression from the path
-                        const expr = pathToSexpr(normalizedPath)
-                        results.push({ token: info.token, expr, path: normalizedPath });
-                    }
+            for (const sub of node?.subnamespaces || []) {
+                const namespace: string = (sub.namespace || '').toString().replace(/\\/g, '/')
+                const resultPath = '/' + namespace + '/'
+                if (!uniquePaths.has(resultPath)) {
+                    uniquePaths.add(resultPath)
+                    results.push({ token: [], expr: pathToSexpr(resultPath), path: resultPath })
                 }
             }
-        } catch (e) { console.error("Namespaces API failed:", e) }
+        }
 
         // Local fallback: use current editor content to find sub-namespaces
         const p = activePanel()
@@ -1369,10 +1509,9 @@ const App: Component = () => {
                 // terminal namespaces and should not appear in the selector.
                 if (Object.keys(node.children).length === 0) continue
                 const nextPath = '/' + [...currentParts, name].join('/') + '/'
-                const nextSexpr = pathToSexpr(nextPath)
-                if (!uniqueNextLevelPaths.has(nextSexpr)) {
-                    uniqueNextLevelPaths.add(nextSexpr)
-                    results.push({ token: [], expr: nextSexpr, path: nextPath })
+                if (!uniquePaths.has(nextPath)) {
+                    uniquePaths.add(nextPath)
+                    results.push({ token: [], expr: pathToSexpr(nextPath), path: nextPath })
                 }
             }
         }
@@ -1536,6 +1675,11 @@ const App: Component = () => {
                     </div>
                 </Show>
 
+                {/* Progress bar: shown when active space is locked or undo/redo is running */}
+                <Show when={lockedPaths().has(activePanel()?.namespace ?? '') || isUndoRedoInProgress()}>
+                    <div class={styles.ProgressBar} />
+                </Show>
+
                 {/* Content wrapper with margin */}
                 <div class={styles.ContentWrapper}>
                     {/* Content row: Sidebar | Editor | Trie */}
@@ -1557,9 +1701,10 @@ const App: Component = () => {
                                         </button>
                                         <button onclick={() => {
                                             if (transformConfigs().length === 0) {
+                                                const ns = activePanel()?.namespace || '/'
                                                 setTransformConfigs([
-                                                    { path: '/', type: 'input', patternOrTemplate: '' },
-                                                    { path: '/', type: 'output', patternOrTemplate: '' }
+                                                    { path: ns, type: 'input', patternOrTemplate: '' },
+                                                    { path: ns, type: 'output', patternOrTemplate: '' }
                                                 ]);
                                             }
                                             transformModal.showModal();
@@ -1588,17 +1733,22 @@ const App: Component = () => {
                                             <div class={styles.LogEntryLoading}>Loading…</div>
                                         </Show>
                                         <For each={spaceLogs()}>
-                                            {(log) => (
-                                                <div class={styles.LogEntry}>
-                                                    <span class={styles.LogEntryType}>{log.op_type}</span>
-                                                    <span class={styles.LogEntryDetail}>
-                                                        {log.import?.path ?? log.clear?.path ?? log.copy?.src ?? ''}
-                                                    </span>
-                                                    <span class={styles.LogEntryTime}>
-                                                        {new Date(log.created_at).toLocaleTimeString()}
-                                                    </span>
-                                                </div>
-                                            )}
+                                            {(log) => {
+                                                const detail = log.import?.path ?? log.clear?.path ?? log.copy?.src ?? null
+                                                return (
+                                                    <div class={styles.LogEntry}>
+                                                        <div class={styles.LogEntryHeader}>
+                                                            <span class={`${styles.LogEntryType} ${styles[log.op_type] ?? ''}`}>{log.op_type}</span>
+                                                            <span class={styles.LogEntryTime}>
+                                                                {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                        </div>
+                                                        <Show when={detail}>
+                                                            <span class={styles.LogEntryDetail}>{detail}</span>
+                                                        </Show>
+                                                    </div>
+                                                )
+                                            }}
                                         </For>
                                         <Show when={!logsLoading() && spaceLogs().length === 0}>
                                             <div class={styles.LogEntryEmpty}>No logs yet</div>
@@ -1646,6 +1796,28 @@ const App: Component = () => {
                                             )
                                         }}
                                     </Show>
+                                    <div class={styles.UndoRedoGroup}>
+                                        <button
+                                            class={styles.UndoRedoButton}
+                                            title="Undo last operation"
+                                            disabled={undoTargetId() === null || isUndoRedoInProgress()}
+                                            onClick={() => { const id = undoTargetId(); if (id !== null) rollbackLog(id) }}
+                                        >
+                                            <Show when={isUndoRedoInProgress()} fallback={<VsDiscard size={15} />}>
+                                                <span class={styles.Spinner} />
+                                            </Show>
+                                        </button>
+                                        <button
+                                            class={styles.UndoRedoButton}
+                                            title="Redo last undone operation"
+                                            disabled={redoTargetId() === null || isUndoRedoInProgress()}
+                                            onClick={() => { const id = redoTargetId(); if (id !== null) redoLog(id) }}
+                                        >
+                                            <Show when={isUndoRedoInProgress()} fallback={<VsRedo size={15} />}>
+                                                <span class={styles.Spinner} />
+                                            </Show>
+                                        </button>
+                                    </div>
                                     <NamespaceSelector
                                         value={activePanel()?.namespace || '/'}
                                         onInput={(ns) => {

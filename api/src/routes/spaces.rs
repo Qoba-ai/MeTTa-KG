@@ -2,14 +2,13 @@ use rocket::serde::json::{serde_json, Json};
 use rocket::State;
 use rocket::{get, http::Status, post, put};
 use serde::{Deserialize, Serialize};
-use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::PathBuf;
+use std::{env, vec};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-use crate::routes::path_to_metta_sexpr;
 use crate::{
     db::establish_connection,
     events::{EventBus, SpaceEvent},
@@ -183,6 +182,15 @@ pub async fn transform(
         return Err(Status::BadRequest);
     }
 
+    let all_balanced = transformation
+        .patterns
+        .iter()
+        .chain(transformation.templates.iter())
+        .all(|s| mork_client::is_balanced(s));
+    if !all_balanced {
+        return Err(Status::UnprocessableEntity);
+    }
+
     let perm = permission_from_token(&token);
     perm.require_read().map_err(permission_error_to_status)?;
     perm.require_write().map_err(permission_error_to_status)?;
@@ -224,7 +232,23 @@ pub async fn transform(
         path: event_path.clone(),
     });
 
-    let result = get_mork_client().transform(&input, &output).await;
+    let operation_id = Uuid::new_v4();
+
+    let input_for_cmd: Vec<(std::path::PathBuf, String)> = input
+        .iter()
+        .map(|(p, pat)| (p.clone(), pat.to_string()))
+        .collect();
+    let output_for_cmd: Vec<(std::path::PathBuf, String)> = output
+        .iter()
+        .map(|(p, tmpl)| (p.clone(), tmpl.to_string()))
+        .collect();
+
+    let result = crate::commands::transform::execute(&crate::commands::transform::Params {
+        input: input_for_cmd,
+        output: output_for_cmd,
+        operation_id: operation_id.to_string(),
+    })
+    .await;
 
     match result {
         Ok(()) => {
@@ -256,6 +280,7 @@ pub async fn transform(
                         op_log_id: log_id,
                         input_spaces: input_json,
                         output_spaces: output_json,
+                        operation_id: Some(operation_id.to_string()),
                     })
                     .execute(&mut establish_connection());
             }
@@ -293,7 +318,7 @@ pub async fn transform(
                 message: format!("{:?}", e),
             });
             let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
-            Err(mork_error_to_status(e))
+            Err(e)
         }
     }
 }
@@ -364,18 +389,14 @@ pub async fn do_import(
 
     let operation_id = Uuid::new_v4();
 
-    let log_path = PathBuf::from("logs");
+    let cmd_result = crate::commands::import::execute(&crate::commands::import::Params {
+        target_path: augmented_path.clone(),
+        uri: uri.clone(),
+        operation_id: operation_id.to_string(),
+    })
+    .await;
 
-    let import_path = PathBuf::from(format!("import/{}/imported", operation_id));
-
-    client
-        .import(&augmented_path, "$", "$", &uri)
-        .await
-        .map_err(|e| mork_error_to_status(e))?;
-
-    let result = Ok(());
-
-    match result {
+    match cmd_result {
         Ok(()) => {
             if let Some(log_id) = insert_op_log("Import") {
                 let _ = diesel::insert_into(op_log_import::table)
@@ -383,6 +404,7 @@ pub async fn do_import(
                         op_log_id: log_id,
                         path: path.to_string_lossy().into_owned(),
                         uri: uri.clone(),
+                        operation_id: Some(operation_id.to_string()),
                     })
                     .execute(&mut establish_connection());
             }
@@ -413,40 +435,15 @@ pub async fn do_import(
             });
             Ok(Json(operation_id.to_string()))
         }
-        Err(e) => {
+        Err(status) => {
             let _ = bus.send(SpaceEvent::ImportError {
                 path: event_path.clone(),
-                message: format!("{:?}", e),
+                message: "Import failed".into(),
             });
             let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
-            Err(mork_error_to_status(e))
+            Err(status)
         }
     }
-}
-
-// ─── Export ──────────────────────────────────────────────────────────────────
-
-#[get("/spaces")]
-pub async fn export_root(token: Token) -> Result<Json<String>, Status> {
-    export(token, PathBuf::new()).await
-}
-
-#[get("/spaces/<path..>")]
-pub async fn export(token: Token, path: PathBuf) -> Result<Json<String>, Status> {
-    Err(Status::NotImplemented)
-    /*
-    TODO: check this implementation with augmented path
-
-    let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path)
-        .map_err(permission_error_to_status)?;
-    with_lock_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
-        let path = path.clone();
-        async move { get_mork_client().export(&path, "$", "$").await.map(Json) }
-    })
-    .await
-     */
 }
 
 // ─── Clear ───────────────────────────────────────────────────────────────────
@@ -477,21 +474,26 @@ pub async fn clear(
         root.clone()
     };
 
-    let result = get_mork_client().clear(&augmented_path, "$").await;
+    let operation_id = Uuid::new_v4();
 
-    match result {
+    let cmd_result = crate::commands::clear::execute(&crate::commands::clear::Params {
+        target_path: augmented_path.clone(),
+        operation_id: operation_id.to_string(),
+    })
+    .await;
+
+    match cmd_result {
         Ok(()) => {
             if let Some(log_id) = insert_op_log("Clear") {
                 let _ = diesel::insert_into(op_log_clear::table)
                     .values(&OpLogClearInsert {
                         op_log_id: log_id,
                         path: path.to_string_lossy().into_owned(),
+                        operation_id: Some(operation_id.to_string()),
                     })
                     .execute(&mut establish_connection());
             }
 
-            // Clear is synchronous in MORK (no spawned task), but we still
-            // monitor status to confirm the lock is released.
             let bus_tx = bus.0.clone();
             let monitor_path = augmented_path.clone();
             tokio::spawn(async move {
@@ -515,51 +517,16 @@ pub async fn clear(
             });
             Ok(Json(true))
         }
-        Err(e) => {
+        Err(status) => {
             let _ = bus.0.send(SpaceEvent::ClearError {
                 path: event_path.clone(),
-                message: format!("{:?}", e),
+                message: "Clear failed".into(),
             });
             let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
-            Err(mork_error_to_status(e))
+            Err(status)
         }
     }
 }
-
-// ─── Copy ────────────────────────────────────────────────────────────────────
-
-#[rocket::post("/spaces/<src_path..>?<dst_path>", rank = 1)]
-pub async fn copy(token: Token, src_path: PathBuf, dst_path: String) -> Result<Json<bool>, Status> {
-    Err(Status::NotImplemented)
-
-    /*
-        TODO: check this implementation with augmented path
-
-    let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.require_write().map_err(permission_error_to_status)?;
-    let dst = PathBuf::from(&dst_path);
-    perm.check_namespace(&src_path)
-        .map_err(permission_error_to_status)?;
-    perm.check_namespace(&dst)
-        .map_err(permission_error_to_status)?;
-    let result = get_mork_client().copy(&src_path, &dst).await;
-    match result {
-        Ok(op) => {
-            let insert = OpLogInsert {
-                op_type: "Cpy".to_string(),
-                payload: serde_json::to_value(&op).unwrap_or_default(),
-            };
-            let _ = diesel::insert_into(op_log::table)
-                .values(&insert)
-                .execute(&mut establish_connection());
-            Ok(Json(true))
-        }
-        Err(e) => Err(mork_error_to_status(e)),
-    }
-     */
-}
-
 // ─── Explore ─────────────────────────────────────────────────────────────────
 
 #[get("/explore?<focus_token>")]

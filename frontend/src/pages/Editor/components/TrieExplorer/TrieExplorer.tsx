@@ -87,68 +87,52 @@ export const buildTrie = (content: string): TrieNode => {
   return root;
 };
 
-const TerminalLeaf: Component<{
-  value: string;
-  depth?: number;
-  onNodeClick?: (expression: string) => void;
-  onDelete?: (value: string) => void;
-  shiftPressed: () => boolean;
+const TerminalsSummary: Component<{
+  count: number;
+  path: string;
+  hasMore: boolean;
+  onLoadMore?: (path: string) => void;
+  depth: number;
   treePrefix?: string;
   isLast?: boolean;
 }> = (props) => {
-  const depth = props.depth || 0;
-  const [isHovering, setIsHovering] = createSignal(false);
-
-  const handleDoubleClick = () => {
-    console.log('TerminalLeaf double-clicked:', props.value);
-    if (props.onNodeClick) {
-      props.onNodeClick(props.value);
-    }
-  };
-
-  const handleDelete = (e: MouseEvent) => {
-    e.stopPropagation();
-    if (props.onDelete) {
-      props.onDelete(props.value);
-    }
-  };
-
-  const showActions = () => isHovering() && props.shiftPressed();
-
   return (
     <div style={{ width: "100%" }}>
       <div style={{ display: "flex", "align-items": "center" }}>
-        <Show when={depth > 0}>
+        <Show when={props.depth > 0}>
           <span class={styles.TreePrefix}>{props.treePrefix || ""}{props.isLast ? "└─" : "├─"}</span>
         </Show>
-        <div
-          class={styles.TrieNode}
-          onDblClick={handleDoubleClick}
-          onMouseEnter={() => setIsHovering(true)}
-          onMouseLeave={() => setIsHovering(false)}
-          style={{ cursor: "pointer", flex: 1 }}
-        >
+        <div class={styles.TrieNode} style={{ flex: 1 }}>
           <div style={{ width: "16px" }} />
           <VsSymbolEnum size={14} class={styles.TrieLeafIcon} />
           <span class={styles.TrieLeafText}>
-            {props.value}
+            {props.count} expression{props.count !== 1 ? 's' : ''}
           </span>
-          <Show when={showActions() && props.onDelete}>
-            <div class={styles.TrieActions}>
-              <button
-                class={`${styles.TrieActionBtn} ${styles.TrieDeleteBtn}`}
-                onClick={handleDelete}
-                title="Delete terminal"
-              >
-                <VsTrash size={12} />
-              </button>
-            </div>
+          <Show when={props.hasMore}>
+            <button
+              onClick={(e) => { e.stopPropagation(); props.onLoadMore?.(props.path); }}
+              title="Load more expressions"
+              style={{
+                "font-size": "0.75rem",
+                padding: "1px 6px",
+                "border-radius": "999px",
+                background: "var(--highlight-low)",
+                border: "1px solid var(--muted)",
+                color: "var(--muted)",
+                cursor: "pointer",
+                "margin-left": "6px",
+                "line-height": "1.4",
+              }}
+            >
+              ...
+            </button>
           </Show>
         </div>
       </div>
     </div>
   );
 };
+
 
 const TrieBranch: Component<{
   name: string;
@@ -172,7 +156,6 @@ const TrieBranch: Component<{
   onLoadMore?: (path: string) => void;
   onNodeClick?: (expression: string) => void;
   shiftPressed: () => boolean;
-  onDeleteTerminal?: (value: string) => void;
   treePrefix?: string;
   isLast?: boolean;
 }> = (props) => {
@@ -402,7 +385,6 @@ const TrieBranch: Component<{
                     onLoadMore={props.onLoadMore}
                     onNodeClick={props.onNodeClick}
                     shiftPressed={props.shiftPressed}
-                    onDeleteTerminal={props.onDeleteTerminal}
                     treePrefix={newPrefix}
                     isLast={isLastChild}
                   />
@@ -411,24 +393,18 @@ const TrieBranch: Component<{
             }}
           </For>
 
-          {/* Terminal (leaf) values at this node - always shown after branches */}
-          <For each={props.node.terminals.slice().sort()}>
-            {(terminal, index) => {
-              const sortedTerminals = props.node.terminals.slice().sort();
-              const isLastTerminal = index() === sortedTerminals.length - 1;
-              const newPrefix = (props.treePrefix || "") + (props.isLast ? "  " : "│ ");
-
-              return <TerminalLeaf
-                value={terminal}
-                depth={props.depth + 1}
-                onNodeClick={props.onNodeClick}
-                onDelete={props.onDeleteTerminal}
-                shiftPressed={props.shiftPressed}
-                treePrefix={newPrefix}
-                isLast={isLastTerminal}
-              />;
-            }}
-          </For>
+          {/* Terminal (leaf) values at this node - summarised as a single count node */}
+          <Show when={props.node.terminals.length > 0}>
+            <TerminalsSummary
+              count={props.node.terminals.length}
+              path={props.path}
+              hasMore={hasMoreToLoad()}
+              onLoadMore={props.onLoadMore}
+              depth={props.depth + 1}
+              treePrefix={(props.treePrefix || "") + (props.isLast ? "  " : "│ ")}
+              isLast={!props.node.isFringe}
+            />
+          </Show>
 
           {/* Fringe indicator - clickable to expand unexplored subspace */}
           <Show when={props.node.isFringe}>
@@ -583,13 +559,6 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
   const isSelected = (path: string) => selectedPaths().includes(path);
   const getSelectionCount = (path: string) => selectedPaths().filter(p => p === path).length;
 
-  const handleDeleteTerminal = (value: string) => {
-    // Terminal deletion: just the literal value
-    if (props.onDelete) {
-      props.onDelete(value);
-    }
-  };
-
   return (
     <div class={styles.TrieExplorer}>
       <h3>
@@ -653,7 +622,6 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
                   onLoadMore={props.onLoadMore}
                   onNodeClick={props.onNodeClick}
                   shiftPressed={shiftPressed}
-                  onDeleteTerminal={handleDeleteTerminal}
                   treePrefix=""
                   isLast={isLastChild}
                 />
@@ -662,22 +630,23 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
           }}
         </For>
 
-        {/* Render terminal values at root level - always after branches */}
-        <For each={trie().terminals.slice().sort()}>
-          {(terminal, index) => {
-            const sortedTerminals = trie().terminals.slice().sort();
-            const isLastTerminal = index() === sortedTerminals.length - 1;
-
-            return <TerminalLeaf
-              value={terminal}
-              onNodeClick={props.onNodeClick}
-              onDelete={handleDeleteTerminal}
-              shiftPressed={shiftPressed}
-              treePrefix=""
-              isLast={isLastTerminal}
-            />;
-          }}
-        </For>
+        {/* Render terminal values at root level - summarised as a single count node */}
+        <Show when={trie().terminals.length > 0}>
+          <TerminalsSummary
+            count={trie().terminals.length}
+            path={rootPath()}
+            hasMore={(() => {
+              const tokens = props.focusTokens?.();
+              if (!tokens) return false;
+              const p = rootPath().endsWith('/') ? rootPath() : rootPath() + '/';
+              return (tokens.get(p) || []).length > 0;
+            })()}
+            onLoadMore={props.onLoadMore}
+            depth={0}
+            treePrefix=""
+            isLast={true}
+          />
+        </Show>
 
         <Show when={Object.keys(trie().children).length === 0 && trie().terminals.length === 0 &&
           Object.keys(originalTrie().children).length === 0 && originalTrie().terminals.length === 0}>

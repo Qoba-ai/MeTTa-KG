@@ -64,12 +64,14 @@ interface OpLogImport {
     op_log_id: number
     path: string
     uri: string
+    operation_id?: string
 }
 
 interface OpLogClear {
     id: number
     op_log_id: number
     path: string
+    operation_id?: string
 }
 
 interface OpLogCopy {
@@ -77,6 +79,7 @@ interface OpLogCopy {
     op_log_id: number
     src: string
     dst: string
+    operation_id?: string
 }
 
 interface OpLogTransform {
@@ -84,12 +87,14 @@ interface OpLogTransform {
     op_log_id: number
     input_spaces: unknown
     output_spaces: unknown
+    operation_id?: string
 }
 
 interface OpLogEntry {
     id: number
     op_type: string
     created_at: string
+    rolled_back_at?: string
     import?: OpLogImport
     clear?: OpLogClear
     copy?: OpLogCopy

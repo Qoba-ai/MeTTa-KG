@@ -5,6 +5,7 @@ diesel::table! {
         id -> Int4,
         op_type -> Varchar,
         created_at -> Timestamp,
+        rolled_back_at -> Nullable<Timestamp>,
     }
 }
 
@@ -13,6 +14,7 @@ diesel::table! {
         id -> Int4,
         op_log_id -> Int4,
         path -> Text,
+        operation_id -> Nullable<Text>,
     }
 }
 
@@ -22,6 +24,7 @@ diesel::table! {
         op_log_id -> Int4,
         src -> Text,
         dst -> Text,
+        operation_id -> Nullable<Text>,
     }
 }
 
@@ -31,6 +34,7 @@ diesel::table! {
         op_log_id -> Int4,
         path -> Text,
         uri -> Text,
+        operation_id -> Nullable<Text>,
     }
 }
 
@@ -40,6 +44,7 @@ diesel::table! {
         op_log_id -> Int4,
         input_spaces -> Jsonb,
         output_spaces -> Jsonb,
+        operation_id -> Nullable<Text>,
     }
 }
 

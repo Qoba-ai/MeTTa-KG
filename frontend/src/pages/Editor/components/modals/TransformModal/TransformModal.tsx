@@ -2,7 +2,7 @@ import { Component, Index, createSignal, createEffect } from "solid-js";
 import styles from "./TransformModal.module.scss";
 import commonStyles from "../../../../../styles/Common.module.scss";
 import { NamespaceSelector } from "../../NamespaceSelector/NamespaceSelector";
-import { handleAutoClose } from "../../../lib/editorUtils";
+import { handleAutoClose, isBalancedSexpr } from "../../../lib/editorUtils";
 import { VsAdd, VsTrash } from "solid-icons/vs";
 
 export interface SpaceConfig {
@@ -47,7 +47,8 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
     const hasInput = configs.some(c => c.type === 'input');
     const hasOutput = configs.some(c => c.type === 'output');
     const allFilled = configs.every(c => c.patternOrTemplate.trim() !== "" && c.path.trim() !== "");
-    return hasInput && hasOutput && allFilled && configs.length >= 2;
+    const allBalanced = configs.every(c => isBalancedSexpr(c.patternOrTemplate));
+    return hasInput && hasOutput && allFilled && allBalanced && configs.length >= 2;
   };
 
   return (
@@ -107,8 +108,14 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
                       placeholder={config().type === 'input' ? "(pattern $x)" : "(template $x)"}
                       onInput={(e) => updateConfig(i, { patternOrTemplate: (e.target as HTMLInputElement).value })}
                       onKeyDown={handleAutoClose}
+                      style={config().patternOrTemplate.trim() !== "" && !isBalancedSexpr(config().patternOrTemplate)
+                        ? { border: "1px solid var(--love)" }
+                        : {}}
                       required
                     />
+                    {config().patternOrTemplate.trim() !== "" && !isBalancedSexpr(config().patternOrTemplate) && (
+                      <span style={{ color: "var(--love)", "font-size": "0.75rem" }}>Unbalanced parentheses</span>
+                    )}
                   </div>
                 </div>
               );

@@ -4,6 +4,7 @@ import { Route, Router } from "@solidjs/router";
 import Editor from "./pages/Editor";
 import Tokens from "./pages/Tokens";
 import Settings from "./pages/Settings";
+import History from "./pages/History";
 import { ThemeProvider } from "./ThemeContext";
 
 import './styles/global.scss';
@@ -24,6 +25,7 @@ render(
       <Router>
         <Route path="/" component={Editor} />
         <Route path="/tokens" component={Tokens} />
+        <Route path="/history" component={History} />
         <Route path="/settings" component={Settings} />
       </Router>
     </ThemeProvider>

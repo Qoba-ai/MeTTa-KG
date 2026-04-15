@@ -133,10 +133,20 @@ pub fn arity(expr: &str) -> usize {
 }
 
 /// Check if parentheses are balanced in a string.
+/// Quoted strings (`"..."`) are skipped so parens inside them are ignored.
 pub fn is_balanced(s: &str) -> bool {
-    let mut depth = 0;
-    for c in s.chars() {
+    let mut depth: i32 = 0;
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
         match c {
+            '"' => {
+                // Skip the contents of a quoted string
+                for c2 in chars.by_ref() {
+                    if c2 == '"' {
+                        break;
+                    }
+                }
+            }
             '(' => depth += 1,
             ')' => {
                 depth -= 1;
@@ -691,13 +701,6 @@ impl MorkClient {
             visited_tokens.insert(String::new());
 
             const MAX_BFS_DEPTH: usize = 2;
-
-            println!(
-                "path: {:?} root: {:?} pattern:{:?}",
-                path.clone(),
-                &root,
-                &pattern
-            );
 
             while let Some((current_token, depth)) = queue.pop_front() {
                 if depth >= MAX_BFS_DEPTH {
