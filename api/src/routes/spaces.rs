@@ -9,6 +9,7 @@ use std::{env, vec};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::lock::{LockEntry, LockManager};
 use crate::{
     db::establish_connection,
     events::{EventBus, SpaceEvent},
@@ -16,7 +17,7 @@ use crate::{
     schema::{op_log, op_log_clear, op_log_import, op_log_transform},
 };
 use diesel::{RunQueryDsl, SelectableHelper};
-use mork_client::{ExploreResult, MorkClient, MorkError, NamespaceInfo};
+use mork_client::{path_to_sexpr, ExploreResult, MorkClient, MorkError, NamespaceInfo};
 
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 
@@ -133,7 +134,7 @@ const LOCK_MAX_RETRIES: u32 = 2;
 ///
 /// On each conflict: waits for the path to become available (up to `wait_ms`),
 /// then retries. After `max_retries` exhausted, returns 409 Conflict.
-async fn with_lock_retry<F, Fut, T>(
+async fn with_retry<F, Fut, T>(
     path: &PathBuf,
     wait_ms: u64,
     max_retries: u32,
@@ -160,6 +161,87 @@ where
     }
 }
 
+pub(crate) async fn with_lock<F, Fut, T>(
+    lock_manager: &State<LockManager>,
+    paths: &[&PathBuf],
+    operation: F,
+) -> Result<T, Status>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T, Status>>,
+{
+    let _l = lock_manager.op_mutex.lock().await;
+
+    for &path in paths {
+        for ancestor in path.ancestors() {
+            if let Some(entry) = lock_manager
+                .cache
+                .get(&ancestor.to_string_lossy().to_string())
+                .await
+            {
+                if entry.is_locked {
+                    return Err(Status::Conflict);
+                }
+            }
+        }
+
+        if let Some(entry) = lock_manager
+            .cache
+            .get(&path.to_string_lossy().to_string())
+            .await
+        {
+            if entry.descendants_locked > 0 {
+                return Err(Status::Conflict);
+            }
+        }
+    }
+
+    for &path in paths {
+        for ancestor in path.ancestors() {
+            lock_manager
+                .cache
+                .entry(ancestor.to_string_lossy().to_string())
+                .and_upsert_with(|maybe_entry| {
+                    let mut entry = match maybe_entry {
+                        Some(entry_ref) => entry_ref.value().clone(),
+                        None => LockEntry::default(),
+                    };
+                    if ancestor == path.as_path() {
+                        entry.is_locked = true;
+                    } else {
+                        entry.descendants_locked += 1;
+                    }
+                    std::future::ready(entry)
+                })
+                .await;
+        }
+    }
+
+    let result = operation().await;
+
+    for &path in paths {
+        for ancestor in path.ancestors() {
+            lock_manager
+                .cache
+                .entry(ancestor.to_string_lossy().to_string())
+                .and_upsert_with(|maybe_entry| {
+                    let mut entry = match maybe_entry {
+                        Some(entry_ref) => entry_ref.value().clone(),
+                        None => LockEntry::default(),
+                    };
+                    if ancestor == path.as_path() {
+                        entry.is_locked = false;
+                    }
+                    entry.descendants_locked = entry.descendants_locked.saturating_sub(1);
+                    std::future::ready(entry)
+                })
+                .await;
+        }
+    }
+
+    result
+}
+
 // ─── Transform ───────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -175,6 +257,7 @@ pub async fn transform(
     token: Token,
     transformation: Json<Transformation>,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<bool>, Status> {
     if transformation.input_spaces.len() != transformation.patterns.len()
         || transformation.output_spaces.len() != transformation.templates.len()
@@ -243,10 +326,20 @@ pub async fn transform(
         .map(|(p, tmpl)| (p.clone(), tmpl.to_string()))
         .collect();
 
-    let result = crate::commands::transform::execute(&crate::commands::transform::Params {
+    let transform_command = crate::commands::transform::Params {
         input: input_for_cmd,
         output: output_for_cmd,
         operation_id: operation_id.to_string(),
+    };
+
+    let lock_paths: Vec<&PathBuf> = transformation
+        .input_spaces
+        .iter()
+        .chain(transformation.output_spaces.iter())
+        .collect();
+
+    let result = with_lock(lock_manager, &lock_paths, || {
+        crate::commands::transform::execute(&transform_command)
     })
     .await;
 
@@ -330,8 +423,9 @@ pub async fn import_root(
     token: Token,
     space: String,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
-    do_import(&token, &PathBuf::new(), &space, &bus.0).await
+    do_import(&token, &PathBuf::new(), &space, &bus.0, &lock_manager).await
 }
 
 #[post("/spaces/<path..>", data = "<space>")]
@@ -340,8 +434,9 @@ pub async fn import(
     path: PathBuf,
     space: String,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
-    do_import(&token, &path, &space, &bus.0).await
+    do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
 /// Default timeout (5 minutes) for monitoring MORK operations.
@@ -352,6 +447,7 @@ pub async fn do_import(
     path: &PathBuf,
     space: &str,
     bus: &broadcast::Sender<SpaceEvent>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
     let perm = permission_from_token(token);
     perm.require_write().map_err(permission_error_to_status)?;
@@ -373,12 +469,7 @@ pub async fn do_import(
     let origin = env::var("METTA_KG_ORIGIN_URL").unwrap();
     let uri = format!("{}/public/{}.metta", origin, file_id);
 
-    let event_path = path_to_event_path(path);
-    let _ = bus.send(SpaceEvent::Locked {
-        path: event_path.clone(),
-    });
-
-    let client = get_mork_client();
+    let operation_id = Uuid::new_v4();
 
     let root = PathBuf::from("space");
     let augmented_path = if !path.as_os_str().is_empty() {
@@ -387,12 +478,19 @@ pub async fn do_import(
         root.clone()
     };
 
-    let operation_id = Uuid::new_v4();
+    let event_path = path_to_event_path(path);
+    let _ = bus.send(SpaceEvent::Locked {
+        path: event_path.clone(),
+    });
 
-    let cmd_result = crate::commands::import::execute(&crate::commands::import::Params {
+    let import_command = crate::commands::import::Params {
         target_path: augmented_path.clone(),
         uri: uri.clone(),
         operation_id: operation_id.to_string(),
+    };
+
+    let cmd_result = with_lock(lock_manager, &[path], || {
+        crate::commands::import::execute(&import_command)
     })
     .await;
 
@@ -448,17 +546,35 @@ pub async fn do_import(
 
 // ─── Clear ───────────────────────────────────────────────────────────────────
 
-#[rocket::delete("/spaces?")]
-pub async fn clear_root(token: Token, bus: &State<EventBus>) -> Result<Json<bool>, Status> {
-    clear(token, PathBuf::new(), bus).await
+#[rocket::delete("/spaces?<pattern>")]
+pub async fn clear_root(
+    token: Token,
+    pattern: Option<String>,
+    bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
+) -> Result<Json<bool>, Status> {
+    clear_inner(token, PathBuf::new(), pattern, bus, lock_manager).await
 }
 
-#[rocket::delete("/spaces/<path..>")]
+#[rocket::delete("/spaces/<path..>?<pattern>")]
 pub async fn clear(
     token: Token,
     path: PathBuf,
+    pattern: Option<String>,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<bool>, Status> {
+    clear_inner(token, path, pattern, bus, lock_manager).await
+}
+
+async fn clear_inner(
+    token: Token,
+    path: PathBuf,
+    pattern: Option<String>,
+    bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
+) -> Result<Json<bool>, Status> {
+    let pattern = pattern.unwrap_or_else(|| "$".to_string());
     let perm = permission_from_token(&token);
     perm.require_write().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
@@ -476,9 +592,14 @@ pub async fn clear(
 
     let operation_id = Uuid::new_v4();
 
-    let cmd_result = crate::commands::clear::execute(&crate::commands::clear::Params {
+    let clear_command = crate::commands::clear::Params {
         target_path: augmented_path.clone(),
         operation_id: operation_id.to_string(),
+        pattern: pattern.clone(),
+    };
+
+    let cmd_result = with_lock(&lock_manager, &[&path], || {
+        crate::commands::clear::execute(&clear_command)
     })
     .await;
 
@@ -488,8 +609,13 @@ pub async fn clear(
                 let _ = diesel::insert_into(op_log_clear::table)
                     .values(&OpLogClearInsert {
                         op_log_id: log_id,
-                        path: path.to_string_lossy().into_owned(),
+                        path: if path.as_os_str().is_empty() {
+                            String::new()
+                        } else {
+                            format!("{}/", path.to_string_lossy())
+                        },
                         operation_id: Some(operation_id.to_string()),
+                        pattern,
                     })
                     .execute(&mut establish_connection());
             }
@@ -547,7 +673,7 @@ pub async fn explore(
     perm.require_read().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
-    with_lock_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
+    with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
         let path = path.clone();
         let root = PathBuf::from("space");
 
@@ -577,7 +703,7 @@ pub async fn explore_namespaces(
     perm.require_read().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
-    with_lock_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
+    with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
         let root = PathBuf::from("space");
 
         let augmented_path = if !path.as_os_str().is_empty() {
@@ -609,7 +735,7 @@ pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, Status> {
     perm.require_read().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
-    with_lock_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
+    with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
         let path = path.clone();
 
         let root = PathBuf::from("space");
@@ -651,6 +777,73 @@ pub async fn status(token: Token, path: PathBuf) -> Result<Json<serde_json::Valu
         .map_err(mork_error_to_status)
 }
 
+// ─── Subtract ────────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SubtractRequest {
+    pub a: PathBuf,
+    pub b: PathBuf,
+}
+
+#[post("/subtract", data = "<req>")]
+pub async fn subtract(
+    token: Token,
+    req: Json<SubtractRequest>,
+    bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
+) -> Result<Json<bool>, Status> {
+    let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.check_namespace(&req.a)
+        .map_err(permission_error_to_status)?;
+    perm.require_write().map_err(permission_error_to_status)?;
+    perm.check_namespace(&req.b)
+        .map_err(permission_error_to_status)?;
+
+    let client = get_mork_client();
+
+    let root = PathBuf::from("space");
+    let augmented_path_a = if !req.a.as_os_str().is_empty() {
+        root.join(&req.a.clone())
+    } else {
+        root.clone()
+    };
+    let augmented_path_b = if !req.b.as_os_str().is_empty() {
+        root.join(&req.b.clone())
+    } else {
+        root.clone()
+    };
+
+    let pattern = path_to_sexpr(&augmented_path_a);
+    let template = path_to_sexpr(&augmented_path_b);
+
+    /*
+
+    let script = format!(
+        "(exec (task_name, 0) (, {})
+        (O (- {}) )
+    )",
+        pattern, template
+    );
+
+    client
+        .upload(&PathBuf::from("/"), "$", "$", script.as_str())
+        .await
+        .map_err(mork_error_to_status)?;
+
+    client
+        .wait_for_available(&PathBuf::from("/"), 5_000)
+        .await
+        .map_err(mork_error_to_status)?;
+     */
+
+    // TODO
+
+    client.exec().await.map_err(mork_error_to_status)?;
+
+    Ok(Json(true))
+}
+
 // ─── Import from uploaded files ───────────────────────────────────────────────
 
 #[post("/spaces/import/csv/<path..>?<parse_parameters..>", data = "<file>")]
@@ -660,11 +853,12 @@ pub async fn import_csv(
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::CSVParserParameters,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
     let space = crate::routes::translations::create_from_csv(file, parse_parameters)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0).await
+    do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
 #[post("/spaces/import/nt/<path..>?<parse_parameters..>", data = "<file>")]
@@ -674,11 +868,12 @@ pub async fn import_nt(
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::NTParserParameters,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
     let space = crate::routes::translations::create_from_nt(file, parse_parameters)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0).await
+    do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
 #[post("/spaces/import/jsonld/<path..>?<parse_parameters..>", data = "<file>")]
@@ -688,11 +883,12 @@ pub async fn import_jsonld(
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::JSONLDParserParameters,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
     let space = crate::routes::translations::create_from_jsonld(file, parse_parameters)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0).await
+    do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
 #[post("/spaces/import/n3/<path..>?<parse_parameters..>", data = "<file>")]
@@ -702,11 +898,12 @@ pub async fn import_n3(
     file: rocket::fs::TempFile<'_>,
     parse_parameters: crate::routes::translations::N3ParserParameters,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
     let space = crate::routes::translations::create_from_n3(file, parse_parameters)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0).await
+    do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
 // ─── Import from URL ─────────────────────────────────────────────────────────
@@ -733,6 +930,7 @@ pub async fn import_url_metta(
     path: PathBuf,
     url: String,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<bool>, Status> {
     let perm = permission_from_token(&token);
     perm.require_write().map_err(permission_error_to_status)?;
@@ -788,6 +986,7 @@ pub async fn import_url_csv(
     url: String,
     parse_parameters: crate::routes::translations::CSVParserParameters,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
@@ -801,7 +1000,7 @@ pub async fn import_url_csv(
         },
     )
     .await?;
-    do_import(&token, &path, &space, &bus.0).await
+    do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
 #[get("/spaces/import/url/nt/<path..>?<url>")]
@@ -810,6 +1009,7 @@ pub async fn import_url_nt(
     path: PathBuf,
     url: String,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
@@ -825,7 +1025,7 @@ pub async fn import_url_nt(
         },
     )
     .await?;
-    do_import(&token, &path, &space, &bus.0).await
+    do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
 #[get("/spaces/import/url/jsonld/<path..>?<url>")]
@@ -834,6 +1034,7 @@ pub async fn import_url_jsonld(
     path: PathBuf,
     url: String,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
@@ -849,7 +1050,7 @@ pub async fn import_url_jsonld(
         },
     )
     .await?;
-    do_import(&token, &path, &space, &bus.0).await
+    do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
 #[get("/spaces/import/url/n3/<path..>?<url>")]
@@ -858,6 +1059,7 @@ pub async fn import_url_n3(
     path: PathBuf,
     url: String,
     bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
@@ -873,5 +1075,5 @@ pub async fn import_url_n3(
         },
     )
     .await?;
-    do_import(&token, &path, &space, &bus.0).await
+    do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }

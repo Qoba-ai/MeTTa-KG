@@ -13,32 +13,37 @@ use std::env;
 use mork_client::MorkClient;
 use rocket::http::Status;
 
+// ─── Timeouts ─────────────────────────────────────────────────────────────────
+
+/// In-command wait for an async MORK import to finish fetching and indexing the
+/// remote URI. Set to match the route-level background monitor ceiling (300 s).
+const IMPORT_WAIT_MS: u64 = 300_000;
+
+/// In-command wait for an async MORK transform to finish pattern matching.
+/// Transform cost scales with input space size; 300 s matches the route ceiling.
+const TRANSFORM_WAIT_MS: u64 = 300_000;
+
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 fn get_mork_client() -> MorkClient {
     MorkClient::new(env::var("METTA_KG_MORK_URL").unwrap())
 }
 
-fn mork_err(_: mork_client::MorkError) -> Status {
+fn mork_err(e: mork_client::MorkError) -> Status {
+    eprintln!("[commands] MORK error: {:?}", e);
     Status::InternalServerError
 }
 
 // ─── Import ───────────────────────────────────────────────────────────────────
 
 pub mod import {
-    use super::{get_mork_client, mork_err};
+    use super::{get_mork_client, mork_err, IMPORT_WAIT_MS, TRANSFORM_WAIT_MS};
     use rocket::http::Status;
     use std::path::PathBuf;
 
     pub struct Params {
-        /// Target space path, already prefixed with `space/`
-        /// (e.g. `space/foo/bar`).
         pub target_path: PathBuf,
-        /// Public URL from which to fetch the MeTTa data.
         pub uri: String,
-        /// UUID that names the snapshot sub-spaces:
-        /// `import/{id}/pre`  – state before import (for undo)
-        /// `import/{id}/data` – newly imported data   (for redo)
         pub operation_id: String,
     }
 
@@ -46,76 +51,38 @@ pub mod import {
         let client = get_mork_client();
         let pre = PathBuf::from(format!("import/{}/pre", p.operation_id));
         let data = PathBuf::from(format!("import/{}/data", p.operation_id));
+        let post = PathBuf::from(format!("import/{}/post", p.operation_id));
 
+        // Step 1: snapshot current target state (for undo).
         client.copy(&p.target_path, &pre).await.map_err(mork_err)?;
+
         client
-            .import(&data, "$", "$", &p.uri)
+            .import(&p.target_path, "$", "$", &p.uri)
             .await
             .map_err(mork_err)?;
 
         client
-            .wait_for_available(&data, 5_000)
+            .wait_for_available(&p.target_path, TRANSFORM_WAIT_MS)
             .await
             .map_err(mork_err)?;
 
-        let pre_size = client.count(&pre).await.map_err(mork_err)?;
-        let data_size = client.count(&data).await.map_err(mork_err)?;
-
-        let merge_data = data_size < pre_size;
-
-        if merge_data {
-            client
-                .transform(&vec![(data, "$")], &vec![(p.target_path.clone(), "$")])
-                .await
-                .map_err(mork_err)?;
-        } else {
-            client.clear(&p.target_path, "$").await.map_err(mork_err)?;
-            client.copy(&data, &p.target_path).await.map_err(mork_err)?;
-            client
-                .transform(&vec![(pre, "$")], &vec![(p.target_path.clone(), "$")])
-                .await
-                .map_err(mork_err)?
-        }
+        client.copy(&p.target_path, &post).await.map_err(mork_err)?;
 
         Ok(())
     }
 
     pub async fn undo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
-
         let pre = PathBuf::from(format!("import/{}/pre", p.operation_id));
+        // TODO: follow up with MORK team on the need for this clear call (B is kept as-is if A is empty)
         client.clear(&p.target_path, "$").await.map_err(mork_err)?;
-        client.copy(&pre, &p.target_path).await.map_err(mork_err)?;
-        Ok(())
+        client.copy(&pre, &p.target_path).await.map_err(mork_err)
     }
 
     pub async fn redo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
-        let pre = PathBuf::from(format!("import/{}/pre", p.operation_id));
-        let data = PathBuf::from(format!("import/{}/data", p.operation_id));
-
-        let pre_size = client.count(&pre).await.map_err(mork_err)?;
-        let data_size = client.count(&data).await.map_err(mork_err)?;
-
-        let merge_data = data_size < pre_size;
-
-        if merge_data {
-            client
-                .transform(&vec![(data, "$")], &vec![(p.target_path.clone(), "$")])
-                .await
-                .map_err(mork_err)
-        } else {
-            client.clear(&p.target_path, "$").await.map_err(mork_err)?;
-            client.copy(&data, &p.target_path).await.map_err(mork_err)?;
-            client
-                .transform(&vec![(pre, "$")], &vec![(p.target_path.clone(), "$")])
-                .await
-                .map_err(mork_err)?;
-            client
-                .wait_for_available(&p.target_path.clone(), 5_000)
-                .await
-                .map_err(mork_err)
-        }
+        let post = PathBuf::from(format!("import/{}/post", p.operation_id));
+        client.copy(&post, &p.target_path).await.map_err(mork_err)
     }
 }
 
@@ -127,59 +94,66 @@ pub mod clear {
     use std::path::PathBuf;
 
     pub struct Params {
-        /// Target space path, already prefixed with `space/`.
         pub target_path: PathBuf,
-        /// UUID that names the snapshot sub-space:
-        /// `clear/{id}/pre` – state before the clear (for undo).
         pub operation_id: String,
+        pub pattern: String,
     }
 
-    /// Snapshot the target then clear it.
-    ///
-    /// 1. Snapshot `target` → `clear/{id}/pre`
-    /// 2. Clear `target`
     pub async fn execute(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
         let pre = PathBuf::from(format!("clear/{}/pre", p.operation_id));
         client.copy(&p.target_path, &pre).await.map_err(mork_err)?;
-        client.clear(&p.target_path, "$").await.map_err(mork_err)
+        client
+            .clear(&p.target_path, &p.pattern)
+            .await
+            .map_err(mork_err)
     }
 
-    /// Restore `target` from the pre-clear snapshot.
-    ///
-    /// Copies `clear/{id}/pre` back into `target`.
     pub async fn undo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
         let pre = PathBuf::from(format!("clear/{}/pre", p.operation_id));
         client.copy(&pre, &p.target_path).await.map_err(mork_err)
     }
 
-    /// Re-clear `target`.
     pub async fn redo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
-        client.clear(&p.target_path, "$").await.map_err(mork_err)
+        client
+            .clear(&p.target_path, &p.pattern)
+            .await
+            .map_err(mork_err)
     }
 }
 
 // ─── Transform ────────────────────────────────────────────────────────────────
 
 pub mod transform {
-    use super::{get_mork_client, mork_err};
+    use super::{get_mork_client, mork_err, TRANSFORM_WAIT_MS};
     use rocket::http::Status;
     use std::path::PathBuf;
 
     pub struct Params {
-        /// `(augmented path, pattern)` pairs for the input spaces.
         pub input: Vec<(PathBuf, String)>,
-        /// `(augmented path, template)` pairs for the output spaces.
         pub output: Vec<(PathBuf, String)>,
-        /// UUID reserved for snapshot sub-spaces used by undo/redo.
         pub operation_id: String,
     }
 
-    /// Run the transform.
+    fn pre_output_path(op_id: &str, idx: usize) -> PathBuf {
+        PathBuf::from(format!("transformation/{}/pre/output/{}", op_id, idx))
+    }
+
+    fn post_output_path(op_id: &str, idx: usize) -> PathBuf {
+        PathBuf::from(format!("transformation/{}/post/output/{}", op_id, idx))
+    }
+
     pub async fn execute(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
+
+        for (idx, (path, _)) in p.output.iter().enumerate() {
+            client
+                .copy(path, &pre_output_path(&p.operation_id, idx))
+                .await
+                .map_err(mork_err)?;
+        }
 
         let input: Vec<(PathBuf, &str)> = p
             .input
@@ -191,44 +165,18 @@ pub mod transform {
             .iter()
             .map(|(path, tmpl)| (path.clone(), tmpl.as_str()))
             .collect();
+        client.transform(&input, &output).await.map_err(mork_err)?;
 
-        for (path, _pattern) in &input {
-            let pre = PathBuf::from(format!("transformation/{}/pre/input", p.operation_id));
-
+        for (path, _) in &p.output {
             client
-                .copy(path, pre.join(path.clone()).as_path())
+                .wait_for_available(path, TRANSFORM_WAIT_MS)
                 .await
                 .map_err(mork_err)?;
         }
 
-        for (path, _template) in &output {
-            let pre = PathBuf::from(format!("transformation/{}/pre/output", p.operation_id));
-
+        for (idx, (path, _)) in p.output.iter().enumerate() {
             client
-                .copy(path, pre.join(path.clone()).as_path())
-                .await
-                .map_err(mork_err)?;
-        }
-
-        client.transform(&input, &output).await.map_err(mork_err)
-    }
-
-    /// Reverse the transform by restoring the output spaces.
-    pub async fn undo(p: &Params) -> Result<(), Status> {
-        let client = get_mork_client();
-
-        let output: Vec<(PathBuf, &str)> = p
-            .output
-            .iter()
-            .map(|(path, tmpl)| (path.clone(), tmpl.as_str()))
-            .collect();
-
-        for (path, _template) in &output {
-            let pre = PathBuf::from(format!("transformation/{}/pre/output", p.operation_id));
-
-            client.clear(&path.clone(), "$").await.map_err(mork_err)?;
-            client
-                .copy(pre.join(path.clone()).as_path(), path)
+                .copy(path, &post_output_path(&p.operation_id, idx))
                 .await
                 .map_err(mork_err)?;
         }
@@ -236,32 +184,26 @@ pub mod transform {
         Ok(())
     }
 
-    /// Re-run the transform.
-    pub async fn redo(p: &Params) -> Result<(), Status> {
+    pub async fn undo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
-
-        let pre = PathBuf::from(format!("transformation/{}/pre/input", p.operation_id));
-
-        let input: Vec<(PathBuf, &str)> = p
-            .input
-            .iter()
-            .map(|(path, pat)| (pre.join(path.clone()), pat.as_str()))
-            .collect();
-        let output: Vec<(PathBuf, &str)> = p
-            .output
-            .iter()
-            .map(|(path, tmpl)| (path.clone(), tmpl.as_str()))
-            .collect();
-
-        client.transform(&input, &output).await.map_err(mork_err)?;
-
-        for (path, _template) in output {
+        for (idx, (path, _)) in p.output.iter().enumerate() {
+            client.clear(&path, "$").await.map_err(mork_err)?;
             client
-                .wait_for_available(&path.clone(), 60_000)
+                .copy(&pre_output_path(&p.operation_id, idx), path)
                 .await
                 .map_err(mork_err)?;
         }
+        Ok(())
+    }
 
+    pub async fn redo(p: &Params) -> Result<(), Status> {
+        let client = get_mork_client();
+        for (idx, (path, _)) in p.output.iter().enumerate() {
+            client
+                .copy(&post_output_path(&p.operation_id, idx), path)
+                .await
+                .map_err(mork_err)?;
+        }
         Ok(())
     }
 }

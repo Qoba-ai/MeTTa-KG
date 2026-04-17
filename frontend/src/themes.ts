@@ -24,8 +24,8 @@ export const schemes: Record<string, Base16Scheme> = {
         name: 'Rosé Pine',
         author: 'Prophet (https://github.com/rose-pine/rose-pine)',
         base00: '#191724',
-        base01: '#252136', // surface: bumped from #1f1d2e (~3% diff) to ~5.5% lightness above base
-        base02: '#2d2b40',
+        base01: '#1f1d2e',
+        base02: '#26233a',
         base03: '#6e6a86',
         base04: '#908caa',
         base05: '#e0def4',

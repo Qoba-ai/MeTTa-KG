@@ -1,0 +1,1 @@
+ALTER TABLE op_log_clear ADD COLUMN pattern TEXT NOT NULL DEFAULT '$';

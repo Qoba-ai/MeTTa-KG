@@ -160,6 +160,43 @@ pub fn is_balanced(s: &str) -> bool {
     depth == 0
 }
 
+/// Check if a string is a single s-expression (must start with '(' and the
+/// matching ')' must be at the very end of the trimmed string).
+/// Quoted strings (`"..."`) are skipped so parens inside them are ignored.
+pub fn is_sexpr(s: &str) -> bool {
+    let s = s.trim();
+    if !s.starts_with('(') {
+        return false;
+    }
+    let chars: Vec<char> = s.chars().collect();
+    let len = chars.len();
+    let mut depth: i32 = 0;
+    let mut i = 0;
+    while i < len {
+        match chars[i] {
+            '"' => {
+                i += 1;
+                while i < len && chars[i] != '"' {
+                    i += 1;
+                }
+            }
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+                if depth == 0 && i != len - 1 {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    depth == 0
+}
+
 /// Parse a binary S-expression into (lhs, rhs).
 /// Returns None if not binary or LHS is not a simple symbol.
 pub fn parse_binary_sexp(input: &str) -> Option<(&str, &str)> {
@@ -500,6 +537,18 @@ impl MorkClient {
         Err(MorkError::Timeout)
     }
 
+    pub async fn exec(&self) -> Result<usize, MorkError> {
+        let thread_url = format!("{}/metta_thread/?location=task_name", self.base());
+
+        self.log_get(&thread_url).await;
+        let resp = self.client.get(&thread_url).send().await?;
+        if !resp.status().is_success() {
+            return Err(MorkError::BadStatus(resp.status().as_u16()));
+        }
+
+        Err(MorkError::Timeout)
+    }
+
     // ─── Explore Operations ─────────────────────────────────────────────────
 
     async fn explore_raw(
@@ -537,67 +586,56 @@ impl MorkClient {
         let mut visited_tokens: HashSet<String> = HashSet::new();
         let mut skip_tokens: HashSet<String> = HashSet::new();
 
-        let mut bfs_request_count = 0;
         if focus_token.is_empty() {
             let mut subspace_symbols: HashSet<String> = HashSet::new();
-            let mut queue: VecDeque<(String, usize)> = VecDeque::new(); // (token, depth)
+            let mut queue: VecDeque<(String, usize, String)> = VecDeque::new(); // (token, depth)
 
-            queue.push_back((String::new(), 0));
+            queue.push_back((String::new(), 0, String::new()));
             visited_tokens.insert(String::new());
 
-            const MAX_BFS_DEPTH: usize = 2;
-
-            while let Some((current_token, depth)) = queue.pop_front() {
-                if depth >= MAX_BFS_DEPTH {
-                    continue;
-                }
-                bfs_request_count += 1;
+            while let Some((current_token, depth, parent_lhs)) = queue.pop_front() {
                 let responses = self.explore_raw(&pattern, &current_token).await?;
+
+                let mut all_parent_prefix = true;
+
+                let mut new_subnamespace_symbols: HashSet<String> = HashSet::new();
 
                 for response in &responses {
                     if let Some(relative_expr) = strip_prefix(&response.expr, path) {
-                        // Collect all unique LHS symbols
+                        if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
+                            all_parent_prefix = all_parent_prefix
+                                && parent_lhs.len() == lhs.len()
+                                && parent_lhs.as_str() <= lhs;
+                            new_subnamespace_symbols.insert(lhs.to_string());
+                        } else {
+                            all_parent_prefix = false;
+                            break;
+                        }
+                    } else {
+                        all_parent_prefix = false;
+                        break;
+                    }
+                }
+
+                for response in &responses {
+                    if let Some(relative_expr) = strip_prefix(&response.expr, path) {
                         if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
                             subspace_symbols.insert(lhs.to_string());
-                        }
-                    }
-                }
 
-                let all_binary = responses
-                    .clone()
-                    .into_iter()
-                    .map(|r| r.expr)
-                    .all(|e: String| {
-                        if let Some(relative_expr) = strip_prefix(&e, path) {
-                            return parse_binary_sexp(&relative_expr).is_some();
-                        }
-                        false
-                    });
-
-                if all_binary && responses.len() >= 1 {
-                    let response = responses.first().unwrap();
-
-                    if let Some(relative_expr) = strip_prefix(&response.expr, path)
-                        && all_binary
-                    {
-                        if parse_binary_sexp(&relative_expr).is_some() {
-                            // Mark as visited so DFS skips these binary-only branches
                             let encoded_token =
                                 percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
-                            visited_tokens.insert(encoded_token.clone());
-                            skip_tokens.insert(current_token.clone());
+
+                            if visited_tokens.insert(encoded_token.clone()) {
+                                if lhs != parent_lhs
+                                    || (lhs == parent_lhs
+                                        && response.cnt > 1
+                                        && all_parent_prefix
+                                        && new_subnamespace_symbols.len() == responses.len())
+                                {
+                                    queue.push_back((encoded_token, depth + 1, lhs.to_string()));
+                                }
+                            }
                         }
-                    }
-
-                    continue;
-                }
-
-                for response in responses {
-                    let encoded_token =
-                        percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
-
-                    if visited_tokens.insert(encoded_token.clone()) {
-                        queue.push_back((encoded_token, depth + 1));
                     }
                 }
             }
@@ -628,13 +666,11 @@ impl MorkClient {
             }
         }
 
-        let mut dfs_request_count = 0;
         while let Some(current_token) = stack.pop() {
             if !skip_tokens.insert(current_token.clone()) {
                 continue;
             }
 
-            dfs_request_count += 1;
             let responses = self.explore_raw(&pattern, &current_token).await?;
 
             let nr_of_responses = responses.len();
@@ -695,61 +731,76 @@ impl MorkClient {
 
             let mut subnamespace_symbols: HashSet<String> = HashSet::new();
             let mut visited_tokens: HashSet<String> = HashSet::new();
-            let mut queue: VecDeque<(String, usize)> = VecDeque::new(); // (token, depth)
+            let mut queue: VecDeque<(String, usize, String)> = VecDeque::new();
 
-            queue.push_back((String::new(), 0));
+            queue.push_back((String::new(), 0, String::new()));
             visited_tokens.insert(String::new());
 
-            const MAX_BFS_DEPTH: usize = 2;
-
-            while let Some((current_token, depth)) = queue.pop_front() {
-                if depth >= MAX_BFS_DEPTH {
-                    continue;
-                }
+            while let Some((current_token, depth, parent_lhs)) = queue.pop_front() {
                 let responses = self.explore_raw(&pattern, &current_token).await?;
 
-                println!("{} {} {}", current_token, depth, responses.len());
+                let mut all_parent_prefix = true;
+
+                let mut new_subnamespace_symbols: HashSet<String> = HashSet::new();
 
                 for response in &responses {
-                    println!("{:?} {:?}", response, strip_prefix(&response.expr, path));
-
                     if let Some(relative_expr) = strip_prefix(&response.expr, path) {
                         if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
-                            subnamespace_symbols.insert(lhs.to_string());
+                            all_parent_prefix = all_parent_prefix
+                                && parent_lhs.len() == lhs.len()
+                                && parent_lhs.as_str() <= lhs;
+                            new_subnamespace_symbols.insert(lhs.to_string());
+                        } else {
+                            all_parent_prefix = false;
+                            break;
                         }
+                    } else {
+                        all_parent_prefix = false;
+                        break;
                     }
                 }
 
                 if responses.len() > 0 {
-                    if let Some(relative_expr) = strip_prefix(&responses[0].expr, path) {
-                        if parse_binary_sexp(&relative_expr).is_some() {
-                            let encoded_token =
-                                percent_encode(&responses[0].token, NON_ALPHANUMERIC).to_string();
-                            visited_tokens.insert(encoded_token);
-                            continue;
-                        }
-                    }
+                    // println!("\n\n\n");
                 }
 
-                for response in responses {
-                    let encoded_token =
-                        percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
-                    if visited_tokens.insert(encoded_token.clone()) {
-                        queue.push_back((encoded_token, depth + 1));
+                for response in &responses {
+                    if let Some(relative_expr) = strip_prefix(&response.expr, path) {
+                        if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
+                            /*
+                            println!(
+                                "cnt={} relative={} token={:?} lhs={} parent_lhs={}",
+                                &response.cnt, relative_expr, &response.token, lhs, &parent_lhs
+                            );
+                             */
+
+                            subnamespace_symbols.insert(lhs.to_string());
+
+                            let encoded_token =
+                                percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
+
+                            if visited_tokens.insert(encoded_token.clone()) {
+                                if lhs != parent_lhs
+                                    || (lhs == parent_lhs
+                                        && response.cnt > 1
+                                        && all_parent_prefix
+                                        && new_subnamespace_symbols.len() == responses.len())
+                                {
+                                    queue.push_back((encoded_token, depth + 1, lhs.to_string()));
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            // Recursively explore each subnamespace
             let mut subnamespaces: Vec<NamespaceInfo> = Vec::new();
             for symbol in subnamespace_symbols {
                 let subnamespace_path = path.join(&symbol);
 
-                // Recursively explore this subnamespace
                 match self.explore_namespaces(&subnamespace_path, root).await {
                     Ok(subnamespace_info) => subnamespaces.push(subnamespace_info),
                     Err(e) => {
-                        // Log the error but continue with other subnamespaces
                         eprintln!(
                             "Error exploring subnamespace {:?}: {:?}",
                             subnamespace_path, e

@@ -21,6 +21,33 @@ export const isBalancedSexpr = (s: string): boolean => {
   return depth === 0;
 };
 
+/**
+ * Check if a string is a single s-expression (must start with '(' and the
+ * matching ')' must be at the very end of the trimmed string).
+ * Quoted strings ("...") are skipped so parens inside them are ignored.
+ */
+export const isSexpr = (s: string): boolean => {
+  const trimmed = s.trim();
+  if (trimmed.length === 0 || trimmed[0] !== '(') return false;
+  let depth = 0;
+  let i = 0;
+  while (i < trimmed.length) {
+    const c = trimmed[i];
+    if (c === '"') {
+      i++;
+      while (i < trimmed.length && trimmed[i] !== '"') i++;
+    } else if (c === '(') {
+      depth++;
+    } else if (c === ')') {
+      depth--;
+      if (depth < 0) return false;
+      if (depth === 0 && i !== trimmed.length - 1) return false;
+    }
+    i++;
+  }
+  return depth === 0;
+};
+
 export const handleAutoClose = (e: KeyboardEvent) => {
   const target = e.target as HTMLInputElement | HTMLTextAreaElement;
   if (e.key === "(") {

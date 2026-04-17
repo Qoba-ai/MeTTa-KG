@@ -4,11 +4,8 @@ import {
     AiOutlineGithub,
 } from 'solid-icons/ai'
 import {
-    VsPlay,
     VsCloudUpload,
-    VsIndent,
     VsSave,
-    VsCloudDownload,
     VsReplace,
     VsClearAll,
     VsClose,
@@ -157,6 +154,7 @@ import { ImportModal } from './components/modals/ImportModal/ImportModal'
 import { TransformModal, SpaceConfig } from './components/modals/TransformModal/TransformModal'
 import { SelectSpaceModal } from './components/modals/SelectSpaceModal/SelectSpaceModal'
 import { ClearModal } from './components/modals/ClearModal/ClearModal'
+import { DslConsole } from './components/DslConsole/DslConsole'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.').pop()?.toLowerCase()
@@ -246,7 +244,6 @@ const App: Component = () => {
     const activePanel = () => panels().find(p => p.id === activePanelId())
 
     // Editor Content State
-    const [editorOutput, setEditorOutput] = createSignal('')
     const [editorMode, setEditorMode] = createSignal<EditorMode>(
         (TOKEN || localStorage.getItem('rootToken')) ? EditorMode.EDIT : EditorMode.DEFAULT
     )
@@ -257,6 +254,8 @@ const App: Component = () => {
     const [isResizing, setIsResizing] = createSignal(false)
     const [consoleHeight, setConsoleHeight] = createSignal(120)
     const [isResizingConsole, setIsResizingConsole] = createSignal(false)
+    const [rightHistoryHeight, setRightHistoryHeight] = createSignal(200)
+    const [isResizingRightHistory, setIsResizingRightHistory] = createSignal(false)
 
     // Import State
     const [importSource, setImportSource] = createSignal<ImportSource>(ImportSource.FILE)
@@ -1044,7 +1043,7 @@ const App: Component = () => {
             if (targetNs === activePanel()?.namespace) {
                 await read();
             } else {
-                await addPanel(targetNs)
+                await read(); await addPanel(targetNs)
             }
 
             notify.success(format === ImportFormat.METTA ? 'Successfully imported to space' : 'Successfully translated and imported to space')
@@ -1076,25 +1075,6 @@ const App: Component = () => {
         document.body.appendChild(anchor)
         anchor.click()
         URL.revokeObjectURL(blob)
-    }
-
-    const run = async (): Promise<void> => {
-        const p = activePanel()
-        if (!p) return
-        try {
-            const content = getDisplayContent(p.astState)
-            const resp = await fetch('https://inter.metta-lang.dev/api/v1/codes', {
-                headers: { accept: '*/*', 'content-type': 'application/json' },
-                referrer: 'https://metta-lang.dev/',
-                body: JSON.stringify({ code: content, language: 'metta' }),
-                method: 'POST',
-            })
-            const data = await resp.json()
-            setEditorOutput(data['result'])
-        } catch (e) {
-            console.error(e)
-            notify.error(`Failed to run MeTTa.`)
-        }
     }
 
     const indent = (): void => {
@@ -1611,11 +1591,27 @@ const App: Component = () => {
         setIsResizingConsole(true)
         const initialY = e.clientY; const initialHeight = consoleHeight()
         const onMouseMove = (moveEvent: MouseEvent) => {
-            const deltaY = moveEvent.clientY - initialY
+            const deltaY = initialY - moveEvent.clientY
             setConsoleHeight(Math.max(60, Math.min(600, initialHeight + deltaY)))
         }
         const onMouseUp = () => {
             setIsResizingConsole(false)
+            document.removeEventListener('mousemove', onMouseMove)
+            document.removeEventListener('mouseup', onMouseUp)
+        }
+        document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp)
+    }
+
+    const startRightHistoryResizing = (e: MouseEvent) => {
+        setIsResizingRightHistory(true)
+        const initialY = e.clientY; const initialHeight = rightHistoryHeight()
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            // dragging up increases history height
+            const deltaY = initialY - moveEvent.clientY
+            setRightHistoryHeight(Math.max(60, Math.min(600, initialHeight + deltaY)))
+        }
+        const onMouseUp = () => {
+            setIsResizingRightHistory(false)
             document.removeEventListener('mousemove', onMouseMove)
             document.removeEventListener('mouseup', onMouseUp)
         }
@@ -1693,8 +1689,6 @@ const App: Component = () => {
                                             <VsCloudUpload size={16} />
                                             <span>Import</span>
                                         </button>
-                                    </div>
-                                    <div class={styles.ButtonGroup}>
                                         <button onclick={() => openClearModal()}>
                                             <VsClearAll size={16} />
                                             <span>Clear</span>
@@ -1712,47 +1706,6 @@ const App: Component = () => {
                                             <VsReplace size={16} />
                                             <span>Transform</span>
                                         </button>
-                                        <button onclick={() => write()}>
-                                            <VsCloudDownload size={16} />
-                                            <span>Update</span>
-                                        </button>
-                                    </div>
-                                    <div class={styles.ButtonGroup}>
-                                        <button onclick={() => indent()}>
-                                            <VsIndent size={16} />
-                                            <span>Reformat</span>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class={styles.SidebarHistory}>
-                                    <div class={styles.SidebarHistoryHeader}>
-                                        <span>History</span>
-                                    </div>
-                                    <div class={styles.SidebarHistoryList}>
-                                        <Show when={logsLoading()}>
-                                            <div class={styles.LogEntryLoading}>Loading…</div>
-                                        </Show>
-                                        <For each={spaceLogs()}>
-                                            {(log) => {
-                                                const detail = log.import?.path ?? log.clear?.path ?? log.copy?.src ?? null
-                                                return (
-                                                    <div class={styles.LogEntry}>
-                                                        <div class={styles.LogEntryHeader}>
-                                                            <span class={`${styles.LogEntryType} ${styles[log.op_type] ?? ''}`}>{log.op_type}</span>
-                                                            <span class={styles.LogEntryTime}>
-                                                                {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                            </span>
-                                                        </div>
-                                                        <Show when={detail}>
-                                                            <span class={styles.LogEntryDetail}>{detail}</span>
-                                                        </Show>
-                                                    </div>
-                                                )
-                                            }}
-                                        </For>
-                                        <Show when={!logsLoading() && spaceLogs().length === 0}>
-                                            <div class={styles.LogEntryEmpty}>No logs yet</div>
-                                        </Show>
                                     </div>
                                 </div>
                                 <button
@@ -1835,46 +1788,79 @@ const App: Component = () => {
                                 {/* Console - full width at bottom */}
                                 <div class={`${styles.ConsoleResizer} ${isResizingConsole() ? styles.Resizing : ''}`} onMouseDown={startConsoleResizing} />
                                 <div class={styles.ConsoleSection}>
-                                    <pre class={styles.Console}>
-                                        <code class={'language-metta'} innerHTML={hljs.highlight(editorOutput(), { language: 'metta' }).value}></code>
-                                    </pre>
+                                    <DslConsole
+                                        activeNamespace={() => activePanel()?.namespace || '/'}
+                                        token={token}
+                                    />
                                 </div>
 
-                                {/* Footer action bar */}
-                                <div class={styles.EditorFooter}>
-                                    <button onclick={() => run()} class={styles.RunButton} title="Run MeTTa">
-                                        <VsPlay size={14} />
-                                        <span>Run</span>
-                                    </button>
-                                </div>
                             </div>
 
-                            {/* Resizer for Trie Explorer */}
+                            {/* Resizer for right column */}
                             <div class={`${styles.Resizer} ${isResizing() ? styles.Resizing : ''}`} onMouseDown={startResizing} />
 
-                            {/* Trie Explorer */}
-                            <TrieExplorer
-                                content={activePanel() ? getDisplayContent(activePanel()!.astState) : ''}
-                                originalContent={activePanel() ? getOriginalContent(activePanel()!.astState) : ''}
-                                onDelete={deleteSubspace}
-                                rootPath={activePanel()?.namespace || '/'}
-                                onOpenSubspace={(path) => addPanel(path)}
-                                onConfigureTransform={(paths) => {
-                                    setTransformConfigs(paths.map((p, i) => ({
-                                        path: p,
-                                        type: i === 0 ? 'input' : 'output',
-                                        patternOrTemplate: ''
-                                    })));
-                                    transformModal.showModal();
-                                }}
-                                collapsedPaths={() => collapsedPaths()}
-                                onCollapse={handleTrieCollapse}
-                                onExpand={handleTrieExpand}
-                                focusTokens={() => focusTokens()}
-                                onLoadMore={handleLoadMore}
-                                isLoadingMore={() => isLoadingMore()}
-                                onNodeClick={handleTrieNodeClick}
-                            />
+                            {/* Right column: Trie Explorer + History */}
+                            <div class={styles.RightColumn}>
+                                <div class={styles.TrieWrapper} style={{ "min-height": "0" }}>
+                                    <TrieExplorer
+                                        content={activePanel() ? getDisplayContent(activePanel()!.astState) : ''}
+                                        originalContent={activePanel() ? getOriginalContent(activePanel()!.astState) : ''}
+                                        onDelete={deleteSubspace}
+                                        rootPath={activePanel()?.namespace || '/'}
+                                        onOpenSubspace={(path) => addPanel(path)}
+                                        onConfigureTransform={(paths) => {
+                                            setTransformConfigs(paths.map((p, i) => ({
+                                                path: p,
+                                                type: i === 0 ? 'input' : 'output',
+                                                patternOrTemplate: ''
+                                            })));
+                                            transformModal.showModal();
+                                        }}
+                                        collapsedPaths={() => collapsedPaths()}
+                                        onCollapse={handleTrieCollapse}
+                                        onExpand={handleTrieExpand}
+                                        focusTokens={() => focusTokens()}
+                                        onLoadMore={handleLoadMore}
+                                        isLoadingMore={() => isLoadingMore()}
+                                        onNodeClick={handleTrieNodeClick}
+                                    />
+                                </div>
+                                <div
+                                    class={`${styles.ConsoleResizer} ${isResizingRightHistory() ? styles.Resizing : ''}`}
+                                    onMouseDown={startRightHistoryResizing}
+                                />
+                                <div class={styles.RightHistory} style={{ height: `${rightHistoryHeight()}px` }}>
+                                    <div class={styles.RightHistoryHeader}>
+                                        <span>History</span>
+                                    </div>
+                                    <div class={styles.RightHistoryList}>
+                                        <Show when={logsLoading()}>
+                                            <div class={styles.LogEntryLoading}>Loading…</div>
+                                        </Show>
+                                        <For each={spaceLogs()}>
+                                            {(log) => {
+                                                const detail = log.import?.path ?? log.clear?.path ?? log.copy?.src ?? null
+                                                return (
+                                                    <div class={styles.LogEntry}>
+                                                        <div class={styles.LogEntryHeader}>
+                                                            <span class={`${styles.LogEntryType} ${styles[log.op_type] ?? ''}`}>{log.op_type}</span>
+                                                            <span class={styles.LogEntryTime}>
+                                                                {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                        </div>
+                                                        <Show when={detail}>
+                                                            <span class={styles.LogEntryDetail}>{detail}</span>
+                                                        </Show>
+                                                    </div>
+                                                )
+                                            }}
+                                        </For>
+                                        <Show when={!logsLoading() && spaceLogs().length === 0}>
+                                            <div class={styles.LogEntryEmpty}>No logs yet</div>
+                                        </Show>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </Show>
 

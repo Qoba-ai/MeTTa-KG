@@ -15,6 +15,7 @@ diesel::table! {
         op_log_id -> Int4,
         path -> Text,
         operation_id -> Nullable<Text>,
+        pattern -> Text,
     }
 }
 

@@ -83,6 +83,7 @@ pub struct OpLogClearInsert {
     pub op_log_id: i32,
     pub path: String,
     pub operation_id: Option<String>,
+    pub pattern: String,
 }
 
 #[derive(Serialize, Deserialize, Queryable, Selectable)]
@@ -92,6 +93,7 @@ pub struct OpLogClear {
     pub op_log_id: i32,
     pub path: String,
     pub operation_id: Option<String>,
+    pub pattern: String,
 }
 
 // ─── Op Log Copy ─────────────────────────────────────────────────────────────

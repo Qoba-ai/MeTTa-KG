@@ -1,14 +1,20 @@
+use std::time::Duration;
+
 use diesel::RunQueryDsl;
+use moka::future::Cache;
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
 use rocket::http::Method;
 use rocket::{self, launch, routes, Build, Rocket};
 use rocket_cors::AllowedOrigins;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Mutex};
+
+use crate::lock::LockManager;
 
 mod commands;
 mod db;
 mod events;
+mod lock;
 mod model;
 mod routes;
 mod schema;
@@ -89,9 +95,18 @@ fn rocket() -> Rocket<Build> {
     .to_cors()
     .unwrap();
 
+    let lock_manager = LockManager {
+        cache: Cache::builder()
+            .max_capacity(10_000)
+            .time_to_live(Duration::from_secs(600))
+            .build(),
+        op_mutex: Mutex::new(()),
+    };
+
     rocket::build()
         .manage(events::EventBus::new())
         .manage(Shutdown(shutdown_tx))
+        .manage(lock_manager)
         .mount(
             "/",
             routes![
@@ -101,6 +116,7 @@ fn rocket() -> Rocket<Build> {
                 routes::translations::create_from_n3,
                 routes::op_logs::get_log,
                 routes::op_logs::get_logs,
+                routes::op_logs::get_logs_graph,
                 routes::op_logs::rollback_log,
                 routes::op_logs::redo_log,
                 routes::tokens::get_all,
@@ -130,6 +146,7 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::import_url_nt,
                 routes::spaces::import_url_jsonld,
                 routes::spaces::import_url_n3,
+                routes::spaces::subtract,
                 routes::events::ws_ping,
                 routes::events::ws_events,
                 routes::events::ws_status_root,

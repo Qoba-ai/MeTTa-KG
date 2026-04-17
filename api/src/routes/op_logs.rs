@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 
 use chrono::Utc;
@@ -6,8 +7,11 @@ use rocket::http::Status;
 use rocket::serde::json::{serde_json, Json};
 use rocket::{get, post};
 
+use rocket::State;
+
 use crate::{
     db::establish_connection,
+    lock::LockManager,
     model::{OpLog, OpLogClear, OpLogCopy, OpLogEntry, OpLogImport, OpLogTransform, Token},
     schema::{op_log, op_log_clear, op_log_copy, op_log_import, op_log_transform},
 };
@@ -15,7 +19,8 @@ use crate::{
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn augmented_path(raw: &str) -> PathBuf {
-    let p = PathBuf::from(raw);
+    let stripped = raw.trim_end_matches('/');
+    let p = PathBuf::from(stripped);
     let root = PathBuf::from("space");
     if !p.as_os_str().is_empty() {
         root.join(p)
@@ -100,6 +105,7 @@ async fn undo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
                     return crate::commands::clear::undo(&crate::commands::clear::Params {
                         target_path: augmented_path(&clr.path),
                         operation_id: op_id.clone(),
+                        pattern: clr.pattern.clone(),
                     })
                     .await;
                 }
@@ -145,6 +151,7 @@ async fn redo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
                     return crate::commands::clear::redo(&crate::commands::clear::Params {
                         target_path: augmented_path(&clr.path),
                         operation_id: op_id.clone(),
+                        pattern: clr.pattern.clone(),
                     })
                     .await;
                 }
@@ -202,6 +209,135 @@ fn parse_transform_spaces(
     Ok((input, output))
 }
 
+/// Collect all unique raw space paths (without the `space/` prefix) that an
+/// undo or redo operation touches, so they can all be locked at once.
+fn collect_lock_paths(entries: &[OpLogEntry]) -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    let mut paths = Vec::new();
+
+    for entry in entries {
+        let raw: Vec<String> = if let Some(imp) = &entry.import {
+            vec![imp.path.clone()]
+        } else if let Some(clr) = &entry.clear {
+            vec![clr.path.clone()]
+        } else if let Some(tr) = &entry.transform {
+            let mut tp = Vec::new();
+            if let Ok(ins) =
+                serde_json::from_value::<Vec<serde_json::Value>>(tr.input_spaces.clone())
+            {
+                tp.extend(
+                    ins.iter()
+                        .filter_map(|s| s["path"].as_str().map(str::to_string)),
+                );
+            }
+            if let Ok(outs) =
+                serde_json::from_value::<Vec<serde_json::Value>>(tr.output_spaces.clone())
+            {
+                tp.extend(
+                    outs.iter()
+                        .filter_map(|s| s["path"].as_str().map(str::to_string)),
+                );
+            }
+            tp
+        } else {
+            vec![]
+        };
+
+        for p in raw {
+            let key = p.trim_end_matches('/').to_string();
+            if seen.insert(key.clone()) {
+                paths.push(PathBuf::from(key));
+            }
+        }
+    }
+
+    paths
+}
+
+// ─── Direct-edge graph ───────────────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+pub struct GraphEdge {
+    pub source: i32,
+    pub target: i32,
+}
+
+#[derive(serde::Serialize)]
+pub struct GraphResponse {
+    pub entries: Vec<OpLogEntry>,
+    pub edges: Vec<GraphEdge>,
+}
+
+/// Compute the transitive reduction of `adj`: for each edge U→V, keep it only
+/// if V is not reachable from U via any other neighbour of U.
+fn build_direct_edges(entries: &[OpLogEntry]) -> Vec<GraphEdge> {
+    let adj = build_adj(entries);
+
+    let mut edges = Vec::new();
+    let mut sorted_ids: Vec<i32> = entries.iter().map(|e| e.id).collect();
+    sorted_ids.sort();
+
+    for &u in &sorted_ids {
+        let neighbors = match adj.get(&u) {
+            Some(n) if !n.is_empty() => n.clone(),
+            _ => continue,
+        };
+
+        for &v in &neighbors {
+            // BFS from u through all neighbours *except* the direct u→v edge.
+            // If v is reached, this edge is transitive and should be suppressed.
+            let mut visited = HashSet::new();
+            let mut queue = VecDeque::new();
+            for &other in &neighbors {
+                if other != v && visited.insert(other) {
+                    queue.push_back(other);
+                }
+            }
+            while let Some(node) = queue.pop_front() {
+                if let Some(next) = adj.get(&node) {
+                    for &nbr in next {
+                        if visited.insert(nbr) {
+                            queue.push_back(nbr);
+                        }
+                    }
+                }
+            }
+
+            if !visited.contains(&v) {
+                edges.push(GraphEdge {
+                    source: u,
+                    target: v,
+                });
+            }
+        }
+    }
+
+    edges
+}
+
+/// Returns all op log entries and the direct (non-transitive) dependency edges
+/// between them.  This is the single source of truth for graph topology;
+/// clients should use these edges rather than re-deriving them locally.
+#[get("/logs/graph")]
+pub fn get_logs_graph(_token: Token) -> Result<Json<GraphResponse>, Status> {
+    let conn = &mut establish_connection();
+
+    let logs: Vec<OpLog> = op_log::table
+        .select(OpLog::as_select())
+        .order(op_log::id.asc())
+        .load(conn)
+        .map_err(|_| Status::InternalServerError)?;
+
+    let entries: Vec<OpLogEntry> = logs
+        .into_iter()
+        .map(|log| fetch_details(conn, log))
+        .collect();
+
+    let edges = build_direct_edges(&entries);
+
+    Ok(Json(GraphResponse { entries, edges }))
+}
+
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 #[get("/logs/<id>")]
@@ -255,10 +391,9 @@ pub fn get_logs(
     Ok(Json(entries))
 }
 
-// ─── Rollback ordering ───────────────────────────────────────────────────────
+// ─── Graph helpers (mirrors frontend RULE1 / RULE2 / RULE3) ─────────────────
 
-/// Returns the space paths that `entry` writes to.
-/// These are the paths that can create dependencies on subsequent operations.
+/// Space paths that `entry` writes to.
 fn get_write_spaces(entry: &OpLogEntry) -> Vec<String> {
     if let Some(imp) = &entry.import {
         return vec![imp.path.clone()];
@@ -266,12 +401,8 @@ fn get_write_spaces(entry: &OpLogEntry) -> Vec<String> {
     if let Some(clr) = &entry.clear {
         return vec![clr.path.clone()];
     }
-    if let Some(cp) = &entry.copy {
-        return vec![cp.dst.clone()];
-    }
     if let Some(tr) = &entry.transform {
-        if let Ok(outs) =
-            serde_json::from_value::<Vec<serde_json::Value>>(tr.output_spaces.clone())
+        if let Ok(outs) = serde_json::from_value::<Vec<serde_json::Value>>(tr.output_spaces.clone())
         {
             return outs
                 .iter()
@@ -282,40 +413,161 @@ fn get_write_spaces(entry: &OpLogEntry) -> Vec<String> {
     vec![]
 }
 
-/// True when `child` equals `parent` or is a subspace of it
-/// (e.g. `"a/b"` is a subspace of `"a"`).
-fn is_subspace(child: &str, parent: &str) -> bool {
-    if parent.is_empty() {
-        return true; // root contains everything
+/// Input space paths of a transform operation (empty for import / clear).
+fn get_input_spaces(entry: &OpLogEntry) -> Vec<String> {
+    if let Some(tr) = &entry.transform {
+        if let Ok(ins) = serde_json::from_value::<Vec<serde_json::Value>>(tr.input_spaces.clone()) {
+            return ins
+                .iter()
+                .filter_map(|s| s["path"].as_str().map(str::to_string))
+                .collect();
+        }
     }
-    child == parent || child.starts_with(&format!("{}/", parent))
+    vec![]
 }
 
-/// Returns the entries to undo when rolling back `target_id`, in the order
-/// they should be undone.
-///
-/// Rule: to roll back operation A that writes to space S, every subsequent
-/// write operation on S or any subspace of S must be undone first.
-/// Reverse-chronological order is a valid topological sort of this DAG
-/// (later ids are always leaves relative to earlier ones).
-fn compute_rollback_order(
-    conn: &mut PgConnection,
-    target_id: i32,
-) -> Result<Vec<OpLogEntry>, Status> {
-    // Load the target to determine which spaces it writes to.
-    let target_log: OpLog = op_log::table
-        .select(OpLog::as_select())
-        .filter(op_log::id.eq(target_id))
-        .first(conn)
-        .map_err(|_| Status::InternalServerError)?;
-    let target_entry = fetch_details(conn, target_log);
-    let target_spaces = get_write_spaces(&target_entry);
+/// True when `child` equals `parent` or is a subspace of it.
+/// Trailing slashes are stripped before comparison so paths stored with or
+/// without a trailing slash compare correctly.
+fn is_subspace(child: &str, parent: &str) -> bool {
+    let c = child.trim_end_matches('/');
+    let p = parent.trim_end_matches('/');
+    if p.is_empty() {
+        return true;
+    }
+    c == p || c.starts_with(&format!("{}/", p))
+}
 
-    // Load all candidates (target + everything after it), newest first.
+/// Build a forward adjacency list (u → dependents) from `entries` using the
+/// same rules as the frontend graph.
+///
+/// RULE1: edge U→V if V came after U and V writes to U's space or a subspace.
+/// RULE2: edge U→V if V is a transform, V came after U, and U writes to one
+///        of V's input spaces or a subspace thereof.
+/// RULE3: edge U→V if V is a transform, V came after U, and an input space of
+///        V is a subspace of U's write space (U wrote to a parent space V reads from).
+/// RULE4: edge U→V if V is a clear, V came after U, and U writes to V's clear
+///        target or any subspace of it (the clear covers U's output path from above).
+fn build_adj(entries: &[OpLogEntry]) -> HashMap<i32, Vec<i32>> {
+    let mut adj: HashMap<i32, Vec<i32>> = entries.iter().map(|e| (e.id, vec![])).collect();
+
+    let mut sorted: Vec<&OpLogEntry> = entries.iter().collect();
+    sorted.sort_by_key(|e| e.id);
+
+    for j in 0..sorted.len() {
+        let v = sorted[j];
+        let v_writes = get_write_spaces(v);
+        let v_inputs = get_input_spaces(v);
+        if v_writes.is_empty() && v_inputs.is_empty() {
+            continue;
+        }
+        for i in 0..j {
+            let u = sorted[i];
+            let u_writes = get_write_spaces(u);
+            if u_writes.is_empty() {
+                continue;
+            }
+
+            let rule1 = u_writes
+                .iter()
+                .any(|us| v_writes.iter().any(|vs| is_subspace(vs, us)));
+            let rule2 = v.transform.is_some()
+                && u_writes
+                    .iter()
+                    .any(|us| v_inputs.iter().any(|vi| is_subspace(us, vi)));
+            let rule3 = v.transform.is_some()
+                && u_writes
+                    .iter()
+                    .any(|us| v_inputs.iter().any(|vi| is_subspace(vi, us)));
+            // RULE4: a clear at path P depends on any earlier write to P or any
+            // descendant of P (the clear reaches down into subspaces).
+            let rule4 = v.clear.is_some()
+                && u_writes
+                    .iter()
+                    .any(|us| v_writes.iter().any(|vs| is_subspace(us, vs)));
+            if rule1 || rule2 || rule3 || rule4 {
+                adj.entry(u.id).or_default().push(v.id);
+            }
+        }
+    }
+    adj
+}
+
+/// BFS from `root` through `adj`; returns all reachable ids (including `root`).
+fn reachable_from(adj: &HashMap<i32, Vec<i32>>, root: i32) -> HashSet<i32> {
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::new();
+    if adj.contains_key(&root) {
+        visited.insert(root);
+        queue.push_back(root);
+    }
+    while let Some(node) = queue.pop_front() {
+        if let Some(neighbors) = adj.get(&node) {
+            for &nbr in neighbors {
+                if visited.insert(nbr) {
+                    queue.push_back(nbr);
+                }
+            }
+        }
+    }
+    visited
+}
+
+/// Kahn's topological sort over the subgraph induced by `nodes`.
+/// Returns ids in topological order (u before v when there is an edge u→v).
+/// Ties are broken by ascending id for determinism.
+fn topo_sort(adj: &HashMap<i32, Vec<i32>>, nodes: &HashSet<i32>) -> Vec<i32> {
+    let mut in_degree: HashMap<i32, usize> = nodes.iter().map(|&id| (id, 0)).collect();
+    for (&u, neighbors) in adj {
+        if !nodes.contains(&u) {
+            continue;
+        }
+        for &v in neighbors {
+            if nodes.contains(&v) {
+                *in_degree.get_mut(&v).unwrap() += 1;
+            }
+        }
+    }
+    let mut zero: Vec<i32> = in_degree
+        .iter()
+        .filter(|(_, &d)| d == 0)
+        .map(|(&id, _)| id)
+        .collect();
+    zero.sort();
+    let mut queue: VecDeque<i32> = zero.into_iter().collect();
+
+    let mut order = Vec::with_capacity(nodes.len());
+    while let Some(u) = queue.pop_front() {
+        order.push(u);
+        if let Some(neighbors) = adj.get(&u) {
+            let mut next: Vec<i32> = Vec::new();
+            for &v in neighbors {
+                if !nodes.contains(&v) {
+                    continue;
+                }
+                let d = in_degree.get_mut(&v).unwrap();
+                *d -= 1;
+                if *d == 0 {
+                    next.push(v);
+                }
+            }
+            next.sort();
+            queue.extend(next);
+        }
+    }
+    order
+}
+
+// ─── Undo / redo ordering ────────────────────────────────────────────────────
+
+/// Returns the entries to undo for rolling back `target_id`, in order:
+/// leaves first (reverse topological), target last.
+fn compute_undo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpLogEntry>, Status> {
     let logs: Vec<OpLog> = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::id.ge(target_id))
-        .order(op_log::id.desc())
+        .filter(op_log::rolled_back_at.is_null())
+        .order(op_log::id.asc())
         .load(conn)
         .map_err(|_| Status::InternalServerError)?;
 
@@ -324,21 +576,65 @@ fn compute_rollback_order(
         .map(|log| fetch_details(conn, log))
         .collect();
 
-    // Keep the target itself plus any later entry that writes to one of the
-    // target's spaces or a subspace of it.
-    let to_rollback = entries
+    let adj = build_adj(&entries);
+    let subgraph = reachable_from(&adj, target_id);
+    let order = topo_sort(&adj, &subgraph);
+
+    let mut by_id: HashMap<i32, OpLogEntry> = entries.into_iter().map(|e| (e.id, e)).collect();
+
+    // Reverse topological order: leaves first, target last.
+    Ok(order
         .into_iter()
-        .filter(|entry| {
-            if entry.id == target_id {
-                return true;
-            }
-            get_write_spaces(entry)
-                .iter()
-                .any(|ws| target_spaces.iter().any(|ts| is_subspace(ws, ts)))
-        })
+        .rev()
+        .filter_map(|id| by_id.remove(&id))
+        .collect())
+}
+
+/// Returns the entries to redo for `target_id`, in order:
+/// rolled-back ancestors first (dependencies), then target last.
+///
+/// Edges go U→V ("V depends on U"), so to redo target we traverse edges
+/// *backwards* from target to find all rolled-back ancestors that must be
+/// re-applied first.  The result is forward-topological order on the original
+/// graph: ancestors before target.
+fn compute_redo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpLogEntry>, Status> {
+    // Load ALL rolled-back entries — ancestors may have lower ids than target.
+    let logs: Vec<OpLog> = op_log::table
+        .select(OpLog::as_select())
+        .filter(op_log::rolled_back_at.is_not_null())
+        .order(op_log::id.asc())
+        .load(conn)
+        .map_err(|_| Status::InternalServerError)?;
+
+    let entries: Vec<OpLogEntry> = logs
+        .into_iter()
+        .map(|log| fetch_details(conn, log))
         .collect();
 
-    Ok(to_rollback)
+    let adj = build_adj(&entries);
+
+    // Build reverse adjacency list so we can walk from target back to its
+    // rolled-back dependencies.
+    let mut rev_adj: HashMap<i32, Vec<i32>> = entries.iter().map(|e| (e.id, vec![])).collect();
+    for (&u, vs) in &adj {
+        for &v in vs {
+            rev_adj.entry(v).or_default().push(u);
+        }
+    }
+
+    // BFS on reversed edges: finds target + all its rolled-back ancestors.
+    let subgraph = reachable_from(&rev_adj, target_id);
+
+    // Topo-sort using the *forward* edges so dependencies come before target.
+    let order = topo_sort(&adj, &subgraph);
+
+    let mut by_id: HashMap<i32, OpLogEntry> = entries.into_iter().map(|e| (e.id, e)).collect();
+
+    // Forward topological order: ancestors first, target last.
+    Ok(order
+        .into_iter()
+        .filter_map(|id| by_id.remove(&id))
+        .collect())
 }
 
 /// Rolls back the operation identified by `id` and every operation that
@@ -348,7 +644,11 @@ fn compute_rollback_order(
 /// Log entries are **not** deleted — `rolled_back_at` is stamped on each one
 /// so that a future `/logs/<id>/redo` endpoint can re-apply them.
 #[post("/logs/<id>/rollback")]
-pub async fn rollback_log(_token: Token, id: i32) -> Result<Json<Vec<OpLogEntry>>, Status> {
+pub async fn rollback_log(
+    _token: Token,
+    id: i32,
+    lock_manager: &State<LockManager>,
+) -> Result<Json<Vec<OpLogEntry>>, Status> {
     let conn = &mut establish_connection();
 
     // Verify the target entry exists.
@@ -361,12 +661,23 @@ pub async fn rollback_log(_token: Token, id: i32) -> Result<Json<Vec<OpLogEntry>
             _ => Status::InternalServerError,
         })?;
 
-    let entries = compute_rollback_order(conn, id)?;
+    let entries = compute_undo_order(conn, id)?;
 
-    // Undo each operation in topological order (leaves first).
-    for entry in &entries {
-        undo_operation(conn, entry).await?;
-    }
+    let lock_paths = collect_lock_paths(&entries);
+    let path_refs: Vec<&PathBuf> = lock_paths.iter().collect();
+
+    // Lock all affected spaces, then undo in reverse topological order.
+    crate::routes::spaces::with_lock(lock_manager, &path_refs, || {
+        let entries = &entries;
+        async move {
+            let mut c = establish_connection();
+            for entry in entries {
+                undo_operation(&mut c, entry).await?;
+            }
+            Ok::<(), Status>(())
+        }
+    })
+    .await?;
 
     // Stamp rolled_back_at so the client and a future redo endpoint can tell
     // which entries are currently in a rolled-back state.
@@ -393,14 +704,15 @@ pub async fn rollback_log(_token: Token, id: i32) -> Result<Json<Vec<OpLogEntry>
     Ok(Json(updated_entries))
 }
 
-/// Re-applies all operations starting from `id` that are currently in a
-/// rolled-back state (i.e. `rolled_back_at IS NOT NULL`), in ascending
-/// chronological order so that earlier operations are re-applied first.
-///
-/// Only entries with `id >= given_id` and a non-null `rolled_back_at` are
-/// touched; any entry that was never rolled back is left alone.
+/// Re-applies the operation `id` and every rolled-back descendant in the
+/// dependency graph (RULE1 / RULE2 / RULE3), in topological order so that the target
+/// is re-applied first and its dependents follow.
 #[post("/logs/<id>/redo")]
-pub async fn redo_log(_token: Token, id: i32) -> Result<Json<Vec<OpLogEntry>>, Status> {
+pub async fn redo_log(
+    _token: Token,
+    id: i32,
+    lock_manager: &State<LockManager>,
+) -> Result<Json<Vec<OpLogEntry>>, Status> {
     let conn = &mut establish_connection();
 
     // Verify the anchor entry exists.
@@ -413,25 +725,23 @@ pub async fn redo_log(_token: Token, id: i32) -> Result<Json<Vec<OpLogEntry>>, S
             _ => Status::InternalServerError,
         })?;
 
-    // Fetch the rolled-back entries from id onwards, oldest first so we
-    // re-apply them in the original chronological order.
-    let logs: Vec<OpLog> = op_log::table
-        .select(OpLog::as_select())
-        .filter(op_log::id.ge(id))
-        .filter(op_log::rolled_back_at.is_not_null())
-        .order(op_log::id.asc())
-        .load(conn)
-        .map_err(|_| Status::InternalServerError)?;
+    let entries = compute_redo_order(conn, id)?;
 
-    let entries: Vec<OpLogEntry> = logs
-        .into_iter()
-        .map(|log| fetch_details(conn, log))
-        .collect();
+    let lock_paths = collect_lock_paths(&entries);
+    let path_refs: Vec<&PathBuf> = lock_paths.iter().collect();
 
-    // Re-apply each operation (stubs — implementations are per-type above).
-    for entry in &entries {
-        redo_operation(conn, entry).await?;
-    }
+    // Lock all affected spaces, then redo in topological order.
+    crate::routes::spaces::with_lock(lock_manager, &path_refs, || {
+        let entries = &entries;
+        async move {
+            let mut c = establish_connection();
+            for entry in entries {
+                redo_operation(&mut c, entry).await?;
+            }
+            Ok::<(), Status>(())
+        }
+    })
+    .await?;
 
     // Clear rolled_back_at to mark these entries as active again.
     let ids: Vec<i32> = entries.iter().map(|e| e.id).collect();

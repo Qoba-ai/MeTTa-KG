@@ -53,6 +53,98 @@
     opacity: 0.75;
 }
 
+// ── Mode bar ──────────────────────────────────────────────────────────────────
+
+.ModeBar {
+    position: absolute;
+    top: 48px;
+    left: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    max-width: 240px;
+    z-index: 10;
+}
+
+.ModeButton {
+    padding: 0 12px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+
+    &:hover {
+        background: var(--highlight-med);
+        color: var(--text);
+    }
+}
+
+.ModeButtonActive {
+    background: var(--highlight-med);
+    border-color: var(--iris);
+    color: var(--text);
+}
+
+// Namespace filter input wrapper — sits inline with mode buttons
+.NsFilterWrap {
+    width: 100%;
+    margin-top: 2px;
+
+    // Restyle the NamespaceSelector input to match the ModeBar aesthetic
+    input {
+        width: 100%;
+        box-sizing: border-box;
+        height: 28px;
+        padding: 0 10px;
+        background: var(--surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 6px;
+        color: var(--text);
+        font-size: 0.72rem;
+        outline: none;
+        transition: border-color 0.15s;
+
+        &::placeholder { color: var(--muted); }
+        &:focus { border-color: var(--iris); }
+    }
+}
+
+.NsFilterRow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.NsClearBtn {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+
+    &:hover {
+        background: var(--highlight-med);
+        color: var(--text);
+    }
+}
+
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
 .Toolbar {
@@ -83,6 +175,12 @@
         background: var(--highlight-med);
         border-color: var(--highlight-high);
     }
+}
+
+.ToolbarButtonActive {
+    background: var(--highlight-med);
+    border-color: var(--iris);
+    color: var(--iris);
 }
 
 // ── Action panel ──────────────────────────────────────────────────────────────

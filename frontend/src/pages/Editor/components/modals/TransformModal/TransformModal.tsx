@@ -11,6 +11,81 @@ export interface SpaceConfig {
   patternOrTemplate: string;
 }
 
+interface SpaceGroupProps {
+  type: 'input' | 'output';
+  configs: () => SpaceConfig[];
+  updateConfig: (index: number, patch: Partial<SpaceConfig>) => void;
+  removeSpace: (index: number) => void;
+  fetchExploreResults: (path: string) => Promise<any[]>;
+}
+
+const SpaceGroup: Component<SpaceGroupProps> = (props) => {
+  const entries = () => props.configs()
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => c.type === props.type)
+
+  return (
+    <div>
+      <div style={{ "font-size": "0.75rem", "font-weight": 700, "text-transform": "uppercase", "letter-spacing": "0.07em", color: props.type === 'input' ? "var(--foam)" : "var(--gold)", "margin-bottom": "8px" }}>
+        {props.type === 'input' ? 'Input Spaces' : 'Output Spaces'}
+      </div>
+      {entries().length === 0 ? (
+        <div style={{ "font-size": "0.8rem", color: "var(--muted)", "font-style": "italic", padding: "8px 0" }}>
+          No {props.type} spaces added
+        </div>
+      ) : (
+        <div style={{ display: "flex", "flex-direction": "column", gap: "12px" }}>
+          <Index each={entries()}>
+            {(entry) => {
+              const i = entry().i
+              const config = () => props.configs()[i]
+              return (
+                <div class={styles.ImportSettingsContainer} style={{ display: "flex", "flex-direction": "column", gap: "12px", position: "relative" }}>
+                  <div style={{ display: "flex", "align-items": "center", gap: "12px" }}>
+                    <div style={{ flex: 1 }}>
+                      <NamespaceSelector
+                        value={config().path}
+                        onInput={(val) => props.updateConfig(i, { path: val })}
+                        fetchExploreResults={props.fetchExploreResults}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      class={styles.TrieActionBtn}
+                      onClick={() => props.removeSpace(i)}
+                      title="Remove Space"
+                      style={{ color: "var(--love)" }}
+                      disabled={entries().length === 1}
+                    >
+                      <VsTrash size={18} />
+                    </button>
+                  </div>
+                  <div class={styles.FieldGroup}>
+                    <label>{props.type === 'input' ? 'Pattern (S-expression)' : 'Template (S-expression)'}</label>
+                    <input
+                      value={config().patternOrTemplate}
+                      placeholder={props.type === 'input' ? "(pattern $x)" : "(template $x)"}
+                      onInput={(e) => props.updateConfig(i, { patternOrTemplate: (e.target as HTMLInputElement).value })}
+                      onKeyDown={handleAutoClose}
+                      style={config().patternOrTemplate.trim() !== "" && !isBalancedSexpr(config().patternOrTemplate)
+                        ? { border: "1px solid var(--love)" }
+                        : {}}
+                      required
+                    />
+                    {config().patternOrTemplate.trim() !== "" && !isBalancedSexpr(config().patternOrTemplate) && (
+                      <span style={{ color: "var(--love)", "font-size": "0.75rem" }}>Unbalanced parentheses</span>
+                    )}
+                  </div>
+                </div>
+              )
+            }}
+          </Index>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface TransformModalProps {
   ref: HTMLDialogElement | ((el: HTMLDialogElement) => void);
   configs: () => SpaceConfig[];
@@ -34,8 +109,8 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
     setLocalConfigs(newConfigs);
   };
 
-  const addSpace = () => {
-    setLocalConfigs([...localConfigs(), { path: '/', type: 'input', patternOrTemplate: '' }]);
+  const addSpace = (type: 'input' | 'output') => {
+    setLocalConfigs([...localConfigs(), { path: '/', type, patternOrTemplate: '' }]);
   };
 
   const removeSpace = (index: number) => {
@@ -64,63 +139,21 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
       >
         <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center", "margin-bottom": "20px" }}>
           <h2 style={{ margin: 0 }}>Configure Transformation</h2>
-          <button type="button" class={commonStyles.Button} onClick={addSpace} style={{ display: "flex", "align-items": "center", gap: "8px" }}>
-            <VsAdd size={16} />
-            Add Space
-          </button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" class={commonStyles.Button} onClick={() => addSpace('input')} style={{ display: "flex", "align-items": "center", gap: "6px" }}>
+              <VsAdd size={16} />
+              Add Input
+            </button>
+            <button type="button" class={commonStyles.Button} onClick={() => addSpace('output')} style={{ display: "flex", "align-items": "center", gap: "6px" }}>
+              <VsAdd size={16} />
+              Add Output
+            </button>
+          </div>
         </div>
 
-        <div style={{ "max-height": "60vh", "display": "flex", "flex-direction": "column", "gap": "16px", "padding-bottom": "150px" }}>
-          <Index each={localConfigs()}>
-            {(config, i) => {
-              return (
-                <div class={styles.ImportSettingsContainer} style={{ display: "flex", "flex-direction": "column", gap: "12px", position: "relative" }}>
-                  <div style={{ display: "flex", "align-items": "center", gap: "12px" }}>
-                    <div style={{ flex: 1 }}>
-                      <NamespaceSelector
-                        value={config().path}
-                        onInput={(val) => updateConfig(i, { path: val })}
-                        fetchExploreResults={props.fetchExploreResults}
-                      />
-                    </div>
-                    <select
-                      value={config().type}
-                      onchange={(e) => updateConfig(i, { type: (e.target as HTMLSelectElement).value as 'input' | 'output' })}
-                      style={{ padding: "8px", "border-radius": "6px", background: "var(--surface)", color: "var(--text)", border: "1px solid var(--highlight-low)" }}
-                    >
-                      <option value="input">Input (Pattern)</option>
-                      <option value="output">Output (Template)</option>
-                    </select>
-                    <button
-                      type="button"
-                      class={styles.TrieActionBtn}
-                      onClick={() => removeSpace(i)}
-                      title="Remove Space"
-                      style={{ color: "var(--love)" }}
-                    >
-                      <VsTrash size={18} />
-                    </button>
-                  </div>
-                  <div class={styles.FieldGroup}>
-                    <label>{config().type === 'input' ? 'Pattern (S-expression)' : 'Template (S-expression)'}</label>
-                    <input
-                      value={config().patternOrTemplate}
-                      placeholder={config().type === 'input' ? "(pattern $x)" : "(template $x)"}
-                      onInput={(e) => updateConfig(i, { patternOrTemplate: (e.target as HTMLInputElement).value })}
-                      onKeyDown={handleAutoClose}
-                      style={config().patternOrTemplate.trim() !== "" && !isBalancedSexpr(config().patternOrTemplate)
-                        ? { border: "1px solid var(--love)" }
-                        : {}}
-                      required
-                    />
-                    {config().patternOrTemplate.trim() !== "" && !isBalancedSexpr(config().patternOrTemplate) && (
-                      <span style={{ color: "var(--love)", "font-size": "0.75rem" }}>Unbalanced parentheses</span>
-                    )}
-                  </div>
-                </div>
-              );
-            }}
-          </Index>
+        <div style={{ "max-height": "60vh", "overflow-y": "auto", "display": "flex", "flex-direction": "column", "gap": "20px", "padding-bottom": "8px" }}>
+          <SpaceGroup type="input" configs={localConfigs} updateConfig={updateConfig} removeSpace={removeSpace} fetchExploreResults={props.fetchExploreResults} />
+          <SpaceGroup type="output" configs={localConfigs} updateConfig={updateConfig} removeSpace={removeSpace} fetchExploreResults={props.fetchExploreResults} />
         </div>
 
         <div class={commonStyles.ModalButtonBar}>
