@@ -1,0 +1,6 @@
+logs/
+static/
+target/
+temp/
+test-results/
+Cargo.lock
