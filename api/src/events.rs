@@ -12,6 +12,13 @@ pub enum SpaceEvent {
     ClearError { path: String, message: String },
     TransformComplete { path: String },
     TransformError { path: String, message: String },
+    /// Emitted whenever a token's own op-log changes (op created, rolled back,
+    /// or redone).  Only forwarded to the WebSocket connection that owns the
+    /// matching `token_id`.
+    OpLogChanged {
+        token_id: i32,
+        entries: Vec<crate::model::OpLogEntry>,
+    },
 }
 
 impl SpaceEvent {
@@ -25,6 +32,7 @@ impl SpaceEvent {
             | Self::ClearError { path, .. }
             | Self::TransformComplete { path }
             | Self::TransformError { path, .. } => path,
+            Self::OpLogChanged { .. } => "",
         }
     }
 }

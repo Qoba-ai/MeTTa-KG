@@ -95,6 +95,7 @@ pub fn ws_events(
     let namespace = token.namespace.clone();
     let mut shutdown_rx = shutdown.inner().0.subscribe();
 
+    let token_id = token.id;
     Ok(ws.channel(move |stream| {
         Box::pin(async move {
             let (mut sink, mut source) = stream.split();
@@ -104,7 +105,13 @@ pub fn ws_events(
                     event_result = rx.recv() => {
                         match event_result {
                             Ok(event) => {
-                                if event_in_namespace(&event, &namespace) {
+                                let forward = match &event {
+                                    crate::events::SpaceEvent::OpLogChanged { token_id: tid, .. } => {
+                                        *tid == token_id
+                                    }
+                                    other => event_in_namespace(other, &namespace),
+                                };
+                                if forward {
                                     let json = serde_json::to_string(&event)
                                         .unwrap_or_default();
                                     if sink.send(ws::Message::Text(json)).await.is_err() {

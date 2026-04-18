@@ -68,7 +68,7 @@ pub struct OpLogImportInsert {
     pub operation_id: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Serialize, Deserialize, Queryable, Selectable, Clone, Debug)]
 #[diesel(table_name = op_log_import)]
 pub struct OpLogImport {
     pub id: i32,
@@ -89,7 +89,7 @@ pub struct OpLogClearInsert {
     pub pattern: String,
 }
 
-#[derive(Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Serialize, Deserialize, Queryable, Selectable, Clone, Debug)]
 #[diesel(table_name = op_log_clear)]
 pub struct OpLogClear {
     pub id: i32,
@@ -110,7 +110,7 @@ pub struct OpLogCopyInsert {
     pub operation_id: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Serialize, Deserialize, Queryable, Selectable, Clone, Debug)]
 #[diesel(table_name = op_log_copy)]
 pub struct OpLogCopy {
     pub id: i32,
@@ -131,7 +131,7 @@ pub struct OpLogTransformInsert {
     pub operation_id: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Queryable, Selectable)]
+#[derive(Serialize, Deserialize, Queryable, Selectable, Clone, Debug)]
 #[diesel(table_name = op_log_transform)]
 pub struct OpLogTransform {
     pub id: i32,
@@ -143,7 +143,7 @@ pub struct OpLogTransform {
 
 // ─── Op Log Entry (API response) ─────────────────────────────────────────────
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OpLogEntry {
     pub id: i32,
     pub op_type: String,

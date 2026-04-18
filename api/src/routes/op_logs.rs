@@ -10,8 +10,11 @@ use rocket::{get, post};
 
 use rocket::State;
 
+use tokio::sync::broadcast;
+
 use crate::{
     db::establish_connection,
+    events::{EventBus, SpaceEvent},
     lock::LockManager,
     model::{OpLog, OpLogClear, OpLogCopy, OpLogEntry, OpLogImport, OpLogTransform, Token},
     schema::{op_log, op_log_clear, op_log_copy, op_log_import, op_log_transform},
@@ -28,6 +31,10 @@ fn augmented_path(raw: &str) -> PathBuf {
     } else {
         root
     }
+}
+
+pub fn fetch_details_pub(conn: &mut PgConnection, log: OpLog) -> OpLogEntry {
+    fetch_details(conn, log)
 }
 
 fn fetch_details(conn: &mut PgConnection, log: OpLog) -> OpLogEntry {
@@ -643,6 +650,26 @@ fn compute_redo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpL
         .collect())
 }
 
+// ─── Event emission ──────────────────────────────────────────────────────────
+
+/// Emit one `OpLogChanged` event per distinct `token_id` found in `entries`.
+/// Entries without a `token_id` (pre-migration) are silently skipped.
+fn emit_op_log_changed(bus: &broadcast::Sender<SpaceEvent>, entries: &[OpLogEntry]) {
+    // Group entries by token_id
+    let mut by_token: HashMap<i32, Vec<OpLogEntry>> = HashMap::new();
+    for e in entries {
+        if let Some(tid) = e.token_id {
+            by_token.entry(tid).or_default().push(e.clone());
+        }
+    }
+    for (token_id, token_entries) in by_token {
+        let _ = bus.send(SpaceEvent::OpLogChanged {
+            token_id,
+            entries: token_entries,
+        });
+    }
+}
+
 /// Rolls back the operation identified by `id` and every operation that
 /// depends on it (its descendants in the dependency DAG), in topological
 /// order so that the most-dependent side-effects are undone first.
@@ -654,6 +681,7 @@ pub async fn rollback_log(
     _token: Token,
     id: i32,
     lock_manager: &State<LockManager>,
+    bus: &State<EventBus>,
 ) -> Result<Json<Vec<OpLogEntry>>, Status> {
     let conn = &mut establish_connection();
 
@@ -702,10 +730,12 @@ pub async fn rollback_log(
         .load(conn)
         .map_err(|_| Status::InternalServerError)?;
 
-    let updated_entries = updated_logs
+    let updated_entries: Vec<OpLogEntry> = updated_logs
         .into_iter()
         .map(|log| fetch_details(conn, log))
         .collect();
+
+    emit_op_log_changed(&bus.inner().0, &updated_entries);
 
     Ok(Json(updated_entries))
 }
@@ -772,6 +802,7 @@ pub async fn redo_log(
     id: i32,
     force: Option<bool>,
     lock_manager: &State<LockManager>,
+    bus: &State<EventBus>,
 ) -> Result<Json<Vec<OpLogEntry>>, Custom<Json<RedoConflict>>> {
     let conn = &mut establish_connection();
 
@@ -857,10 +888,12 @@ pub async fn redo_log(
             message: "Failed to fetch updated entries".into(),
         })))?;
 
-    let updated_entries = updated_logs
+    let updated_entries: Vec<OpLogEntry> = updated_logs
         .into_iter()
         .map(|log| fetch_details(conn, log))
         .collect();
+
+    emit_op_log_changed(&bus.inner().0, &updated_entries);
 
     Ok(Json(updated_entries))
 }

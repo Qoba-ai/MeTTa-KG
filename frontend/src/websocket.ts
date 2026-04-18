@@ -1,4 +1,5 @@
 import { BACKEND_URL } from './urls'
+import type { OpLogEntry } from './types'
 
 export type SpaceEvent =
     | { type: 'locked'; path: string }
@@ -10,6 +11,12 @@ export type SpaceEvent =
     | { type: 'transformComplete'; path: string }
     | { type: 'transformError'; path: string; message: string }
 
+export type OpLogChangedEvent = {
+    type: 'opLogChanged'
+    token_id: number
+    entries: OpLogEntry[]
+}
+
 export type StatusEvent = {
     status: 'pathClear' | 'pathReadOnly' | 'pathReadOnlyTemporary' |
             'pathForbidden' | 'pathForbiddenTemporary' |
@@ -18,10 +25,11 @@ export type StatusEvent = {
 }
 
 type PingMessage = { type: 'ping' }
-type WsMessage = SpaceEvent | PingMessage
+type WsMessage = SpaceEvent | OpLogChangedEvent | PingMessage
 
 type OnlineListener = (online: boolean) => void
 type SpaceEventListener = (event: SpaceEvent) => void
+type OpLogChangedListener = (event: OpLogChangedEvent) => void
 
 const WS_BASE = BACKEND_URL.replace(/^https?/, (m: string) => (m === 'https' ? 'wss' : 'ws'))
 
@@ -31,6 +39,7 @@ class WebSocketService {
     private isOnline = false
     private onlineListeners: OnlineListener[] = []
     private spaceListeners: SpaceEventListener[] = []
+    private opLogChangedListeners: OpLogChangedListener[] = []
     private pingRetryTimer: ReturnType<typeof setTimeout> | null = null
     private eventsRetryTimer: ReturnType<typeof setTimeout> | null = null
     private eventsTokenCode: string | null = null
@@ -75,9 +84,11 @@ class WebSocketService {
         socket.onmessage = (e) => {
             try {
                 const msg: WsMessage = JSON.parse(e.data)
-                if (msg.type !== 'ping') {
-                    const event = msg as SpaceEvent
-                    this.spaceListeners.forEach((l) => l(event))
+                if (msg.type === 'ping') return
+                if (msg.type === 'opLogChanged') {
+                    this.opLogChangedListeners.forEach((l) => l(msg))
+                } else {
+                    this.spaceListeners.forEach((l) => l(msg))
                 }
             } catch {
                 // ignore malformed messages
@@ -167,6 +178,14 @@ class WebSocketService {
         this.spaceListeners.push(listener)
         return () => {
             this.spaceListeners = this.spaceListeners.filter((l) => l !== listener)
+        }
+    }
+
+    /** Subscribe to own op-log change events. Returns an unsubscribe function. */
+    onOpLogChanged(listener: OpLogChangedListener): () => void {
+        this.opLogChangedListeners.push(listener)
+        return () => {
+            this.opLogChangedListeners = this.opLogChangedListeners.filter((l) => l !== listener)
         }
     }
 

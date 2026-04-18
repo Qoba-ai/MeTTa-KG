@@ -82,6 +82,8 @@ pub struct ExploreResult {
     pub metta_expressions: Vec<String>,
     pub subspaces: Vec<(String, PathBuf)>,
     pub focus_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<ExploreResult>>,
 }
 
 // ─── S-Expression Utilities ─────────────────────────────────────────────────
@@ -746,6 +748,39 @@ impl MorkClient {
             metta_expressions,
             subspaces,
             focus_token: next_focus_token,
+            children: None,
+        })
+    }
+
+    /// Like `explore`, but recursively visits each subspace up to `depth` levels.
+    /// `depth = 1` is equivalent to a plain `explore` call (no recursion).
+    pub fn explore_with_depth<'a>(
+        &'a self,
+        path: &'a PathBuf,
+        root: &'a PathBuf,
+        focus_token: &'a str,
+        depth: u32,
+    ) -> Pin<Box<dyn Future<Output = Result<ExploreResult, MorkError>> + Send + 'a>> {
+        Box::pin(async move {
+            let mut result = self.explore(path, root, focus_token).await?;
+            if depth > 1 {
+                let subspaces = result.subspaces.clone();
+                let mut children = Vec::new();
+                for (_, subspace_rel) in &subspaces {
+                    let sub_path = root.join(subspace_rel);
+                    match self.explore_with_depth(&sub_path, root, "", depth - 1).await {
+                        Ok(sub_result) => children.push(sub_result),
+                        Err(e) => eprintln!(
+                            "explore_with_depth: skipping {:?}: {:?}",
+                            sub_path, e
+                        ),
+                    }
+                }
+                if !children.is_empty() {
+                    result.children = Some(children);
+                }
+            }
+            Ok(result)
         })
     }
 

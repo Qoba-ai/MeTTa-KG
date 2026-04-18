@@ -21,6 +21,7 @@ import {
     VsRedo,
 } from 'solid-icons/vs'
 import { createMemo, createSignal, onMount, onCleanup, Show, For, createEffect, batch, on, untrack } from 'solid-js'
+import { createOwnHistoryStore } from './stores/ownHistoryStore'
 import styles from './Editor.module.scss'
 import commonStyles from '../../styles/Common.module.scss'
 import { A } from '@solidjs/router'
@@ -252,6 +253,7 @@ const App: Component = () => {
 
     // UI Layout State
     const [isFullscreen, setIsFullscreen] = createSignal<boolean>(false)
+    const [exploreDepth, setExploreDepth] = createSignal(1)
     const [trieWidth, setTrieWidth] = createSignal(300)
     const [isResizing, setIsResizing] = createSignal(false)
     const [consoleHeight, setConsoleHeight] = createSignal(120)
@@ -315,124 +317,41 @@ const App: Component = () => {
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false)
 
-    // History/Logs State
-    const [spaceLogs, setSpaceLogs] = createSignal<OpLogEntry[]>([])
-    const [logsLoading, setLogsLoading] = createSignal(false)
-
-    const fetchSpaceLogs = async () => {
-        const t = token()
-        if (!t) return
-        setLogsLoading(true)
-        try {
-            const res = await fetch(`${BACKEND_URL}/logs?page_size=50`, {
-                headers: { Authorization: t.code },
-            })
-            if (res.ok) {
-                setSpaceLogs(await res.json())
-                fetchMyTargets()
-            }
-        } catch {
-            // ignore
-        } finally {
-            setLogsLoading(false)
-        }
-    }
-
-    // ── Per-user undo/redo targets ──────────────────────────────────────────
-    const [myUndoTargetId, setMyUndoTargetId] = createSignal<number | null>(null)
-    const [myRedoTargetId, setMyRedoTargetId] = createSignal<number | null>(null)
-
-    const fetchMyTargets = async () => {
-        const t = token()
-        if (!t) return
-        try {
-            const [undoRes, redoRes] = await Promise.all([
-                fetch(`${BACKEND_URL}/logs/my-last-undoable`, { headers: { Authorization: t.code } }),
-                fetch(`${BACKEND_URL}/logs/my-last-redoable`, { headers: { Authorization: t.code } }),
-            ])
-            setMyUndoTargetId(undoRes.ok ? (await undoRes.json()).id : null)
-            setMyRedoTargetId(redoRes.ok ? (await redoRes.json()).id : null)
-        } catch {
-            setMyUndoTargetId(null)
-            setMyRedoTargetId(null)
-        }
-    }
-
-    // The most recent active (non-rolled-back) log entry — global undo target.
-    const undoTargetId = () => spaceLogs().find(l => !l.rolled_back_at)?.id ?? null
-
-    // The oldest entry in the contiguous rolled-back prefix — global redo target.
-    // spaceLogs() is desc-sorted, so the prefix starts at index 0.
-    const redoTargetId = (): number | null => {
-        const logs = spaceLogs()
-        let i = 0
-        while (i < logs.length && logs[i].rolled_back_at) i++
-        return i === 0 ? null : logs[i - 1].id
-    }
+    // ── Own-history store ──────────────────────────────────────────────────
+    const ownHistory = createOwnHistoryStore(() => token()?.code)
+    const fetchSpaceLogs = () => ownHistory.fetch()
 
     const rollbackLog = async (id: number) => {
-        const t = token()
-        if (!t) return
-        setIsUndoRedoInProgress(true)
         try {
-            const res = await fetch(`${BACKEND_URL}/logs/${id}/rollback`, {
-                method: 'POST',
-                headers: { Authorization: t.code },
-            })
-            if (res.ok) {
-                const updated: OpLogEntry[] = await res.json()
-                setSpaceLogs(prev => prev.map(l => updated.find(u => u.id === l.id) ?? l))
-                read()
-                fetchMyTargets()
-            } else {
-                notify.error('Undo failed')
-            }
+            await ownHistory.rollback(id, read)
         } catch {
             notify.error('Undo failed')
-        } finally {
-            setIsUndoRedoInProgress(false)
         }
     }
 
     const redoLog = async (id: number, force = false) => {
-        const t = token()
-        if (!t) return
-        setIsUndoRedoInProgress(true)
         try {
-            const url = force
-                ? `${BACKEND_URL}/logs/${id}/redo?force=true`
-                : `${BACKEND_URL}/logs/${id}/redo`
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { Authorization: t.code },
-            })
-            if (res.ok) {
-                const updated: OpLogEntry[] = await res.json()
-                setSpaceLogs(prev => prev.map(l => updated.find(u => u.id === l.id) ?? l))
-                read()
-                fetchMyTargets()
-            } else if (res.status === 409) {
-                const body = await res.json()
-                const opIds = (body.conflicting_ops || []).join(', ')
+            const result = await ownHistory.redo(id, read, force)
+            if (result.conflict) {
+                const opIds = result.opIds.join(', ')
                 setConfirmData({
                     title: 'Redo Conflict',
                     message: `This redo conflicts with newer operations (${opIds}). Redo anyway?`,
                     onConfirm: () => { confirmModal.close(); redoLog(id, true) },
                 })
                 confirmModal.showModal()
-            } else {
-                notify.error('Redo failed')
             }
         } catch {
             notify.error('Redo failed')
-        } finally {
-            setIsUndoRedoInProgress(false)
         }
     }
 
+    const myUndoTargetId = () => ownHistory.state.undoTargetId
+    const myRedoTargetId = () => ownHistory.state.redoTargetId
+    const isUndoRedoInProgress = () => ownHistory.state.busy
+
     // WebSocket: set of space paths currently locked (import/transform in progress)
     const [lockedPaths, setLockedPaths] = createSignal<Set<string>>(new Set())
-    const [isUndoRedoInProgress, setIsUndoRedoInProgress] = createSignal(false)
     const [spaceStatus, setSpaceStatus] = createSignal<StatusEvent | null>(null)
     const [online, setOnline] = createSignal(false)
 
@@ -1175,9 +1094,8 @@ const App: Component = () => {
         const relParts = nsParts.slice(tabNsParts.length)
 
         try {
-            // Always pass focus_token parameter, use empty string if not provided
             const tokenParam = encodeURIComponent(focusToken || '')
-            const url = `${BACKEND_URL}/explore/${encodedNs}?focus_token=${tokenParam}`
+            const url = `${BACKEND_URL}/explore/${encodedNs}?focus_token=${tokenParam}&depth=${exploreDepth()}`
 
             const res = await fetch(url, {
                 headers: { Authorization: token()?.code ?? '' }
@@ -1185,84 +1103,76 @@ const App: Component = () => {
             if (!res.ok) throw new Error(`Status ${res.status}`)
             const data = await res.json()
 
-            // New format: ExploreResult struct with subspaces and metta_expressions
-            const exploreResult = data
-            const subspaces = exploreResult.subspaces || []
-            const mettaExpressions = exploreResult.metta_expressions || []
-            const resultFocusToken = exploreResult.focus_token
-
-            // Store focus tokens for pagination
             const newTokens = new Map(focusTokens())
-
-            // Store the pagination token for the current namespace
-            const currentPath = path.endsWith('/') ? path : path + '/'
-            if (resultFocusToken) {
-                // Replace any existing token with the new pagination token
-                newTokens.set(currentPath, [resultFocusToken])
-            } else {
-                // No more pages, remove the token
-                newTokens.delete(currentPath)
-            }
-
-            // Process subspaces and store their focus tokens
-            for (const [mettaString, subspacePath] of subspaces) {
-                if (subspacePath) {
-                    const normalizedPath = subspacePath.startsWith('/') ? subspacePath : '/' + subspacePath
-                    const pathWithSlash = normalizedPath.endsWith('/') ? normalizedPath : normalizedPath + '/'
-
-                    // Store a placeholder token for subspaces (will be fetched when expanded)
-                    if (!newTokens.has(pathWithSlash)) {
-                        newTokens.set(pathWithSlash, [])
-                    }
-                }
-            }
-
-            setFocusTokens(newTokens)
-
-            // Convert to token format: subspaces first, then metta_expressions
             const result: string[][] = []
 
-            // Convert a subspace path (relative to root) to a nested s-expr relative to
-            // the tab namespace. e.g. tabNs="home/tim", subspacePath="home/tim/projects/sub"
-            // → "(projects (sub |$|))"
-            const subspaceToRelSexpr = (subspacePath: string): string => {
-                const allParts = subspacePath.split('/').filter(p => p.length > 0)
-                const relativeParts = allParts.slice(tabNsParts.length)
-                if (relativeParts.length === 0) return '|$|'
+            // Normalize a raw path value from the API (PathBuf → string, strip slashes/backslashes)
+            const normPath = (p: any): string =>
+                String(p).replace(/\\/g, '/').replace(/^\/|\/$/g, '')
+
+            // Convert a normalized subspace path (relative to root) to a nested s-expr
+            // relative to the tab namespace.
+            // e.g. tabNs="home/tim", subspacePath="home/tim/projects/sub" → "(projects (sub |$|))"
+            const subspaceToRelSexpr = (subNorm: string): string => {
+                const parts = subNorm.split('/').filter(p => p.length > 0).slice(tabNsParts.length)
+                if (parts.length === 0) return '|$|'
                 let sexpr = '|$|'
-                for (let i = relativeParts.length - 1; i >= 0; i--) {
-                    sexpr = `(${relativeParts[i]} ${sexpr})`
-                }
+                for (let i = parts.length - 1; i >= 0; i--) sexpr = `(${parts[i]} ${sexpr})`
                 return sexpr
             }
 
-            // Add subspaces at the top, expressed relative to the tab namespace
-            for (const [_mettaString, subspacePath] of subspaces) {
-                if (subspacePath) {
-                    result.push(["!", subspaceToRelSexpr(subspacePath)])
+            // Recursively collect tokens from an ExploreResult node.
+            // nodeRelParts: path components of this node beyond the tab namespace.
+            // Interior-node subspaces (those with a matching child) are expanded inline;
+            // leaf-node subspaces (no child) are emitted as subspace markers.
+            const collectFromNode = (node: any, nodeRelParts: string[]) => {
+                // Map normalized child namespace → child ExploreResult
+                const childByPath = new Map<string, any>()
+                for (const child of node.children || []) {
+                    childByPath.set(normPath(child.namespace), child)
+                }
+
+                // Store pagination token for this node
+                if (node.focus_token) {
+                    const absPath = [...tabNsParts, ...nodeRelParts].join('/')
+                    newTokens.set((absPath ? '/' + absPath : '') + '/', [node.focus_token])
+                } else {
+                    const absPath = [...tabNsParts, ...nodeRelParts].join('/')
+                    newTokens.delete((absPath ? '/' + absPath : '') + '/')
+                }
+
+                for (const [_, rawSubPath] of node.subspaces || []) {
+                    if (!rawSubPath) continue
+                    const subNorm = normPath(rawSubPath)
+                    const child = childByPath.get(subNorm)
+
+                    if (child) {
+                        // Interior node: already fully expanded in children — recurse, no marker
+                        const childRelParts = subNorm.split('/').filter(p => p.length > 0).slice(tabNsParts.length)
+                        collectFromNode(child, childRelParts)
+                    } else {
+                        // Leaf node: emit subspace marker and store focus token placeholder
+                        const key = '/' + subNorm + '/'
+                        if (!newTokens.has(key)) newTokens.set(key, [])
+                        result.push(["!", subspaceToRelSexpr(subNorm)])
+                    }
+                }
+
+                // Wrap an expression with this node's path relative to the tab namespace
+                const wrap = (expr: string): string => {
+                    if (nodeRelParts.length === 0) return expr
+                    let w = expr
+                    for (let i = nodeRelParts.length - 1; i >= 0; i--) w = `(${nodeRelParts[i]} ${w})`
+                    return w
+                }
+
+                for (const expr of [...(node.metta_expressions || [])].reverse()) {
+                    if (expr) result.push(["!", wrap(expr)])
                 }
             }
 
-            // Wrap an expression with the path segments between the tab namespace and the
-            // current explore path.  e.g. relParts=["projects"] and expr="foo bar"
-            // → "(projects foo bar)".  When exploring at the tab root, relParts is empty
-            // and the expression is returned as-is.
-            const wrapWithRelPath = (expr: string): string => {
-                if (relParts.length === 0) return expr
-                let wrapped = expr
-                for (let i = relParts.length - 1; i >= 0; i--) {
-                    wrapped = `(${relParts[i]} ${wrapped})`
-                }
-                return wrapped
-            }
-
-            // Add metta_expressions below in reverse order, wrapped with the relative path
-            for (const expr of mettaExpressions.reverse()) {
-                if (expr) {
-                    result.push(["!", wrapWithRelPath(expr)])
-                }
-            }
-
+            collectFromNode(data, relParts)
+            setFocusTokens(newTokens)
             return result
         } catch (e) {
             console.error("Explore API failed:", e)
@@ -1804,6 +1714,21 @@ const App: Component = () => {
                                             )
                                         }}
                                     </Show>
+                                    <div class={styles.DepthControl} title="Number of subspace levels to fetch when exploring">
+                                        <button
+                                            class={styles.UndoRedoButton}
+                                            disabled={exploreDepth() <= 1}
+                                            onClick={() => setExploreDepth(d => Math.max(1, d - 1))}
+                                            aria-label="Decrease explore depth"
+                                        >−</button>
+                                        <span class={styles.DepthLabel}>depth {exploreDepth()}</span>
+                                        <button
+                                            class={styles.UndoRedoButton}
+                                            disabled={exploreDepth() >= 9}
+                                            onClick={() => setExploreDepth(d => Math.min(9, d + 1))}
+                                            aria-label="Increase explore depth"
+                                        >+</button>
+                                    </div>
                                     <div class={styles.UndoRedoGroup}>
                                         <button
                                             class={styles.UndoRedoButton}
@@ -1889,10 +1814,10 @@ const App: Component = () => {
                                         <span>My History</span>
                                     </div>
                                     <div class={styles.RightHistoryList}>
-                                        <Show when={logsLoading()}>
+                                        <Show when={ownHistory.state.loading}>
                                             <div class={styles.LogEntryLoading}>Loading…</div>
                                         </Show>
-                                        <For each={spaceLogs().filter(l => l.token_id === token()?.id)}>
+                                        <For each={ownHistory.state.entries.filter(l => l.token_id === token()?.id)}>
                                             {(log) => {
                                                 const detail = log.import?.path ?? log.clear?.path
                                                     ?? (log.transform ? (log.transform.output_spaces as any[])[0]?.path : null)
@@ -1936,7 +1861,7 @@ const App: Component = () => {
                                                 )
                                             }}
                                         </For>
-                                        <Show when={!logsLoading() && spaceLogs().filter(l => l.token_id === token()?.id).length === 0}>
+                                        <Show when={!ownHistory.state.loading && ownHistory.state.entries.filter(l => l.token_id === token()?.id).length === 0}>
                                             <div class={styles.LogEntryEmpty}>No operations yet</div>
                                         </Show>
                                     </div>

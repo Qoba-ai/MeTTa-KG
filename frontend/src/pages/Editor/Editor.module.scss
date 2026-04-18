@@ -439,6 +439,22 @@
     }
 }
 
+.DepthControl {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.DepthLabel {
+    font-size: 0.72rem;
+    color: var(--subtle);
+    white-space: nowrap;
+    user-select: none;
+    min-width: 3.8em;
+    text-align: center;
+}
+
 .SpaceStatusBadge {
     display: flex;
     align-items: center;

@@ -13,13 +13,31 @@ use crate::lock::{LockEntry, LockManager};
 use crate::{
     db::establish_connection,
     events::{EventBus, SpaceEvent},
-    model::{OpLogClearInsert, OpLogImportInsert, OpLogInsert, OpLogTransformInsert, Token},
+    model::{OpLog, OpLogClearInsert, OpLogImportInsert, OpLogInsert, OpLogTransformInsert, Token},
     schema::{op_log, op_log_clear, op_log_import, op_log_transform},
 };
-use diesel::{RunQueryDsl, SelectableHelper};
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use mork_client::{path_to_sexpr, ExploreResult, MorkClient, MorkError, NamespaceInfo};
 
 // ─── Log helpers ─────────────────────────────────────────────────────────────
+
+/// Fetch a freshly created op-log entry and emit `OpLogChanged` to its owner.
+/// Called right after the detail row (import/clear/transform) has been inserted.
+fn emit_new_op(bus: &tokio::sync::broadcast::Sender<SpaceEvent>, log_id: i32, token_id: i32) {
+    use crate::routes::op_logs::fetch_details_pub;
+    let conn = &mut establish_connection();
+    if let Ok(log) = op_log::table
+        .select(OpLog::as_select())
+        .filter(op_log::id.eq(log_id))
+        .first(conn)
+    {
+        let entry = fetch_details_pub(conn, log);
+        let _ = bus.send(SpaceEvent::OpLogChanged {
+            token_id,
+            entries: vec![entry],
+        });
+    }
+}
 
 fn insert_op_log(op_type: &str, token_id: i32) -> Option<i32> {
     diesel::insert_into(op_log::table)
@@ -377,6 +395,7 @@ pub async fn transform(
                         operation_id: Some(operation_id.to_string()),
                     })
                     .execute(&mut establish_connection());
+                emit_new_op(&bus.0, log_id, token.id);
             }
 
             let bus_tx = bus.0.clone();
@@ -506,6 +525,7 @@ pub async fn do_import(
                         operation_id: Some(operation_id.to_string()),
                     })
                     .execute(&mut establish_connection());
+                emit_new_op(bus, log_id, token.id);
             }
 
             // Spawn background monitor: wait for MORK to finish, then emit events
@@ -619,6 +639,7 @@ async fn clear_inner(
                         pattern,
                     })
                     .execute(&mut establish_connection());
+                emit_new_op(&bus.0, log_id, token.id);
             }
 
             let bus_tx = bus.0.clone();
@@ -656,24 +677,27 @@ async fn clear_inner(
 }
 // ─── Explore ─────────────────────────────────────────────────────────────────
 
-#[get("/explore?<focus_token>")]
+#[get("/explore?<focus_token>&<depth>")]
 pub async fn explore_root(
     token: Token,
     focus_token: String,
+    depth: Option<u32>,
 ) -> Result<Json<ExploreResult>, Status> {
-    explore(token, PathBuf::new(), focus_token).await
+    explore(token, PathBuf::new(), focus_token, depth).await
 }
 
-#[rocket::get("/explore/<path..>?<focus_token>")]
+#[rocket::get("/explore/<path..>?<focus_token>&<depth>")]
 pub async fn explore(
     token: Token,
     path: PathBuf,
     focus_token: String,
+    depth: Option<u32>,
 ) -> Result<Json<ExploreResult>, Status> {
     let perm = permission_from_token(&token);
     perm.require_read().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
+    let depth = depth.unwrap_or(1).max(1);
     with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
         let path = path.clone();
         let root = PathBuf::from("space");
@@ -687,7 +711,7 @@ pub async fn explore(
         let focus_token = focus_token.clone();
         async move {
             get_mork_client()
-                .explore(&augmented_path, &root, &focus_token)
+                .explore_with_depth(&augmented_path, &root, &focus_token, depth)
                 .await
                 .map(Json)
         }
