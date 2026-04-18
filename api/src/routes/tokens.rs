@@ -1,6 +1,6 @@
 use chrono::Utc;
 use diesel::sql_types::Integer;
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use regex::Regex;
 use rocket::http::Status;
 use rocket::serde::json::Json;
@@ -78,6 +78,34 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
         return Err(Status::BadRequest);
     }
 
+    // Validate name: required, 3–10 characters
+    let token_name = match &new_token.name {
+        Some(n) => n.clone(),
+        None => {
+            println!("User tried to create token without a name");
+            return Err(Status::BadRequest);
+        }
+    };
+    if token_name.len() < 3 || token_name.len() > 10 {
+        println!("User tried to create token with invalid name length");
+        return Err(Status::BadRequest);
+    }
+
+    // Enforce uniqueness of name within the namespace
+    let name_conflict = tokens
+        .filter(namespace.eq(&new_token.namespace))
+        .filter(name.eq(&token_name))
+        .first::<Token>(conn)
+        .optional();
+    match name_conflict {
+        Ok(Some(_)) => {
+            println!("User tried to create token with duplicate name in namespace");
+            return Err(Status::Conflict);
+        }
+        Err(_) => return Err(Status::InternalServerError),
+        _ => {}
+    }
+
     let token_code = Uuid::new_v4();
 
     let to_insert = TokenInsert {
@@ -91,6 +119,7 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
         permission_share_write: new_token.permission_share_write,
         permission_share_share: false,
         parent: Some(token.id),
+        name: Some(token_name),
     };
 
     let result = diesel::insert_into(tokens)

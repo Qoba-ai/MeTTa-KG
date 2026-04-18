@@ -19,6 +19,7 @@ import {
     VsSettings,
     VsDiscard,
     VsRedo,
+    VsLayers,
 } from 'solid-icons/vs'
 import { createMemo, createSignal, onMount, onCleanup, Show, For, createEffect, batch, on, untrack } from 'solid-js'
 import { createOwnHistoryStore } from './stores/ownHistoryStore'
@@ -253,12 +254,12 @@ const App: Component = () => {
 
     // UI Layout State
     const [isFullscreen, setIsFullscreen] = createSignal<boolean>(false)
-    const [exploreDepth, setExploreDepth] = createSignal(1)
+    const [exploreDepth, setExploreDepth] = createSignal(parseInt(localStorage.getItem('exploreDepth') || '1', 10))
     const [trieWidth, setTrieWidth] = createSignal(300)
     const [isResizing, setIsResizing] = createSignal(false)
     const [consoleHeight, setConsoleHeight] = createSignal(120)
     const [isResizingConsole, setIsResizingConsole] = createSignal(false)
-    const [rightHistoryHeight, setRightHistoryHeight] = createSignal(200)
+    const [rightHistoryHeight, setRightHistoryHeight] = createSignal(300)
     const [isResizingRightHistory, setIsResizingRightHistory] = createSignal(false)
 
     // Import State
@@ -1252,6 +1253,7 @@ const App: Component = () => {
 
     const closePanel = (id: string, e: MouseEvent) => {
         e.stopPropagation()
+        if (panels().length <= 1) return
         const panelToClose = panels().find(p => p.id === id)
         if (panelToClose?.view) {
             panelToClose.view.destroy()
@@ -1714,21 +1716,6 @@ const App: Component = () => {
                                             )
                                         }}
                                     </Show>
-                                    <div class={styles.DepthControl} title="Number of subspace levels to fetch when exploring">
-                                        <button
-                                            class={styles.UndoRedoButton}
-                                            disabled={exploreDepth() <= 1}
-                                            onClick={() => setExploreDepth(d => Math.max(1, d - 1))}
-                                            aria-label="Decrease explore depth"
-                                        >−</button>
-                                        <span class={styles.DepthLabel}>depth {exploreDepth()}</span>
-                                        <button
-                                            class={styles.UndoRedoButton}
-                                            disabled={exploreDepth() >= 9}
-                                            onClick={() => setExploreDepth(d => Math.min(9, d + 1))}
-                                            aria-label="Increase explore depth"
-                                        >+</button>
-                                    </div>
                                     <div class={styles.UndoRedoGroup}>
                                         <button
                                             class={styles.UndoRedoButton}
@@ -1760,6 +1747,21 @@ const App: Component = () => {
                                         fetchExploreResults={fetchExploreResults}
                                         disabled={editorMode() !== EditorMode.EDIT}
                                     />
+                                    <div class={styles.DepthControl} title="Number of subspace levels to fetch when exploring">
+                                        <button
+                                            class={styles.UndoRedoButton}
+                                            disabled={exploreDepth() <= 1}
+                                            onClick={() => { const d = Math.max(1, exploreDepth() - 1); setExploreDepth(d); localStorage.setItem('exploreDepth', String(d)); read(); }}
+                                            aria-label="Decrease explore depth"
+                                        >−</button>
+                                        <span class={styles.DepthLabel}><VsLayers size={14} /> {exploreDepth()}</span>
+                                        <button
+                                            class={styles.UndoRedoButton}
+                                            disabled={exploreDepth() >= 9}
+                                            onClick={() => { const d = Math.min(9, exploreDepth() + 1); setExploreDepth(d); localStorage.setItem('exploreDepth', String(d)); read(); }}
+                                            aria-label="Increase explore depth"
+                                        >+</button>
+                                    </div>
                                 </div>
 
                                 {/* Main editor - takes remaining space */}

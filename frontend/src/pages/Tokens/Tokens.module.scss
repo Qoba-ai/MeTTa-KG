@@ -820,11 +820,11 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        display: block;
         font-size: 0.8rem;
     }
 
     .CodeCellContent {
+        display: block;
         min-width: 140px;
         flex: 1;
     }

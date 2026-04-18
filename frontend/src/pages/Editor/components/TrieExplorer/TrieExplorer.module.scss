@@ -171,6 +171,14 @@
     white-space: nowrap;
 }
 
+.TrieCountText {
+    color: var(--text);
+    font-size: 0.8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .TrieFringeIcon {
     color: var(--gold);
     flex-shrink: 0;

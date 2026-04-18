@@ -159,7 +159,7 @@ function escXml(s: string): string {
  * Build an SVG data URI representing the node.
  * Returns the URI and the exact pixel dimensions so Cytoscape sizes the node correctly.
  */
-function buildNodeSvg(entry: OpLogEntry): { uri: string; width: number; height: number } {
+function buildNodeSvg(entry: OpLogEntry, tokenName: string | null): { uri: string; width: number; height: number } {
     const colorKeys = OP_COLORS[entry.op_type] ?? DEFAULT_COLOR
     const accent = cssVar(colorKeys.border)   // vivid colour (foam / iris / love)
     const fill   = cssVar(colorKeys.bg)       // same hue, used for tinted bg
@@ -222,8 +222,15 @@ function buildNodeSvg(entry: OpLogEntry): { uri: string; width: number; height: 
         // Path lines
         pathSvg,
 
-        // Timestamp — bottom, muted
-        `<text x="${W / 2}" y="${H - 5}" text-anchor="middle" `
+        // Token name — bottom-left, muted
+        tokenName
+            ? `<text x="6" y="${H - 5}" text-anchor="start" `
+                + `font-family="system-ui,sans-serif" font-size="8" `
+                + `fill="${escXml(muted)}" fill-opacity="0.75">${escXml(tokenName)}</text>`
+            : '',
+
+        // Timestamp — bottom-right, muted
+        `<text x="${W - 6}" y="${H - 5}" text-anchor="end" `
             + `font-family="system-ui,sans-serif" font-size="8.5" `
             + `fill="${escXml(muted)}" fill-opacity="0.75">${escXml(fmtDate(entry.created_at))}</text>`,
 
@@ -237,14 +244,15 @@ function buildNodeSvg(entry: OpLogEntry): { uri: string; width: number; height: 
     }
 }
 
-function buildNodes(entries: OpLogEntry[]): ElementDefinition[] {
+function buildNodes(entries: OpLogEntry[], tokenMap: Map<number, string | null>): ElementDefinition[] {
     // oldest first so they appear at the top of each lane
     const sorted = [...entries].sort((a, b) => a.id - b.id)
     // track the y of the next node's TOP edge per lane
     const laneNextTop: Record<string, number> = {}
 
     return sorted.map((entry) => {
-        const { uri, width, height } = buildNodeSvg(entry)
+        const tokenName = entry.token_id != null ? (tokenMap.get(entry.token_id) ?? null) : null
+        const { uri, width, height } = buildNodeSvg(entry, tokenName)
 
         const topY    = laneNextTop[entry.op_type] ?? ROW_OFFSET
         laneNextTop[entry.op_type] = topY + height + NODE_GAP
@@ -277,8 +285,8 @@ function edgesToCyto(edges: GraphEdge[]): ElementDefinition[] {
     }))
 }
 
-function buildElements(entries: OpLogEntry[], edges: GraphEdge[]): ElementDefinition[] {
-    return [...buildNodes(entries), ...edgesToCyto(edges)]
+function buildElements(entries: OpLogEntry[], edges: GraphEdge[], tokenMap: Map<number, string | null>): ElementDefinition[] {
+    return [...buildNodes(entries, tokenMap), ...edgesToCyto(edges)]
 }
 
 // cytoscape's TS types for style values are very strict; cast to any to avoid
@@ -365,6 +373,21 @@ function buildStylesheet(): any[] {
             selector: 'node.ns-lo',
             style: { 'opacity': 0.2 },
         },
+        {
+            // token name filter: highlight matching nodes
+            selector: 'node.token-hi',
+            style: {
+                'outline-width':   3,
+                'outline-color':   cssVar('--pine'),
+                'outline-offset':  3,
+                'outline-opacity': 1,
+            },
+        },
+        {
+            // token name filter: dim non-matching nodes
+            selector: 'node.token-lo',
+            style: { 'opacity': 0.2 },
+        },
     ]
 }
 
@@ -388,6 +411,8 @@ const History: Component = () => {
     const [actionBusy, setActionBusy]   = createSignal(false)
     const [layoutMode, setLayoutMode]   = createSignal<'timeline' | 'dependency' | 'compact'>('timeline')
     const [filterNs,   setFilterNs]     = createSignal('')
+    const [tokenMap,   setTokenMap]     = createSignal<Map<number, string | null>>(new Map())
+    const [filterTokenName, setFilterTokenName] = createSignal('')
 
     const applyPreview = (ids: Set<number>) => {
         if (!cy) return
@@ -467,6 +492,19 @@ const History: Component = () => {
         return res.json()
     }
 
+    const fetchTokenMap = async (): Promise<Map<number, string | null>> => {
+        try {
+            const res = await fetch(`${BACKEND_URL}/tokens`, {
+                headers: { Authorization: tokenCode! },
+            })
+            if (!res.ok) return new Map()
+            const tokens: Array<{ id: number; name: string | null }> = await res.json()
+            return new Map(tokens.map(t => [t.id, t.name]))
+        } catch {
+            return new Map()
+        }
+    }
+
     onMount(async () => {
         if (!tokenCode) {
             setError('No token — log in from the Editor page first.')
@@ -474,10 +512,11 @@ const History: Component = () => {
             return
         }
         try {
-            const { entries, edges } = await fetchGraph()
+            const [{ entries, edges }, tMap] = await Promise.all([fetchGraph(), fetchTokenMap()])
+            setTokenMap(tMap)
             setLogs(entries)
             setGraphEdges(edges)
-            initGraph(entries, edges)
+            initGraph(entries, edges, tMap)
         } catch (e: any) {
             setError(e.message ?? 'Could not connect to the server.')
         } finally {
@@ -487,13 +526,13 @@ const History: Component = () => {
 
     onCleanup(() => cy?.destroy())
 
-    function initGraph(entries: OpLogEntry[], edges: GraphEdge[]) {
+    function initGraph(entries: OpLogEntry[], edges: GraphEdge[], tMap: Map<number, string | null>) {
         if (!containerRef) return
         cy?.destroy()
 
         cy = cytoscape({
             container:            containerRef,
-            elements:             buildElements(entries, edges),
+            elements:             buildElements(entries, edges, tMap),
             layout:               { name: 'preset' },
             style:                buildStylesheet(),
             userZoomingEnabled:   true,
@@ -548,6 +587,23 @@ const History: Component = () => {
 
     // Re-apply highlight whenever the filter changes
     createEffect(() => { filterNs(); applyNsHighlight() })
+
+    /** Apply/clear the token-name highlight. */
+    const applyTokenHighlight = () => {
+        if (!cy) return
+        const name = filterTokenName()
+        cy.nodes().forEach(node => {
+            node.removeClass('token-hi token-lo')
+            if (!name) return
+            const id    = parseInt(node.id(), 10)
+            const entry = logs().find(e => e.id === id)
+            const tName = entry?.token_id != null ? (tokenMap().get(entry.token_id) ?? null) : null
+            if (tName === name) node.addClass('token-hi')
+            else                node.addClass('token-lo')
+        })
+    }
+
+    createEffect(() => { filterTokenName(); applyTokenHighlight() })
 
     /** Timeline: nodes left → right by id, children fanned vertically. */
     const applyTimeline = (dur = 350) => {
@@ -635,7 +691,7 @@ const History: Component = () => {
             const { entries, edges } = await fetchGraph()
             setLogs(entries)
             setGraphEdges(edges)
-            initGraph(entries, edges)
+            initGraph(entries, edges, tokenMap())
         } catch { /* ignore */ } finally {
             setLoading(false)
         }
@@ -654,7 +710,7 @@ const History: Component = () => {
             setLogs(entries)
             setGraphEdges(edges)
             setSelectedEntry(entries.find((e) => e.id === entry.id) ?? null)
-            initGraph(entries, edges)
+            initGraph(entries, edges, tokenMap())
         } finally {
             setActionBusy(false)
         }
@@ -685,7 +741,7 @@ const History: Component = () => {
             setLogs(entries)
             setGraphEdges(edges)
             setSelectedEntry(entries.find((e) => e.id === entry.id) ?? null)
-            initGraph(entries, edges)
+            initGraph(entries, edges, tokenMap())
         } finally {
             setActionBusy(false)
         }
@@ -704,7 +760,7 @@ const History: Component = () => {
                 setLogs(entries)
                 setGraphEdges(edges)
                 setSelectedEntry(null)
-                initGraph(entries, edges)
+                initGraph(entries, edges, tokenMap())
             }
         } finally {
             setActionBusy(false)
@@ -773,6 +829,33 @@ const History: Component = () => {
                             </div>
                         </div>
                     </Show>
+
+                    {/* Token name filter */}
+                    <div class={styles.NsFilterWrap}>
+                        <div class={styles.NsFilterRow}>
+                            <input
+                                class={styles.TokenNameInput}
+                                list="history-token-names"
+                                value={filterTokenName()}
+                                onInput={(e) => setFilterTokenName(e.currentTarget.value)}
+                                placeholder="Filter by token name…"
+                            />
+                            <datalist id="history-token-names">
+                                {Array.from(new Set(
+                                    logs()
+                                        .map(e => e.token_id != null ? tokenMap().get(e.token_id) : null)
+                                        .filter((n): n is string => !!n)
+                                )).map(name => <option value={name} />)}
+                            </datalist>
+                            <Show when={filterTokenName()}>
+                                <button
+                                    class={styles.NsClearBtn}
+                                    onClick={() => setFilterTokenName('')}
+                                    title="Clear filter"
+                                >×</button>
+                            </Show>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Toolbar */}

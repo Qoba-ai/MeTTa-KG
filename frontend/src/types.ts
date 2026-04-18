@@ -1,6 +1,7 @@
 interface Token {
     id: number
     code: string
+    name: string | null
     description: string
     namespace: string
     creation_timestamp: string

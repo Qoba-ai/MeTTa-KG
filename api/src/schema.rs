@@ -64,6 +64,7 @@ diesel::table! {
         permission_share_read -> Bool,
         permission_share_write -> Bool,
         parent -> Nullable<Int4>,
+        name -> Nullable<Varchar>,
     }
 }
 

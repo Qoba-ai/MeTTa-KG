@@ -24,6 +24,8 @@ const parserWithMetadata = parser.configure({
             GroundedComparisonFunction: t.compareOperator,
             OtherGroundedFunction: t.keyword,
             GroundedType: t.typeName,
+            OPENING_PARENTHESIS: t.bracket,
+            CLOSING_PARENTHESIS: t.bracket,
         }),
         indentNodeProp.add({
             Expression: (ctx) => {
@@ -272,6 +274,7 @@ const highlightStyle = HighlightStyle.define([
     { tag: tags.arithmeticOperator, color: 'var(--love)' },
     { tag: tags.logicOperator, color: 'var(--love)' },
     { tag: tags.compareOperator, color: 'var(--love)' },
+    { tag: tags.bracket, color: 'var(--text)' },
 ])
 
 const themeCompartment = new Compartment();

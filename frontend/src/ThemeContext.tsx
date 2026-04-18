@@ -36,6 +36,13 @@ export const ThemeProvider = (props: { children: JSX.Element }) => {
     let s = schemes[schemeName];
     if (!s) return;
 
+    // Special case for Nord: base04 (#d8dee9) is nearly identical to text (#e5e9f0),
+    // so override --subtle with a mid-range blue-gray that reads clearly against
+    // the dark Polar Night backgrounds while staying distinctly dimmer than text.
+    if (schemeName === 'nord') {
+      s = { ...s, base04: '#8fafc9' };
+    }
+
     // Special case for Rose Pine: switch between dark (base) and light (dawn)
     if (schemeName === 'rose-pine') {
       if (theme === 'light') {

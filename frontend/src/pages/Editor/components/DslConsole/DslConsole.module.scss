@@ -21,12 +21,21 @@
     background: var(--base);
     cursor: text; // hint that clicking focuses the input
 
-    &::-webkit-scrollbar { width: 6px; }
-    &::-webkit-scrollbar-track { background: transparent; }
+    &::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
     &::-webkit-scrollbar-thumb {
         background: var(--highlight-high);
         border-radius: 3px;
-        &:hover { background: var(--muted); }
+
+        &:hover {
+            background: var(--muted);
+        }
     }
 }
 
@@ -80,18 +89,52 @@
     line-height: 1.45;
 }
 
-.OutputOk  { color: var(--foam); }
-.OutputErr { color: var(--love); }
+.OutputOk {
+    color: var(--foam);
+}
+
+.OutputErr {
+    color: var(--love);
+}
 
 // ── Syntax highlight token colours ───────────────────────────────────────────
 
-.tok_command  { color: var(--iris); }      // DSL command heads: import, clear, …
-.tok_spaceRef { color: var(--pine); }      // Space paths: $/, /foo/bar/
-.tok_variable { color: var(--gold); }      // Variables: $x
-.tok_string   { color: var(--foam); }      // "quoted strings"
-.tok_number   { color: var(--rose); }      // Numeric literals
-.tok_comment  { color: var(--muted); font-style: italic; }  // ; comments
-.tok_paren    { color: var(--subtle); }    // ( )
+.tok_command {
+    color: var(--iris);
+}
+
+// DSL command heads: import, clear, …
+.tok_spaceRef {
+    color: var(--pine);
+}
+
+// Space paths: $/, /foo/bar/
+.tok_variable {
+    color: var(--gold);
+}
+
+// Variables: $x
+.tok_string {
+    color: var(--foam);
+}
+
+// "quoted strings"
+.tok_number {
+    color: var(--rose);
+}
+
+// Numeric literals
+.tok_comment {
+    color: var(--muted);
+    font-style: italic;
+}
+
+// ; comments
+.tok_paren {
+    color: var(--subtle);
+}
+
+// ( )
 
 // ── Inline input row (same background as scroll area) ────────────────────────
 
@@ -107,7 +150,7 @@
     display: grid;
     min-height: 1.45em;
 
-    > * {
+    >* {
         grid-area: 1 / 1;
         padding: 0;
         margin: 0;
@@ -140,7 +183,7 @@
     position: relative; // stay on top of highlight layer in stacking order
 
     &::placeholder {
-        color: var(--muted);
+        color: var(--subtle);
         opacity: 0.45;
     }
 

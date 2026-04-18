@@ -44,8 +44,6 @@ const fetchTokens = async (
 
         const tokens = await resp.json()
 
-        notify.success(`Loaded ${tokens.length} tokens.`)
-
         return tokens
     } catch (e) {
         notify.error(`Failed to fetch tokens`)
@@ -55,6 +53,7 @@ const fetchTokens = async (
 
 const createToken = async (
     root: string | null,
+    name: string,
     description: string,
     namespace: string,
     read: boolean,
@@ -73,6 +72,7 @@ const createToken = async (
     const newToken: Token = {
         id: 0,
         code: '',
+        name: name,
         description: description,
         namespace: namespace,
         creation_timestamp: new Date().toISOString().split('Z')[0],
@@ -189,6 +189,7 @@ const Tokens: Component = () => {
     let rootTokenFormInput: HTMLInputElement
 
     let newTokenForm: HTMLFormElement
+    let newTokenNameInput: HTMLInputElement
     let newTokenDescriptionInput: HTMLInputElement
     let newTokenNamespaceInput: HTMLInputElement
     let newTokenReadCheckbox: HTMLInputElement
@@ -301,6 +302,7 @@ const Tokens: Component = () => {
             newTokenForm.onsubmit = async (event) => {
                 event.preventDefault()
 
+                const tokenName = newTokenNameInput.value
                 const description = newTokenDescriptionInput.value
                 const namespace = newTokenNamespaceInput.value
                 const read = newTokenReadCheckbox.checked
@@ -312,6 +314,7 @@ const Tokens: Component = () => {
                 try {
                     const newToken = await createToken(
                         rootTokenCode(),
+                        tokenName,
                         description,
                         namespace,
                         read,
@@ -603,6 +606,7 @@ const Tokens: Component = () => {
                                             </span>
                                         </Show>
                                     </th>
+                                    <th tabIndex={0}>Name</th>
                                     <th tabIndex={0}>Code</th>
                                     <th
                                         tabIndex={0}
@@ -815,6 +819,7 @@ const Tokens: Component = () => {
                                                         token.creation_timestamp
                                                     ).toLocaleString()}
                                                 </td>
+                                                <td>{token.name ?? ''}</td>
                                                 <td>
                                                     <div
                                                         class={
@@ -944,6 +949,22 @@ const Tokens: Component = () => {
                         <div class={styles.CreateTokenSection}>
                             <h2 class={styles.SectionTitle}>Create New Token</h2>
                             <form class={styles.NewTokenForm} ref={newTokenForm!}>
+                                <label>
+                                    Name
+                                    <input
+                                        ref={newTokenNameInput!}
+                                        type="text"
+                                        required
+                                        minlength={3}
+                                        maxlength={10}
+                                        placeholder="Name (3–10 chars)"
+                                        disabled={
+                                            !tokens().find(
+                                                (t) => t.code === rootTokenCode()
+                                            )
+                                        }
+                                    />
+                                </label>
                                 <label class={styles.NamespaceInputContainer}>
                                     Namespace
                                     <div class={styles.AutocompleteWrapper}>

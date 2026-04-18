@@ -5,7 +5,6 @@ use rocket::http::Status;
 
 // ─── Timeouts ─────────────────────────────────────────────────────────────────
 
-const IMPORT_WAIT_MS: u64 = 300_000;
 const TRANSFORM_WAIT_MS: u64 = 300_000;
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -22,7 +21,7 @@ fn mork_err(e: mork_client::MorkError) -> Status {
 // ─── Import ───────────────────────────────────────────────────────────────────
 
 pub mod import {
-    use super::{get_mork_client, mork_err, IMPORT_WAIT_MS, TRANSFORM_WAIT_MS};
+    use super::{get_mork_client, mork_err, TRANSFORM_WAIT_MS};
     use rocket::http::Status;
     use std::path::PathBuf;
 

@@ -105,7 +105,7 @@ const TerminalsSummary: Component<{
         <div class={styles.TrieNode} style={{ flex: 1 }}>
           <div style={{ width: "16px" }} />
           <VsSymbolEnum size={14} class={styles.TrieLeafIcon} />
-          <span class={styles.TrieLeafText}>
+          <span class={styles.TrieCountText}>
             {props.count} expression{props.count !== 1 ? 's' : ''}
           </span>
           <Show when={props.hasMore}>
@@ -264,7 +264,17 @@ const TrieBranch: Component<{
     return "";
   };
 
-  const showActions = () => isHovering() && props.shiftPressed();
+  const showActions = () => isHovering();
+  const showCollapseExpand = () => isHovering() && !isLeaf() && props.onExpand;
+
+  const expandAllChildren = (e: MouseEvent) => {
+    e.stopPropagation();
+    if (!props.onExpand) return;
+    if (!isOpen()) props.onExpand(props.path);
+    for (const childName of Object.keys(props.node.children)) {
+      props.onExpand(`${props.path}${childName}/`);
+    }
+  };
 
   return (
     <div style={{ width: "100%" }}>
@@ -312,6 +322,15 @@ const TrieBranch: Component<{
 
           <Show when={showActions()}>
             <div class={styles.TrieActions}>
+              <Show when={showCollapseExpand()}>
+                <button
+                  class={styles.TrieActionBtn}
+                  onClick={expandAllChildren}
+                  title="Expand all subkeys"
+                >
+                  <VsChevronDown size={12} />
+                </button>
+              </Show>
               <Show when={props.onOpenSubspace}>
                 <button
                   class={styles.TrieActionBtn}

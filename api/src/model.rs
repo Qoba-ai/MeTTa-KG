@@ -19,6 +19,7 @@ pub struct TokenInsert {
     pub permission_share_read: bool,
     pub permission_share_write: bool,
     pub parent: Option<i32>,
+    pub name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Queryable, Selectable, Clone, QueryableByName)]
@@ -35,6 +36,7 @@ pub struct Token {
     pub permission_share_read: bool,
     pub permission_share_write: bool,
     pub parent: Option<i32>,
+    pub name: Option<String>,
 }
 
 // ─── Op Log (base) ───────────────────────────────────────────────────────────

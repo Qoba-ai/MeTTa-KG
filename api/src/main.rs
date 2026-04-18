@@ -30,7 +30,7 @@ struct DevModeFairing;
 impl Fairing for DevModeFairing {
     fn info(&self) -> Info {
         Info {
-            name: "Dev Mode — clear op_log on startup",
+            name: "Dev Mode — clear MORK space and op_log on startup",
             kind: Kind::Liftoff,
         }
     }
