@@ -95,6 +95,8 @@ interface OpLogEntry {
     op_type: string
     created_at: string
     rolled_back_at?: string
+    token_id?: number
+    sealed_at?: string
     import?: OpLogImport
     clear?: OpLogClear
     copy?: OpLogCopy

@@ -115,6 +115,8 @@ import {
     historyKeymap,
     history,
     indentSelection,
+    undoDepth,
+    redoDepth,
 } from '@codemirror/commands'
 import { lintKeymap } from '@codemirror/lint'
 import {
@@ -327,6 +329,7 @@ const App: Component = () => {
             })
             if (res.ok) {
                 setSpaceLogs(await res.json())
+                fetchMyTargets()
             }
         } catch {
             // ignore
@@ -335,10 +338,30 @@ const App: Component = () => {
         }
     }
 
-    // The most recent active (non-rolled-back) log entry — undo target.
+    // ── Per-user undo/redo targets ──────────────────────────────────────────
+    const [myUndoTargetId, setMyUndoTargetId] = createSignal<number | null>(null)
+    const [myRedoTargetId, setMyRedoTargetId] = createSignal<number | null>(null)
+
+    const fetchMyTargets = async () => {
+        const t = token()
+        if (!t) return
+        try {
+            const [undoRes, redoRes] = await Promise.all([
+                fetch(`${BACKEND_URL}/logs/my-last-undoable`, { headers: { Authorization: t.code } }),
+                fetch(`${BACKEND_URL}/logs/my-last-redoable`, { headers: { Authorization: t.code } }),
+            ])
+            setMyUndoTargetId(undoRes.ok ? (await undoRes.json()).id : null)
+            setMyRedoTargetId(redoRes.ok ? (await redoRes.json()).id : null)
+        } catch {
+            setMyUndoTargetId(null)
+            setMyRedoTargetId(null)
+        }
+    }
+
+    // The most recent active (non-rolled-back) log entry — global undo target.
     const undoTargetId = () => spaceLogs().find(l => !l.rolled_back_at)?.id ?? null
 
-    // The oldest entry in the contiguous rolled-back prefix — redo target.
+    // The oldest entry in the contiguous rolled-back prefix — global redo target.
     // spaceLogs() is desc-sorted, so the prefix starts at index 0.
     const redoTargetId = (): number | null => {
         const logs = spaceLogs()
@@ -360,6 +383,7 @@ const App: Component = () => {
                 const updated: OpLogEntry[] = await res.json()
                 setSpaceLogs(prev => prev.map(l => updated.find(u => u.id === l.id) ?? l))
                 read()
+                fetchMyTargets()
             } else {
                 notify.error('Undo failed')
             }
@@ -370,12 +394,15 @@ const App: Component = () => {
         }
     }
 
-    const redoLog = async (id: number) => {
+    const redoLog = async (id: number, force = false) => {
         const t = token()
         if (!t) return
         setIsUndoRedoInProgress(true)
         try {
-            const res = await fetch(`${BACKEND_URL}/logs/${id}/redo`, {
+            const url = force
+                ? `${BACKEND_URL}/logs/${id}/redo?force=true`
+                : `${BACKEND_URL}/logs/${id}/redo`
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: { Authorization: t.code },
             })
@@ -383,6 +410,16 @@ const App: Component = () => {
                 const updated: OpLogEntry[] = await res.json()
                 setSpaceLogs(prev => prev.map(l => updated.find(u => u.id === l.id) ?? l))
                 read()
+                fetchMyTargets()
+            } else if (res.status === 409) {
+                const body = await res.json()
+                const opIds = (body.conflicting_ops || []).join(', ')
+                setConfirmData({
+                    title: 'Redo Conflict',
+                    message: `This redo conflicts with newer operations (${opIds}). Redo anyway?`,
+                    onConfirm: () => { confirmModal.close(); redoLog(id, true) },
+                })
+                confirmModal.showModal()
             } else {
                 notify.error('Redo failed')
             }
@@ -477,6 +514,24 @@ const App: Component = () => {
                     ...defaultKeymap,
                     ...searchKeymap,
                     ...historyKeymap,
+                    {
+                        key: 'Mod-z',
+                        run: (view) => {
+                            if (undoDepth(view.state) > 0) return false // let CM handle it
+                            const id = myUndoTargetId()
+                            if (id !== null) { rollbackLog(id); return true }
+                            return false
+                        },
+                    },
+                    {
+                        key: 'Mod-Shift-z',
+                        run: (view) => {
+                            if (redoDepth(view.state) > 0) return false // let CM handle it
+                            const id = myRedoTargetId()
+                            if (id !== null) { redoLog(id); return true }
+                            return false
+                        },
+                    },
                     ...completionKeymap,
                     ...lintKeymap,
                 ]),
@@ -1753,8 +1808,8 @@ const App: Component = () => {
                                         <button
                                             class={styles.UndoRedoButton}
                                             title="Undo last operation"
-                                            disabled={undoTargetId() === null || isUndoRedoInProgress()}
-                                            onClick={() => { const id = undoTargetId(); if (id !== null) rollbackLog(id) }}
+                                            disabled={myUndoTargetId() === null || isUndoRedoInProgress()}
+                                            onClick={() => { const id = myUndoTargetId(); if (id !== null) rollbackLog(id) }}
                                         >
                                             <Show when={isUndoRedoInProgress()} fallback={<VsDiscard size={15} />}>
                                                 <span class={styles.Spinner} />
@@ -1763,8 +1818,8 @@ const App: Component = () => {
                                         <button
                                             class={styles.UndoRedoButton}
                                             title="Redo last undone operation"
-                                            disabled={redoTargetId() === null || isUndoRedoInProgress()}
-                                            onClick={() => { const id = redoTargetId(); if (id !== null) redoLog(id) }}
+                                            disabled={myRedoTargetId() === null || isUndoRedoInProgress()}
+                                            onClick={() => { const id = myRedoTargetId(); if (id !== null) redoLog(id) }}
                                         >
                                             <Show when={isUndoRedoInProgress()} fallback={<VsRedo size={15} />}>
                                                 <span class={styles.Spinner} />
@@ -1831,22 +1886,48 @@ const App: Component = () => {
                                 />
                                 <div class={styles.RightHistory} style={{ height: `${rightHistoryHeight()}px` }}>
                                     <div class={styles.RightHistoryHeader}>
-                                        <span>History</span>
+                                        <span>My History</span>
                                     </div>
                                     <div class={styles.RightHistoryList}>
                                         <Show when={logsLoading()}>
                                             <div class={styles.LogEntryLoading}>Loading…</div>
                                         </Show>
-                                        <For each={spaceLogs()}>
+                                        <For each={spaceLogs().filter(l => l.token_id === token()?.id)}>
                                             {(log) => {
-                                                const detail = log.import?.path ?? log.clear?.path ?? log.copy?.src ?? null
+                                                const detail = log.import?.path ?? log.clear?.path
+                                                    ?? (log.transform ? (log.transform.output_spaces as any[])[0]?.path : null)
+                                                    ?? null
+                                                const isUndoTarget = log.id === myUndoTargetId()
+                                                const isRedoTarget = log.id === myRedoTargetId()
+                                                const isRolledBack = !!log.rolled_back_at
                                                 return (
-                                                    <div class={styles.LogEntry}>
+                                                    <div
+                                                        class={`${styles.LogEntry} ${isRolledBack ? styles.LogEntryRolledBack : ''} ${isUndoTarget ? styles.LogEntryUndoTarget : ''} ${isRedoTarget ? styles.LogEntryRedoTarget : ''}`}
+                                                        title={isRolledBack ? 'Rolled back' : ''}
+                                                    >
                                                         <div class={styles.LogEntryHeader}>
                                                             <span class={`${styles.LogEntryType} ${styles[log.op_type] ?? ''}`}>{log.op_type}</span>
-                                                            <span class={styles.LogEntryTime}>
-                                                                {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                            </span>
+                                                            <div class={styles.LogEntryActions}>
+                                                                <Show when={isUndoTarget}>
+                                                                    <button
+                                                                        class={styles.LogEntryActionBtn}
+                                                                        title="Undo this operation"
+                                                                        disabled={isUndoRedoInProgress()}
+                                                                        onClick={() => rollbackLog(log.id)}
+                                                                    >↩</button>
+                                                                </Show>
+                                                                <Show when={isRedoTarget}>
+                                                                    <button
+                                                                        class={styles.LogEntryActionBtn}
+                                                                        title="Redo this operation"
+                                                                        disabled={isUndoRedoInProgress()}
+                                                                        onClick={() => redoLog(log.id)}
+                                                                    >↪</button>
+                                                                </Show>
+                                                                <span class={styles.LogEntryTime}>
+                                                                    {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                         <Show when={detail}>
                                                             <span class={styles.LogEntryDetail}>{detail}</span>
@@ -1855,8 +1936,8 @@ const App: Component = () => {
                                                 )
                                             }}
                                         </For>
-                                        <Show when={!logsLoading() && spaceLogs().length === 0}>
-                                            <div class={styles.LogEntryEmpty}>No logs yet</div>
+                                        <Show when={!logsLoading() && spaceLogs().filter(l => l.token_id === token()?.id).length === 0}>
+                                            <div class={styles.LogEntryEmpty}>No operations yet</div>
                                         </Show>
                                     </div>
                                 </div>

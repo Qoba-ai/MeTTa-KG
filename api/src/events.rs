@@ -15,7 +15,6 @@ pub enum SpaceEvent {
 }
 
 impl SpaceEvent {
-    /// Returns the path associated with this event.
     pub fn path(&self) -> &str {
         match self {
             Self::Locked { path }
@@ -30,7 +29,6 @@ impl SpaceEvent {
     }
 }
 
-/// Holds the broadcast sender. The Receiver is created per-subscriber.
 pub struct EventBus(pub broadcast::Sender<SpaceEvent>);
 
 impl EventBus {

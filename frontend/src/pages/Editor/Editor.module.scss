@@ -674,6 +674,49 @@
     flex-shrink: 0;
 }
 
+.LogEntryRolledBack {
+    opacity: 0.4;
+    .LogEntryType { text-decoration: line-through; }
+}
+
+.LogEntryUndoTarget {
+    border-left: 2px solid var(--foam);
+    padding-left: 12px;
+}
+
+.LogEntryRedoTarget {
+    border-left: 2px solid var(--gold);
+    padding-left: 12px;
+}
+
+.LogEntryActions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.LogEntryActionBtn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--subtle);
+    padding: 0 2px;
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity 0.15s, color 0.15s;
+
+    &:hover:not(:disabled) {
+        opacity: 1;
+        color: var(--text);
+    }
+
+    &:disabled {
+        cursor: default;
+        opacity: 0.3;
+    }
+}
+
 .LogEntryLoading,
 .LogEntryEmpty {
     font-size: 0.7rem;

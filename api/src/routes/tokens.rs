@@ -31,13 +31,6 @@ pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
     .bind::<Integer, _>(token.id)
     .get_results::<Token>(conn);
 
-    /*
-    let results = tokens
-        .select(Token::as_select())
-        .filter(parent.eq(&token.id))
-        .get_results(conn);
-    */
-
     match results {
         Ok(results) => Ok(Json(results)),
         Err(_) => Err(Status::InternalServerError),
@@ -163,8 +156,6 @@ pub fn update(token: Token, token_id: i32) -> Result<Json<Token>, Status> {
 pub fn delete(token: Token, token_id: i32) -> Status {
     use crate::schema::tokens::dsl::*;
     let conn = &mut establish_connection();
-
-    // filtering by parent ID prevents root token from being deleted
 
     let result =
         diesel::delete(tokens.filter(id.eq(token_id)).filter(parent.eq(&token.id))).execute(conn);

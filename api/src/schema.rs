@@ -6,6 +6,8 @@ diesel::table! {
         op_type -> Varchar,
         created_at -> Timestamp,
         rolled_back_at -> Nullable<Timestamp>,
+        token_id -> Nullable<Int4>,
+        sealed_at -> Nullable<Timestamp>,
     }
 }
 
@@ -65,6 +67,7 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(op_log -> tokens (token_id));
 diesel::joinable!(op_log_clear -> op_log (op_log_id));
 diesel::joinable!(op_log_copy -> op_log (op_log_id));
 diesel::joinable!(op_log_import -> op_log (op_log_id));

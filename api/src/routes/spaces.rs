@@ -21,10 +21,11 @@ use mork_client::{path_to_sexpr, ExploreResult, MorkClient, MorkError, Namespace
 
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 
-fn insert_op_log(op_type: &str) -> Option<i32> {
+fn insert_op_log(op_type: &str, token_id: i32) -> Option<i32> {
     diesel::insert_into(op_log::table)
         .values(&OpLogInsert {
             op_type: op_type.to_string(),
+            token_id: Some(token_id),
         })
         .returning(op_log::id)
         .get_result::<i32>(&mut establish_connection())
@@ -345,7 +346,7 @@ pub async fn transform(
 
     match result {
         Ok(()) => {
-            if let Some(log_id) = insert_op_log("Transform") {
+            if let Some(log_id) = insert_op_log("Transform", token.id) {
                 let input_json = serde_json::to_value(
                     transformation
                         .input_spaces
@@ -496,7 +497,7 @@ pub async fn do_import(
 
     match cmd_result {
         Ok(()) => {
-            if let Some(log_id) = insert_op_log("Import") {
+            if let Some(log_id) = insert_op_log("Import", token.id) {
                 let _ = diesel::insert_into(op_log_import::table)
                     .values(&OpLogImportInsert {
                         op_log_id: log_id,
@@ -605,7 +606,7 @@ async fn clear_inner(
 
     match cmd_result {
         Ok(()) => {
-            if let Some(log_id) = insert_op_log("Clear") {
+            if let Some(log_id) = insert_op_log("Clear", token.id) {
                 let _ = diesel::insert_into(op_log_clear::table)
                     .values(&OpLogClearInsert {
                         op_log_id: log_id,
@@ -781,65 +782,70 @@ pub async fn status(token: Token, path: PathBuf) -> Result<Json<serde_json::Valu
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SubtractRequest {
-    pub a: PathBuf,
-    pub b: PathBuf,
+    pub input_spaces: Vec<PathBuf>,
+    pub output_spaces: Vec<PathBuf>,
+    pub patterns: Vec<String>,
+    pub templates: Vec<String>,
 }
 
 #[post("/subtract", data = "<req>")]
 pub async fn subtract(
     token: Token,
     req: Json<SubtractRequest>,
-    bus: &State<EventBus>,
-    lock_manager: &State<LockManager>,
+    _bus: &State<EventBus>,
+    _lock_manager: &State<LockManager>,
 ) -> Result<Json<bool>, Status> {
+    if req.input_spaces.len() != req.patterns.len()
+        || req.output_spaces.len() != req.templates.len()
+    {
+        return Err(Status::BadRequest);
+    }
+
+    let all_balanced = req
+        .patterns
+        .iter()
+        .chain(req.templates.iter())
+        .all(|s| mork_client::is_balanced(s));
+    if !all_balanced {
+        return Err(Status::UnprocessableEntity);
+    }
+
     let perm = permission_from_token(&token);
     perm.require_read().map_err(permission_error_to_status)?;
-    perm.check_namespace(&req.a)
-        .map_err(permission_error_to_status)?;
     perm.require_write().map_err(permission_error_to_status)?;
-    perm.check_namespace(&req.b)
-        .map_err(permission_error_to_status)?;
-
-    let client = get_mork_client();
+    for path in req.input_spaces.iter().chain(req.output_spaces.iter()) {
+        perm.check_namespace(path).map_err(permission_error_to_status)?;
+    }
 
     let root = PathBuf::from("space");
-    let augmented_path_a = if !req.a.as_os_str().is_empty() {
-        root.join(&req.a.clone())
-    } else {
-        root.clone()
-    };
-    let augmented_path_b = if !req.b.as_os_str().is_empty() {
-        root.join(&req.b.clone())
-    } else {
-        root.clone()
-    };
 
-    let pattern = path_to_sexpr(&augmented_path_a);
-    let template = path_to_sexpr(&augmented_path_b);
+    let input: Vec<(PathBuf, &str)> = req
+        .input_spaces
+        .iter()
+        .zip(req.patterns.iter())
+        .map(|(p, pat)| (root.join(p), pat.as_str()))
+        .collect();
 
-    /*
+    let output: Vec<(PathBuf, &str)> = req
+        .output_spaces
+        .iter()
+        .zip(req.templates.iter())
+        .map(|(p, tmpl)| (root.join(p), tmpl.as_str()))
+        .collect();
 
-    let script = format!(
-        "(exec (task_name, 0) (, {})
-        (O (- {}) )
-    )",
-        pattern, template
-    );
+    let last_output = output.last().map(|(p, _)| p.clone());
 
-    client
-        .upload(&PathBuf::from("/"), "$", "$", script.as_str())
+    get_mork_client()
+        .subtract(&input, &output)
         .await
         .map_err(mork_error_to_status)?;
 
-    client
-        .wait_for_available(&PathBuf::from("/"), 5_000)
-        .await
-        .map_err(mork_error_to_status)?;
-     */
-
-    // TODO
-
-    client.exec().await.map_err(mork_error_to_status)?;
+    if let Some(monitor_path) = last_output {
+        get_mork_client()
+            .wait_for_available(&monitor_path, 5_000)
+            .await
+            .map_err(mork_error_to_status)?;
+    }
 
     Ok(Json(true))
 }

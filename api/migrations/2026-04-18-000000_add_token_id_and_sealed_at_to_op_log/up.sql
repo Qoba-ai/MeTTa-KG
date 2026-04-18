@@ -1,0 +1,2 @@
+ALTER TABLE op_log ADD COLUMN token_id INTEGER REFERENCES tokens(id);
+ALTER TABLE op_log ADD COLUMN sealed_at TIMESTAMP;

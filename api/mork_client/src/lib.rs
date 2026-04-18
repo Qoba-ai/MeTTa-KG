@@ -549,6 +549,34 @@ impl MorkClient {
         Err(MorkError::Timeout)
     }
 
+    pub async fn subtract(
+        &self,
+        input_spaces: &Vec<(PathBuf, &str)>,
+        output_spaces: &Vec<(PathBuf, &str)>,
+    ) -> Result<(), MorkError> {
+        let patterns: Vec<String> = input_spaces
+            .iter()
+            .map(|(path, pat)| path_to_sexpr(path).replace("$", pat))
+            .collect();
+        let templates: Vec<String> = output_spaces
+            .iter()
+            .map(|(path, tmpl)| path_to_sexpr(path).replace("$", tmpl))
+            .collect();
+        let body = format!(
+            "(subtract (, {}) (, {}) )",
+            patterns.join(" "),
+            templates.join(" ")
+        );
+
+        let url = format!("{}/subtract", self.base());
+        self.log_post(&url, &body).await;
+        let resp = self.client.post(&url).body(body).send().await?;
+        if !resp.status().is_success() {
+            return Err(MorkError::BadStatus(resp.status().as_u16()));
+        }
+        Ok(())
+    }
+
     // ─── Explore Operations ─────────────────────────────────────────────────
 
     async fn explore_raw(

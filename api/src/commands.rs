@@ -1,13 +1,3 @@
-//! Command pattern for the three write operations.
-//!
-//! Each sub-module exposes:
-//! - `Params`   – all data the command needs (no token, no event bus)
-//! - `execute`  – run the operation for the first time
-//! - `undo`     – reverse the operation
-//! - `redo`     – re-apply a previously undone operation
-//!
-//! No permission checking is performed here; that is the caller's responsibility.
-
 use std::env;
 
 use mork_client::MorkClient;
@@ -15,12 +5,7 @@ use rocket::http::Status;
 
 // ─── Timeouts ─────────────────────────────────────────────────────────────────
 
-/// In-command wait for an async MORK import to finish fetching and indexing the
-/// remote URI. Set to match the route-level background monitor ceiling (300 s).
 const IMPORT_WAIT_MS: u64 = 300_000;
-
-/// In-command wait for an async MORK transform to finish pattern matching.
-/// Transform cost scales with input space size; 300 s matches the route ceiling.
 const TRANSFORM_WAIT_MS: u64 = 300_000;
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────

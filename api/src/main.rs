@@ -1,7 +1,10 @@
+use std::env;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use diesel::RunQueryDsl;
 use moka::future::Cache;
+use mork_client::MorkClient;
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
 use rocket::http::Method;
@@ -21,12 +24,6 @@ mod schema;
 
 pub struct Shutdown(pub broadcast::Sender<()>);
 
-// ─── Dev-mode fairing ────────────────────────────────────────────────────────
-
-/// When the `METTA_KG_DEV` environment variable is set, clears the entire
-/// operation log on every startup so development runs always start with a
-/// clean history.  The cascade on the detail tables (op_log_import, etc.)
-/// means only `op_log` needs to be deleted.
 struct DevModeFairing;
 
 #[rocket::async_trait]
@@ -44,6 +41,13 @@ impl Fairing for DevModeFairing {
             match diesel::delete(schema::op_log::table).execute(conn) {
                 Ok(n) => log::info!("[dev] cleared {n} op_log row(s) on startup"),
                 Err(e) => log::warn!("[dev] failed to clear op_log on startup: {e}"),
+            }
+
+            let client = MorkClient::new(env::var("METTA_KG_MORK_URL").unwrap());
+
+            if let Err(e) = client.clear(&PathBuf::from("/"), "$").await {
+                log::error!("Application failed to start: {:?}", e);
+                std::process::exit(1);
             }
         }
     }
@@ -77,8 +81,6 @@ fn rocket() -> Rocket<Build> {
 
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
-    // TODO: move hardcoded allowed origins to database,
-    // or get backend and frontend hosted under same domain
     let allowed_origins = AllowedOrigins::some_regex(&[
         r"^http://localhost:(3\d{3}|4000)$",
         r"^https://metta-kg\.vercel\.app$",
@@ -98,7 +100,7 @@ fn rocket() -> Rocket<Build> {
     let lock_manager = LockManager {
         cache: Cache::builder()
             .max_capacity(10_000)
-            .time_to_live(Duration::from_secs(600))
+            .time_to_idle(Duration::from_secs(600))
             .build(),
         op_mutex: Mutex::new(()),
     };
@@ -119,6 +121,9 @@ fn rocket() -> Rocket<Build> {
                 routes::op_logs::get_logs_graph,
                 routes::op_logs::rollback_log,
                 routes::op_logs::redo_log,
+                routes::op_logs::create_checkpoint,
+                routes::op_logs::my_last_undoable,
+                routes::op_logs::my_last_redoable,
                 routes::tokens::get_all,
                 routes::tokens::get,
                 routes::tokens::create,

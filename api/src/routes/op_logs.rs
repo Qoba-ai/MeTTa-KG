@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use chrono::Utc;
 use diesel::{ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
 use rocket::http::Status;
+use rocket::response::status::Custom;
 use rocket::serde::json::{serde_json, Json};
 use rocket::{get, post};
 
@@ -75,6 +76,8 @@ fn fetch_details(conn: &mut PgConnection, log: OpLog) -> OpLogEntry {
         op_type: log.op_type,
         created_at: log.created_at,
         rolled_back_at: log.rolled_back_at,
+        token_id: log.token_id,
+        sealed_at: log.sealed_at,
         import,
         clear,
         copy,
@@ -318,12 +321,15 @@ fn build_direct_edges(entries: &[OpLogEntry]) -> Vec<GraphEdge> {
 /// Returns all op log entries and the direct (non-transitive) dependency edges
 /// between them.  This is the single source of truth for graph topology;
 /// clients should use these edges rather than re-deriving them locally.
+///
+/// Sealed ops are excluded from the graph (they are read-only history).
 #[get("/logs/graph")]
 pub fn get_logs_graph(_token: Token) -> Result<Json<GraphResponse>, Status> {
     let conn = &mut establish_connection();
 
     let logs: Vec<OpLog> = op_log::table
         .select(OpLog::as_select())
+        .filter(op_log::sealed_at.is_null())
         .order(op_log::id.asc())
         .load(conn)
         .map_err(|_| Status::InternalServerError)?;
@@ -390,8 +396,6 @@ pub fn get_logs(
 
     Ok(Json(entries))
 }
-
-// ─── Graph helpers (mirrors frontend RULE1 / RULE2 / RULE3) ─────────────────
 
 /// Space paths that `entry` writes to.
 fn get_write_spaces(entry: &OpLogEntry) -> Vec<String> {
@@ -567,6 +571,7 @@ fn compute_undo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpL
         .select(OpLog::as_select())
         .filter(op_log::id.ge(target_id))
         .filter(op_log::rolled_back_at.is_null())
+        .filter(op_log::sealed_at.is_null())
         .order(op_log::id.asc())
         .load(conn)
         .map_err(|_| Status::InternalServerError)?;
@@ -598,10 +603,11 @@ fn compute_undo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpL
 /// re-applied first.  The result is forward-topological order on the original
 /// graph: ancestors before target.
 fn compute_redo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpLogEntry>, Status> {
-    // Load ALL rolled-back entries — ancestors may have lower ids than target.
+    // Load ALL rolled-back, non-sealed entries — ancestors may have lower ids than target.
     let logs: Vec<OpLog> = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::rolled_back_at.is_not_null())
+        .filter(op_log::sealed_at.is_null())
         .order(op_log::id.asc())
         .load(conn)
         .map_err(|_| Status::InternalServerError)?;
@@ -704,28 +710,111 @@ pub async fn rollback_log(
     Ok(Json(updated_entries))
 }
 
+// ─── Redo conflict detection ──────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+pub struct RedoConflict {
+    pub conflicting_ops: Vec<i32>,
+    pub message: String,
+}
+
+/// Find live (non-rolled-back, non-sealed) ops that were created after the
+/// target was rolled back and write to any space the target writes to.
+fn check_redo_conflicts(conn: &mut PgConnection, target: &OpLogEntry) -> Result<Vec<i32>, Status> {
+    let rolled_back_at = match target.rolled_back_at {
+        Some(ts) => ts,
+        None => return Ok(vec![]), // not rolled back, no conflict possible
+    };
+
+    let target_writes = get_write_spaces(target);
+    if target_writes.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Load live, non-sealed ops created after the rollback timestamp
+    let live_ops: Vec<OpLog> = op_log::table
+        .select(OpLog::as_select())
+        .filter(op_log::rolled_back_at.is_null())
+        .filter(op_log::sealed_at.is_null())
+        .filter(op_log::created_at.gt(rolled_back_at))
+        .order(op_log::id.asc())
+        .load(conn)
+        .map_err(|_| Status::InternalServerError)?;
+
+    let live_entries: Vec<OpLogEntry> = live_ops
+        .into_iter()
+        .map(|log| fetch_details(conn, log))
+        .collect();
+
+    let mut conflicts = Vec::new();
+    for entry in &live_entries {
+        let entry_writes = get_write_spaces(entry);
+        let overlaps = target_writes.iter().any(|tw| {
+            entry_writes.iter().any(|ew| is_subspace(ew, tw) || is_subspace(tw, ew))
+        });
+        if overlaps {
+            conflicts.push(entry.id);
+        }
+    }
+
+    Ok(conflicts)
+}
+
 /// Re-applies the operation `id` and every rolled-back descendant in the
 /// dependency graph (RULE1 / RULE2 / RULE3), in topological order so that the target
 /// is re-applied first and its dependents follow.
-#[post("/logs/<id>/redo")]
+///
+/// Returns 409 Conflict with a list of conflicting op IDs if newer live ops
+/// write to the same spaces, unless `force=true` is passed.
+#[post("/logs/<id>/redo?<force>")]
 pub async fn redo_log(
     _token: Token,
     id: i32,
+    force: Option<bool>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<Vec<OpLogEntry>>, Status> {
+) -> Result<Json<Vec<OpLogEntry>>, Custom<Json<RedoConflict>>> {
     let conn = &mut establish_connection();
 
     // Verify the anchor entry exists.
-    op_log::table
+    let anchor: OpLog = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::id.eq(id))
         .first(conn)
-        .map_err(|e| match e {
+        .map_err(|e| Custom(match e {
             diesel::result::Error::NotFound => Status::NotFound,
             _ => Status::InternalServerError,
-        })?;
+        }, Json(RedoConflict { conflicting_ops: vec![], message: "Not found".into() })))?;
 
-    let entries = compute_redo_order(conn, id)?;
+    // Check if sealed
+    if anchor.sealed_at.is_some() {
+        return Err(Custom(Status::UnprocessableEntity, Json(RedoConflict {
+            conflicting_ops: vec![],
+            message: "Operation is sealed and cannot be redone".into(),
+        })));
+    }
+
+    let anchor_entry = fetch_details(conn, anchor);
+
+    // Conflict guard: check for newer live ops on the same spaces
+    if !force.unwrap_or(false) {
+        let conflicts = check_redo_conflicts(conn, &anchor_entry)
+            .map_err(|s| Custom(s, Json(RedoConflict {
+                conflicting_ops: vec![],
+                message: "Internal error checking conflicts".into(),
+            })))?;
+        if !conflicts.is_empty() {
+            return Err(Custom(Status::Conflict, Json(RedoConflict {
+                conflicting_ops: conflicts,
+                message: "Redo conflicts with newer operations on the same space(s)".into(),
+            })));
+        }
+    }
+
+    let entries = compute_redo_order(conn, id)
+        .map_err(|s| Custom(s, Json(RedoConflict {
+            conflicting_ops: vec![],
+            message: "Failed to compute redo order".into(),
+        })))?;
 
     let lock_paths = collect_lock_paths(&entries);
     let path_refs: Vec<&PathBuf> = lock_paths.iter().collect();
@@ -741,14 +830,21 @@ pub async fn redo_log(
             Ok::<(), Status>(())
         }
     })
-    .await?;
+    .await
+    .map_err(|s| Custom(s, Json(RedoConflict {
+        conflicting_ops: vec![],
+        message: "Redo execution failed".into(),
+    })))?;
 
     // Clear rolled_back_at to mark these entries as active again.
     let ids: Vec<i32> = entries.iter().map(|e| e.id).collect();
     diesel::update(op_log::table.filter(op_log::id.eq_any(&ids)))
         .set(op_log::rolled_back_at.eq(None::<chrono::NaiveDateTime>))
         .execute(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .map_err(|_| Custom(Status::InternalServerError, Json(RedoConflict {
+            conflicting_ops: vec![],
+            message: "Failed to update entries".into(),
+        })))?;
 
     // Re-fetch to return the updated entries (with rolled_back_at cleared).
     let updated_logs: Vec<OpLog> = op_log::table
@@ -756,7 +852,10 @@ pub async fn redo_log(
         .filter(op_log::id.eq_any(&ids))
         .order(op_log::id.desc())
         .load(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .map_err(|_| Custom(Status::InternalServerError, Json(RedoConflict {
+            conflicting_ops: vec![],
+            message: "Failed to fetch updated entries".into(),
+        })))?;
 
     let updated_entries = updated_logs
         .into_iter()
@@ -764,4 +863,86 @@ pub async fn redo_log(
         .collect();
 
     Ok(Json(updated_entries))
+}
+
+// ─── Checkpoint (seal old ops) ───────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+pub struct CheckpointResponse {
+    pub sealed_count: usize,
+}
+
+/// Seals all live (non-rolled-back) ops except the most recent one,
+/// making them read-only and excluded from undo/redo/graph computations.
+#[post("/logs/checkpoint")]
+pub fn create_checkpoint(_token: Token) -> Result<Json<CheckpointResponse>, Status> {
+    let conn = &mut establish_connection();
+
+    // Find the max id among live, non-sealed ops
+    let max_id: Option<i32> = op_log::table
+        .select(diesel::dsl::max(op_log::id))
+        .filter(op_log::rolled_back_at.is_null())
+        .filter(op_log::sealed_at.is_null())
+        .first(conn)
+        .map_err(|_| Status::InternalServerError)?;
+
+    let max_id = match max_id {
+        Some(id) => id,
+        None => return Ok(Json(CheckpointResponse { sealed_count: 0 })),
+    };
+
+    let now = Utc::now().naive_utc();
+    let sealed_count = diesel::update(
+        op_log::table
+            .filter(op_log::id.lt(max_id))
+            .filter(op_log::sealed_at.is_null()),
+    )
+    .set(op_log::sealed_at.eq(Some(now)))
+    .execute(conn)
+    .map_err(|_| Status::InternalServerError)?;
+
+    Ok(Json(CheckpointResponse { sealed_count }))
+}
+
+// ─── Per-user undo/redo targets ──────────────────────────────────────────
+
+/// Returns the most recent live, non-sealed op created by the requesting token.
+#[get("/logs/my-last-undoable")]
+pub fn my_last_undoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
+    let conn = &mut establish_connection();
+
+    let log: OpLog = op_log::table
+        .select(OpLog::as_select())
+        .filter(op_log::token_id.eq(token.id))
+        .filter(op_log::rolled_back_at.is_null())
+        .filter(op_log::sealed_at.is_null())
+        .order(op_log::id.desc())
+        .first(conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => Status::NotFound,
+            _ => Status::InternalServerError,
+        })?;
+
+    Ok(Json(fetch_details(conn, log)))
+}
+
+/// Returns the most recently rolled-back, non-sealed op created by the
+/// requesting token — i.e. the next op this user would want to redo.
+#[get("/logs/my-last-redoable")]
+pub fn my_last_redoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
+    let conn = &mut establish_connection();
+
+    let log: OpLog = op_log::table
+        .select(OpLog::as_select())
+        .filter(op_log::token_id.eq(token.id))
+        .filter(op_log::rolled_back_at.is_not_null())
+        .filter(op_log::sealed_at.is_null())
+        .order(op_log::id.desc())
+        .first(conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => Status::NotFound,
+            _ => Status::InternalServerError,
+        })?;
+
+    Ok(Json(fetch_details(conn, log)))
 }

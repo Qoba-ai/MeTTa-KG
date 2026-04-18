@@ -660,20 +660,52 @@ const History: Component = () => {
         }
     }
 
-    const handleRedo = async () => {
+    const handleRedo = async (force = false) => {
         const entry = selectedEntry()
         if (!entry || !tokenCode) return
         setActionBusy(true)
         try {
-            await fetch(`${BACKEND_URL}/logs/${entry.id}/redo`, {
+            const url = force
+                ? `${BACKEND_URL}/logs/${entry.id}/redo?force=true`
+                : `${BACKEND_URL}/logs/${entry.id}/redo`
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: { Authorization: tokenCode },
             })
+            if (res.status === 409) {
+                const body = await res.json()
+                const opIds = (body.conflicting_ops || []).join(', ')
+                setActionBusy(false)
+                if (window.confirm(`Redo conflicts with newer operations (${opIds}). Redo anyway?`)) {
+                    handleRedo(true)
+                }
+                return
+            }
             const { entries, edges } = await fetchGraph()
             setLogs(entries)
             setGraphEdges(edges)
             setSelectedEntry(entries.find((e) => e.id === entry.id) ?? null)
             initGraph(entries, edges)
+        } finally {
+            setActionBusy(false)
+        }
+    }
+
+    const handleCheckpoint = async () => {
+        if (!tokenCode) return
+        setActionBusy(true)
+        try {
+            const res = await fetch(`${BACKEND_URL}/logs/checkpoint`, {
+                method: 'POST',
+                headers: { Authorization: tokenCode },
+            })
+            if (res.ok) {
+                const { entries, edges } = await fetchGraph()
+                setLogs(entries)
+                setGraphEdges(edges)
+                setSelectedEntry(null)
+                initGraph(entries, edges)
+            }
         } finally {
             setActionBusy(false)
         }
@@ -751,6 +783,14 @@ const History: Component = () => {
                     <button class={styles.ToolbarButton} onClick={handleFit} title="Fit to view">
                         ⊞
                     </button>
+                    <button
+                        class={styles.ToolbarButton}
+                        onClick={handleCheckpoint}
+                        disabled={actionBusy()}
+                        title="Seal older operations (makes them read-only, improves performance)"
+                    >
+                        Checkpoint
+                    </button>
                 </div>
 
                 {/* Node action panel — shown when a node is selected */}
@@ -774,7 +814,7 @@ const History: Component = () => {
                                 <button
                                     class={styles.ActionButton}
                                     disabled={!entry().rolled_back_at || actionBusy()}
-                                    onClick={handleRedo}
+                                    onClick={() => handleRedo()}
                                     onMouseEnter={() => applyPreview(getRedoPreviewIds(entry(), logs(), graphEdges()))}
                                     onMouseLeave={clearPreview}
                                     title="Redo this operation (hover to preview affected nodes)"

@@ -16,8 +16,8 @@
  *   (explore <space>)
  *     – GET and display atoms in the given space.
  *
- *   (subtract <space-a> <space-b>)
- *     – POST a subtract operation: read from A, write result to B.
+ *   (subtract (in <space> <pattern>) ... (out <space> <template>) ...)
+ *     – POST a subtract operation with the same clause syntax as transform.
  *
  * Space references
  *   /              – root space
@@ -372,26 +372,117 @@ async function runAssertCount(args: SExpr[], ctx: CommandContext): Promise<Comma
 // ─── subtract ─────────────────────────────────────────────────────────────────
 
 async function runSubtract(args: SExpr[], ctx: CommandContext): Promise<CommandResult> {
-    if (args.length !== 2) return { ok: false, output: '; usage: (subtract <space-a> <space-b>)' }
-    let a: string, b: string
-    try { a = resolveSpace(args[0], ctx.activeNamespace) }
-    catch (e) { return { ok: false, output: `; ${e}` } }
-    try { b = resolveSpace(args[1], ctx.activeNamespace) }
-    catch (e) { return { ok: false, output: `; ${e}` } }
+    const inClauses:  { space: string; pat: string }[] = []
+    const outClauses: { space: string; tmpl: string }[] = []
 
-    const stripLeading = (p: string) => p.replace(/^\//, '')
+    for (const arg of args) {
+        if (!Array.isArray(arg) || arg.length < 3) {
+            return { ok: false, output: '; usage: (subtract (in <space> <pattern>) ... (out <space> <template>) ...)' }
+        }
+        const [dir, spaceRef, sexpr] = arg
+        if (sexpr === undefined) {
+            return { ok: false, output: '; each clause needs exactly: direction space pattern-or-template' }
+        }
+        let space: string
+        try { space = resolveSpace(spaceRef, ctx.activeNamespace) }
+        catch (e) { return { ok: false, output: `; ${e}` } }
+        const expr = serialize(sexpr)
+
+        if (dir === 'in')       inClauses.push({ space, pat: expr })
+        else if (dir === 'out') outClauses.push({ space, tmpl: expr })
+        else return { ok: false, output: `; unknown clause direction '${dir}' — use 'in' or 'out'` }
+    }
+
+    if (inClauses.length === 0)  return { ok: false, output: '; subtract needs at least one (in ...) clause' }
+    if (outClauses.length === 0) return { ok: false, output: '; subtract needs at least one (out ...) clause' }
+
+    const input_spaces  = inClauses.map(c => c.space.replace(/^\//, ''))
+    const output_spaces = outClauses.map(c => c.space.replace(/^\//, ''))
+    const patterns      = inClauses.map(c => c.pat)
+    const templates     = outClauses.map(c => c.tmpl)
 
     try {
         const resp = await fetch(`${ctx.backendUrl}/subtract`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: ctx.tokenCode },
-            body: JSON.stringify({ a: stripLeading(a), b: stripLeading(b) }),
+            body: JSON.stringify({ input_spaces, output_spaces, patterns, templates }),
         })
-        if (resp.ok) return { ok: true, output: `; subtracted ${a} from ${b}` }
+        if (resp.ok) return { ok: true, output: '; subtract dispatched' }
+        if (resp.status === 422) return { ok: false, output: '; subtract rejected: unbalanced parentheses in pattern or template' }
+        if (resp.status === 400) return { ok: false, output: '; subtract rejected: mismatched number of spaces and patterns/templates' }
         return { ok: false, output: `; subtract failed (HTTP ${resp.status})` }
     } catch (e: any) {
         return { ok: false, output: `; subtract error: ${e.message}` }
     }
+}
+
+// ─── assert-content ───────────────────────────────────────────────────────────
+
+/** Collapse all internal whitespace runs to a single space for comparison. */
+function normalizeWs(s: string): string {
+    return s.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Fetch every atom from a space, following pagination until exhausted.
+ * Returns normalised atom strings, or throws a string error message.
+ */
+async function fetchAllAtoms(space: string, ctx: CommandContext): Promise<string[]> {
+    let ns = space
+    if (ns.startsWith('/')) ns = ns.substring(1)
+    if (ns.endsWith('/')) ns = ns.slice(0, -1)
+    const encodedNs = ns.split('/').filter((s: string) => s.length > 0).map(encodeURIComponent).join('/')
+
+    const atoms: string[] = []
+    let focusToken = ''
+    do {
+        const base = encodedNs.length > 0
+            ? `${ctx.backendUrl}/explore/${encodedNs}`
+            : `${ctx.backendUrl}/explore`
+        const resp = await fetch(`${base}?focus_token=${encodeURIComponent(focusToken)}`, {
+            headers: { Authorization: ctx.tokenCode },
+        })
+        if (!resp.ok) throw `explore failed (HTTP ${resp.status})`
+        const data = await resp.json()
+        for (const expr of (data.metta_expressions as string[] || [])) {
+            atoms.push(normalizeWs(expr))
+        }
+        focusToken = data.focus_token || ''
+    } while (focusToken)
+    return atoms
+}
+
+async function runAssertContent(args: SExpr[], ctx: CommandContext): Promise<CommandResult> {
+    if (args.length < 1) return { ok: false, output: '; usage: (assert-content <space> <atom>...)' }
+    let space: string
+    try { space = resolveSpace(args[0], ctx.activeNamespace) }
+    catch (e) { return { ok: false, output: `; ${e}` } }
+
+    const expected = args.slice(1).map(a => normalizeWs(serialize(a)))
+
+    let actual: string[]
+    try { actual = await fetchAllAtoms(space, ctx) }
+    catch (e) { return { ok: false, output: `; assert-content: ${e}` } }
+
+    const actualSet   = new Set(actual)
+    const expectedSet = new Set(expected)
+    const missing     = expected.filter(e => !actualSet.has(e))
+    const extra       = actual.filter(a => !expectedSet.has(a))
+
+    if (missing.length === 0 && extra.length === 0) {
+        return { ok: true, output: `; ok — ${space} matches (${actual.length} atom${actual.length === 1 ? '' : 's'})` }
+    }
+
+    const lines: string[] = [`; assertion failed for ${space}:`]
+    if (missing.length > 0) {
+        lines.push(`; missing (${missing.length}):`)
+        for (const m of missing) lines.push(`;   ${m}`)
+    }
+    if (extra.length > 0) {
+        lines.push(`; unexpected (${extra.length}):`)
+        for (const e of extra) lines.push(`;   ${e}`)
+    }
+    return { ok: false, output: lines.join('\n') }
 }
 
 async function runWait(args: SExpr[]): Promise<CommandResult> {
@@ -416,13 +507,14 @@ export async function executeSingle(expr: SExpr, ctx: CommandContext): Promise<C
         case 'clear':        return runClear(args, ctx)
         case 'explore':      return runExplore(args, ctx)
         case 'count':        return runCount(args, ctx)
-        case 'assert-count': return runAssertCount(args, ctx)
-        case 'subtract':     return runSubtract(args, ctx)
-        case 'wait':         return runWait(args)
+        case 'assert-count':   return runAssertCount(args, ctx)
+        case 'assert-content': return runAssertContent(args, ctx)
+        case 'subtract':       return runSubtract(args, ctx)
+        case 'wait':           return runWait(args)
         default:
             return {
                 ok: false,
-                output: `; unknown command '${head}' — valid: import, transform, clear, explore, count, assert-count, subtract, wait`,
+                output: `; unknown command '${head}' — valid: import, transform, clear, explore, count, assert-count, assert-content, subtract, wait`,
             }
     }
 }

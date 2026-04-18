@@ -43,6 +43,7 @@ pub struct Token {
 #[diesel(table_name = op_log)]
 pub struct OpLogInsert {
     pub op_type: String,
+    pub token_id: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize, Queryable, Selectable)]
@@ -52,6 +53,8 @@ pub struct OpLog {
     pub op_type: String,
     pub created_at: NaiveDateTime,
     pub rolled_back_at: Option<NaiveDateTime>,
+    pub token_id: Option<i32>,
+    pub sealed_at: Option<NaiveDateTime>,
 }
 
 // ─── Op Log Import ───────────────────────────────────────────────────────────
@@ -147,6 +150,10 @@ pub struct OpLogEntry {
     pub created_at: NaiveDateTime,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rolled_back_at: Option<NaiveDateTime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_id: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sealed_at: Option<NaiveDateTime>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub import: Option<OpLogImport>,
     #[serde(skip_serializing_if = "Option::is_none")]

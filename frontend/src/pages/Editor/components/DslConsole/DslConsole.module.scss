@@ -9,16 +9,17 @@
     color: var(--text);
 }
 
-// ── Unified scroll area ───────────────────────────────────────────────────────
+// ── Output scroll area ────────────────────────────────────────────────────────
 
 .ScrollArea {
     flex: 1;
     overflow-y: auto;
-    padding: 10px 14px 10px;
+    padding: 10px 14px 6px;
     display: flex;
     flex-direction: column;
     gap: 6px;
     background: var(--base);
+    cursor: text; // hint that clicking focuses the input
 
     &::-webkit-scrollbar { width: 6px; }
     &::-webkit-scrollbar-track { background: transparent; }
@@ -27,6 +28,15 @@
         border-radius: 3px;
         &:hover { background: var(--muted); }
     }
+}
+
+// ── Input bar — anchored at the bottom, never scrolls ────────────────────────
+
+.InputBar {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border-subtle);
+    padding: 6px 14px 8px;
+    background: var(--base);
 }
 
 // ── History entries ───────────────────────────────────────────────────────────
@@ -73,30 +83,61 @@
 .OutputOk  { color: var(--foam); }
 .OutputErr { color: var(--love); }
 
+// ── Syntax highlight token colours ───────────────────────────────────────────
+
+.tok_command  { color: var(--iris); }      // DSL command heads: import, clear, …
+.tok_spaceRef { color: var(--pine); }      // Space paths: $/, /foo/bar/
+.tok_variable { color: var(--gold); }      // Variables: $x
+.tok_string   { color: var(--foam); }      // "quoted strings"
+.tok_number   { color: var(--rose); }      // Numeric literals
+.tok_comment  { color: var(--muted); font-style: italic; }  // ; comments
+.tok_paren    { color: var(--subtle); }    // ( )
+
 // ── Inline input row (same background as scroll area) ────────────────────────
 
 .InputRow {
     display: flex;
     align-items: flex-start;
     gap: 6px;
-    padding: 4px 0 2px;
-    // No border, no background change — fully unified with the scroll area
+}
+
+// Wrapper that layers the highlight div behind the textarea via CSS grid
+.InputAreaWrapper {
+    flex: 1;
+    display: grid;
+    min-height: 1.45em;
+
+    > * {
+        grid-area: 1 / 1;
+        padding: 0;
+        margin: 0;
+        font-family: inherit;
+        font-size: inherit;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow: hidden;
+    }
+}
+
+// Highlight layer — rendered behind the transparent textarea
+.InputHighlight {
+    color: var(--text);
+    pointer-events: none;
+    user-select: none;
+    align-self: start; // don't stretch vertically beyond content
 }
 
 .InputArea {
-    flex: 1;
     background: transparent;
     border: none;
     outline: none;
-    color: var(--text);
-    font-family: inherit;
-    font-size: inherit;
-    line-height: 1.45;
+    // Text is invisible; only the highlight layer shows colour.
+    // The caret remains visible via caret-color.
+    color: transparent;
+    caret-color: var(--text);
     resize: none;
-    overflow: hidden;
-    min-height: 1.45em;
-    // No max-height cap — let it grow freely for long scripts
-    padding: 0;
+    position: relative; // stay on top of highlight layer in stacking order
 
     &::placeholder {
         color: var(--muted);
