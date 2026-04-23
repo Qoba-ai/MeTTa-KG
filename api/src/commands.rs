@@ -2,42 +2,39 @@ use std::env;
 
 use mork_client::MorkClient;
 use rocket::http::Status;
-
-// ─── Timeouts ─────────────────────────────────────────────────────────────────
+use tracing::error;
 
 const TRANSFORM_WAIT_MS: u64 = 300_000;
-
-// ─── Shared helpers ───────────────────────────────────────────────────────────
 
 fn get_mork_client() -> MorkClient {
     MorkClient::new(env::var("METTA_KG_MORK_URL").unwrap())
 }
 
 fn mork_err(e: mork_client::MorkError) -> Status {
-    eprintln!("[commands] MORK error: {:?}", e);
+    error!(error = %e, "MORK Error during command");
     Status::InternalServerError
 }
-
-// ─── Import ───────────────────────────────────────────────────────────────────
 
 pub mod import {
     use super::{get_mork_client, mork_err, TRANSFORM_WAIT_MS};
     use rocket::http::Status;
     use std::path::PathBuf;
+    use tracing::instrument;
 
+    #[derive(Debug)]
     pub struct Params {
         pub target_path: PathBuf,
         pub uri: String,
         pub operation_id: String,
     }
 
+    #[instrument]
     pub async fn execute(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
+
         let pre = PathBuf::from(format!("import/{}/pre", p.operation_id));
-        let data = PathBuf::from(format!("import/{}/data", p.operation_id));
         let post = PathBuf::from(format!("import/{}/post", p.operation_id));
 
-        // Step 1: snapshot current target state (for undo).
         client.copy(&p.target_path, &pre).await.map_err(mork_err)?;
 
         client
@@ -55,36 +52,40 @@ pub mod import {
         Ok(())
     }
 
+    #[instrument]
     pub async fn undo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
+
         let pre = PathBuf::from(format!("import/{}/pre", p.operation_id));
-        // TODO: follow up with MORK team on the need for this clear call (B is kept as-is if A is empty)
-        client.clear(&p.target_path, "$").await.map_err(mork_err)?;
         client.copy(&pre, &p.target_path).await.map_err(mork_err)
     }
 
+    #[instrument]
     pub async fn redo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
+
         let post = PathBuf::from(format!("import/{}/post", p.operation_id));
         client.copy(&post, &p.target_path).await.map_err(mork_err)
     }
 }
 
-// ─── Clear ────────────────────────────────────────────────────────────────────
-
 pub mod clear {
     use super::{get_mork_client, mork_err};
     use rocket::http::Status;
     use std::path::PathBuf;
+    use tracing::instrument;
 
+    #[derive(Debug)]
     pub struct Params {
         pub target_path: PathBuf,
         pub operation_id: String,
         pub pattern: String,
     }
 
+    #[instrument]
     pub async fn execute(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
+
         let pre = PathBuf::from(format!("clear/{}/pre", p.operation_id));
         client.copy(&p.target_path, &pre).await.map_err(mork_err)?;
         client
@@ -93,14 +94,18 @@ pub mod clear {
             .map_err(mork_err)
     }
 
+    #[instrument]
     pub async fn undo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
+
         let pre = PathBuf::from(format!("clear/{}/pre", p.operation_id));
         client.copy(&pre, &p.target_path).await.map_err(mork_err)
     }
 
+    #[instrument]
     pub async fn redo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
+
         client
             .clear(&p.target_path, &p.pattern)
             .await
@@ -108,13 +113,13 @@ pub mod clear {
     }
 }
 
-// ─── Transform ────────────────────────────────────────────────────────────────
-
 pub mod transform {
     use super::{get_mork_client, mork_err, TRANSFORM_WAIT_MS};
     use rocket::http::Status;
     use std::path::PathBuf;
+    use tracing::instrument;
 
+    #[derive(Debug)]
     pub struct Params {
         pub input: Vec<(PathBuf, String)>,
         pub output: Vec<(PathBuf, String)>,
@@ -129,6 +134,7 @@ pub mod transform {
         PathBuf::from(format!("transformation/{}/post/output/{}", op_id, idx))
     }
 
+    #[instrument]
     pub async fn execute(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
 
@@ -168,6 +174,7 @@ pub mod transform {
         Ok(())
     }
 
+    #[instrument]
     pub async fn undo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
         for (idx, (path, _)) in p.output.iter().enumerate() {
@@ -180,6 +187,7 @@ pub mod transform {
         Ok(())
     }
 
+    #[instrument]
     pub async fn redo(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
         for (idx, (path, _)) in p.output.iter().enumerate() {
@@ -188,6 +196,7 @@ pub mod transform {
                 .await
                 .map_err(mork_err)?;
         }
+
         Ok(())
     }
 }

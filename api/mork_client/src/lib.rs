@@ -3,6 +3,7 @@ use percent_encoding::{NON_ALPHANUMERIC, percent_decode_str, percent_encode};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
+use std::fmt;
 use std::fs::{self, File};
 use std::future::Future;
 use std::io::Write;
@@ -266,6 +267,25 @@ pub enum MorkError {
 impl From<reqwest::Error> for MorkError {
     fn from(e: reqwest::Error) -> Self {
         MorkError::Http(e)
+    }
+}
+
+impl fmt::Display for MorkError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MorkError::Http(e) => write!(f, "HTTP request failed: {e}"),
+            MorkError::BadStatus(code) => write!(f, "MORK returned status code {code}"),
+            MorkError::Timeout => write!(f, "MORK connection timed out"),
+        }
+    }
+}
+
+impl std::error::Error for MorkError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            MorkError::Http(e) => Some(e),
+            _ => None,
+        }
     }
 }
 
@@ -684,6 +704,8 @@ impl MorkClient {
                 .collect();
         }
 
+        subspaces.sort_by(|a, b| a.0.cmp(&b.0));
+
         let mut stack: Vec<String> = Vec::new();
 
         if focus_token.is_empty() {
@@ -768,12 +790,12 @@ impl MorkClient {
                 let mut children = Vec::new();
                 for (_, subspace_rel) in &subspaces {
                     let sub_path = root.join(subspace_rel);
-                    match self.explore_with_depth(&sub_path, root, "", depth - 1).await {
+                    match self
+                        .explore_with_depth(&sub_path, root, "", depth - 1)
+                        .await
+                    {
                         Ok(sub_result) => children.push(sub_result),
-                        Err(e) => eprintln!(
-                            "explore_with_depth: skipping {:?}: {:?}",
-                            sub_path, e
-                        ),
+                        Err(e) => eprintln!("explore_with_depth: skipping {:?}: {:?}", sub_path, e),
                     }
                 }
                 if !children.is_empty() {

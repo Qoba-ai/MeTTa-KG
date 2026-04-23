@@ -3,12 +3,19 @@
 // ── Animations ────────────────────────────────────────────────────────────────
 
 @keyframes progressSlide {
-    0%   { transform: translateX(-100%); }
-    100% { transform: translateX(400%); }
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(400%);
+    }
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 // ── Progress bar (shown while import/transform/undo/redo is running) ──────────
@@ -460,11 +467,11 @@
     align-items: center;
     gap: 4px;
     font-size: 0.75rem;
-    color: var(--subtle);
     white-space: nowrap;
     flex-shrink: 0;
 
     span {
+        color: var(--subtle);
         font-variant-numeric: tabular-nums;
     }
 }
@@ -639,7 +646,10 @@
     flex-direction: column;
     padding-bottom: 4px;
 
-    &::-webkit-scrollbar { width: 3px; }
+    &::-webkit-scrollbar {
+        width: 3px;
+    }
+
     &::-webkit-scrollbar-thumb {
         background: var(--highlight-high);
         border-radius: 2px;
@@ -654,7 +664,9 @@
     border-radius: 4px;
     cursor: default;
 
-    &:hover { background: var(--highlight-low); }
+    &:hover {
+        background: var(--highlight-low);
+    }
 }
 
 .LogEntryHeader {
@@ -669,10 +681,21 @@
     font-weight: 600;
     color: var(--iris);
 
-    &.Import    { color: var(--foam); }
-    &.Clear     { color: var(--love); }
-    &.Transform { color: var(--iris); }
-    &.Cpy       { color: var(--gold); }
+    &.Import {
+        color: var(--foam);
+    }
+
+    &.Clear {
+        color: var(--love);
+    }
+
+    &.Transform {
+        color: var(--iris);
+    }
+
+    &.Cpy {
+        color: var(--gold);
+    }
 }
 
 .LogEntryDetail {
@@ -692,7 +715,10 @@
 
 .LogEntryRolledBack {
     opacity: 0.4;
-    .LogEntryType { text-decoration: line-through; }
+
+    .LogEntryType {
+        text-decoration: line-through;
+    }
 }
 
 .LogEntryUndoTarget {

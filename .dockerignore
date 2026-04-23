@@ -8,3 +8,12 @@ temp
 translations/tests/
 translations/examples/
 translations/metta_queries/
+translations/README.md
+
+api/logs
+api/static
+api/target
+api/temp
+api/test-results
+api/Cargo.lock
+

@@ -4,17 +4,33 @@ use tokio::sync::broadcast;
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum SpaceEvent {
-    Locked { path: String },
-    Unlocked { path: String },
-    ImportComplete { path: String },
-    ImportError { path: String, message: String },
-    ClearComplete { path: String },
-    ClearError { path: String, message: String },
-    TransformComplete { path: String },
-    TransformError { path: String, message: String },
-    /// Emitted whenever a token's own op-log changes (op created, rolled back,
-    /// or redone).  Only forwarded to the WebSocket connection that owns the
-    /// matching `token_id`.
+    Locked {
+        path: String,
+    },
+    Unlocked {
+        path: String,
+    },
+    ImportComplete {
+        path: String,
+    },
+    ImportError {
+        path: String,
+        message: String,
+    },
+    ClearComplete {
+        path: String,
+    },
+    ClearError {
+        path: String,
+        message: String,
+    },
+    TransformComplete {
+        path: String,
+    },
+    TransformError {
+        path: String,
+        message: String,
+    },
     OpLogChanged {
         token_id: i32,
         entries: Vec<crate::model::OpLogEntry>,

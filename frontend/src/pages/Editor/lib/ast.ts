@@ -134,14 +134,15 @@ export function parseTokensToAST(tokens: string[], source: 'manual' | 'loaded' =
 }
 
 function createAtom(value: string, source: 'manual' | 'loaded'): AtomNode {
-  const cleanValue = value.replace(/^"|"$/g, '')
+  const isString = value.startsWith('"') && value.endsWith('"') && value.length >= 2
+  const cleanValue = isString ? value.slice(1, -1) : value
   let kind: AtomNode['kind'] = 'symbol'
 
   if (/^-?\d+(\.\d+)?$/.test(cleanValue)) {
     kind = 'number'
   } else if (/^\$/.test(cleanValue)) {
     kind = 'variable'
-  } else if (cleanValue.startsWith('"') && cleanValue.endsWith('"')) {
+  } else if (isString) {
     kind = 'string'
   }
 
@@ -201,7 +202,7 @@ export function astToString(ast: ASTDocument, nodeMap?: Map<string, ASTNode>): s
 
 function nodeToString(node: ASTNode, nodeMap?: Map<string, ASTNode>): string {
   if (node.type === 'atom') {
-    return node.value
+    return node.kind === 'string' ? `"${node.value}"` : node.value
   } else if (node.type === 'fringe') {
     return '|$|'
   } else if (node.type === 'expr') {

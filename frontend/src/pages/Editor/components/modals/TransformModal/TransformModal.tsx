@@ -54,7 +54,7 @@ const SpaceGroup: Component<SpaceGroupProps> = (props) => {
                       class={styles.TrieActionBtn}
                       onClick={() => props.removeSpace(i)}
                       title="Remove Space"
-                      style={{ color: "var(--love)" }}
+                      style={{ color: entries().length === 1 ? undefined : "var(--love)" }}
                       disabled={entries().length === 1}
                     >
                       <VsTrash size={18} />
@@ -151,7 +151,7 @@ export const TransformModal: Component<TransformModalProps> = (props) => {
           </div>
         </div>
 
-        <div style={{ "max-height": "60vh", "overflow-y": "auto", "display": "flex", "flex-direction": "column", "gap": "20px", "padding-bottom": "8px" }}>
+        <div style={{ "overflow": "visible", "display": "flex", "flex-direction": "column", "gap": "20px", "padding-bottom": "8px" }}>
           <SpaceGroup type="input" configs={localConfigs} updateConfig={updateConfig} removeSpace={removeSpace} fetchExploreResults={props.fetchExploreResults} />
           <SpaceGroup type="output" configs={localConfigs} updateConfig={updateConfig} removeSpace={removeSpace} fetchExploreResults={props.fetchExploreResults} />
         </div>

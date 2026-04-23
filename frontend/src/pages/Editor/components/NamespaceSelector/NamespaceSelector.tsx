@@ -18,6 +18,21 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
   const [exploreFocusIndex, setExploreFocusIndex] = createSignal(-1);
   let inputRef: HTMLInputElement | undefined;
 
+  // Fetch suggestions for a given value. When the user is mid-segment (path
+  // doesn't end with "/"), query the parent directory and filter client-side so
+  // that e.g. "/h" or "/ho" still surfaces "/home/".
+  const fetchSuggestions = async (val: string): Promise<any[]> => {
+    if (val.endsWith("/")) {
+      return props.fetchExploreResults(val);
+    }
+    const lastSlash = val.lastIndexOf("/");
+    const parentPath = lastSlash >= 0 ? val.slice(0, lastSlash + 1) : "/";
+    const results = await props.fetchExploreResults(parentPath);
+    return results.filter((r: any) =>
+      (r.path as string).toLowerCase().startsWith(val.toLowerCase())
+    );
+  };
+
   const handleInput = async (e: any) => {
     let val = e.target.value;
     if (val === "" || !val.startsWith("/")) {
@@ -26,14 +41,14 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
     props.onInput(val);
     setIsExploring(true);
     setExploreFocusIndex(-1);
-    const results = await props.fetchExploreResults(val);
+    const results = await fetchSuggestions(val);
     setExploreResults(results);
   };
 
   const handleFocus = async () => {
     setIsExploring(true);
     setExploreFocusIndex(-1);
-    const results = await props.fetchExploreResults(props.value);
+    const results = await fetchSuggestions(props.value);
     setExploreResults(results);
   };
 
@@ -109,6 +124,7 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
                 onClick={() => {
                   props.onInput(res.path);
                   setIsExploring(false);
+                  props.onCommit?.();
                 }}
               >
                 <div class={styles.ExploreItemMain}>

@@ -1,4 +1,5 @@
 use std::env;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -9,15 +10,20 @@ use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
 use rocket::http::Method;
 use rocket::{self, launch, routes, Build, Rocket};
-use rocket_cors::AllowedOrigins;
+use rocket_cors::{catch_all_options_routes, AllowedOrigins};
 use tokio::sync::{broadcast, Mutex};
+use tracing::{error, info, instrument, warn};
 
+use crate::config::Config;
 use crate::lock::LockManager;
+use crate::log::setup_logging;
 
 mod commands;
+mod config;
 mod db;
 mod events;
 mod lock;
+mod log;
 mod model;
 mod routes;
 mod schema;
@@ -35,25 +41,27 @@ impl Fairing for DevModeFairing {
         }
     }
 
+    #[instrument(skip(self, _rocket))]
     async fn on_liftoff(&self, _rocket: &Rocket<rocket::Orbit>) {
-        if std::env::var("METTA_KG_DEV").is_ok() {
+        if std::env::var("METTA_KG_ENV").unwrap_or_default() == "dev" {
             let conn = &mut db::establish_connection();
             match diesel::delete(schema::op_log::table).execute(conn) {
-                Ok(n) => log::info!("[dev] cleared {n} op_log row(s) on startup"),
-                Err(e) => log::warn!("[dev] failed to clear op_log on startup: {e}"),
+                Ok(n) => info!(rows_deleted = n, "Cleared op_log table"),
+                Err(e) => warn!(error = %e, "Failed to clear op_log on startup"),
             }
 
-            let client = MorkClient::new(env::var("METTA_KG_MORK_URL").unwrap());
+            let mork_url = env::var("METTA_KG_MORK_URL").unwrap_or_default();
+            let client = MorkClient::new(mork_url.clone());
 
             if let Err(e) = client.clear(&PathBuf::from("/"), "$").await {
-                log::error!("Application failed to start: {:?}", e);
+                error!(url = %mork_url, error = ?e, "MORK cleanup failed: Application crashing");
+                std::io::stdout().flush().unwrap();
+                std::io::stderr().flush().unwrap();
                 std::process::exit(1);
             }
         }
     }
 }
-
-// ─── Shutdown fairing ────────────────────────────────────────────────────────
 
 struct ShutdownFairing;
 
@@ -61,37 +69,53 @@ struct ShutdownFairing;
 impl Fairing for ShutdownFairing {
     fn info(&self) -> Info {
         Info {
-            name: "Shutdown Signal Handler",
-            kind: Kind::Liftoff,
+            name: "Exit clean-up",
+            kind: Kind::Shutdown,
         }
     }
 
-    async fn on_liftoff(&self, rocket: &Rocket<rocket::Orbit>) {
-        let shutdown_tx = rocket.state::<Shutdown>().unwrap().0.clone();
-        tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
-            let _ = shutdown_tx.send(());
-        });
+    #[instrument(skip(self, _rocket))]
+    async fn on_shutdown(&self, _rocket: &Rocket<rocket::Orbit>) {
+        info!(target: "server_lifecycle", "MeTTa-KG cleanup complete. Goodbye.");
     }
 }
 
 #[launch]
+#[instrument]
+
 fn rocket() -> Rocket<Build> {
+    let config = Config::new()
+        .map_err(|e| {
+            error!(error = ?e, "MORK startup failed: Missing environment variable(s)");
+        })
+        .unwrap();
+
     mork_client::MorkLogger::init("logs");
+
+    let _log_guard = setup_logging();
 
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
-    let allowed_origins = AllowedOrigins::some_regex(&[
-        r"^http://localhost:(3\d{3}|4000)$",
-        r"^https://metta-kg\.vercel\.app$",
-    ]);
+    let origins_str =
+        std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "http://localhost:3000".into());
+    let origins_list: Vec<&str> = origins_str.split(',').collect();
+
+    let allowed_origins = AllowedOrigins::some_exact(&origins_list);
 
     let cors = rocket_cors::CorsOptions {
         allowed_origins,
-        allowed_methods: vec![Method::Get, Method::Post, Method::Put, Method::Delete]
-            .into_iter()
-            .map(From::from)
-            .collect(),
+        allowed_methods: vec![
+            Method::Get,
+            Method::Post,
+            Method::Put,
+            Method::Delete,
+            Method::Options,
+        ]
+        .into_iter()
+        .map(From::from)
+        .collect(),
+        send_wildcard: true,
+        allow_credentials: true,
         ..Default::default()
     }
     .to_cors()
@@ -109,13 +133,11 @@ fn rocket() -> Rocket<Build> {
         .manage(events::EventBus::new())
         .manage(Shutdown(shutdown_tx))
         .manage(lock_manager)
+        .manage(cors.clone())
+        .manage(config.clone())
         .mount(
             "/",
             routes![
-                routes::translations::create_from_csv,
-                routes::translations::create_from_nt,
-                routes::translations::create_from_jsonld,
-                routes::translations::create_from_n3,
                 routes::op_logs::get_log,
                 routes::op_logs::get_logs,
                 routes::op_logs::get_logs_graph,
@@ -155,9 +177,11 @@ fn rocket() -> Rocket<Build> {
                 routes::events::ws_ping,
                 routes::events::ws_events,
                 routes::events::ws_status_root,
-                routes::events::ws_status
+                routes::events::ws_status,
+                routes::health::health,
             ],
         )
+        .mount("/", catch_all_options_routes())
         .mount("/public", FileServer::from("static"))
         .attach(cors)
         .attach(DevModeFairing)

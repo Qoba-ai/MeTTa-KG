@@ -257,6 +257,7 @@ dialog {
     background: var(--overlay);
     color: var(--text);
     border: none;
+    overflow: visible;
     box-shadow:
         0px 8px 10px -5px rgba(0, 0, 0, 0.2),
         0px 16px 24px 2px rgba(0, 0, 0, 0.14),

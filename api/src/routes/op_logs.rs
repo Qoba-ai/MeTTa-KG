@@ -7,6 +7,7 @@ use rocket::http::Status;
 use rocket::response::status::Custom;
 use rocket::serde::json::{serde_json, Json};
 use rocket::{get, post};
+use tracing::{debug, error, info, warn};
 
 use rocket::State;
 
@@ -332,6 +333,7 @@ fn build_direct_edges(entries: &[OpLogEntry]) -> Vec<GraphEdge> {
 /// Sealed ops are excluded from the graph (they are read-only history).
 #[get("/logs/graph")]
 pub fn get_logs_graph(_token: Token) -> Result<Json<GraphResponse>, Status> {
+    debug!("Building op log dependency graph");
     let conn = &mut establish_connection();
 
     let logs: Vec<OpLog> = op_log::table
@@ -339,14 +341,19 @@ pub fn get_logs_graph(_token: Token) -> Result<Json<GraphResponse>, Status> {
         .filter(op_log::sealed_at.is_null())
         .order(op_log::id.asc())
         .load(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .map_err(|e| {
+            error!(error = %e, "Failed to load op logs for graph");
+            Status::InternalServerError
+        })?;
 
+    let entry_count = logs.len();
     let entries: Vec<OpLogEntry> = logs
         .into_iter()
         .map(|log| fetch_details(conn, log))
         .collect();
 
     let edges = build_direct_edges(&entries);
+    debug!(entries = entry_count, edges = edges.len(), "Op log graph built");
 
     Ok(Json(GraphResponse { entries, edges }))
 }
@@ -355,6 +362,7 @@ pub fn get_logs_graph(_token: Token) -> Result<Json<GraphResponse>, Status> {
 
 #[get("/logs/<id>")]
 pub fn get_log(_token: Token, id: i32) -> Result<Json<OpLogEntry>, Status> {
+    debug!(id, "Fetching op log entry");
     let conn = &mut establish_connection();
 
     let log = op_log::table
@@ -362,8 +370,14 @@ pub fn get_log(_token: Token, id: i32) -> Result<Json<OpLogEntry>, Status> {
         .filter(op_log::id.eq(id))
         .first(conn)
         .map_err(|e| match e {
-            diesel::result::Error::NotFound => Status::NotFound,
-            _ => Status::InternalServerError,
+            diesel::result::Error::NotFound => {
+                debug!(id, "Op log entry not found");
+                Status::NotFound
+            }
+            e => {
+                error!(id, error = %e, "Failed to fetch op log entry");
+                Status::InternalServerError
+            }
         })?;
 
     Ok(Json(fetch_details(conn, log)))
@@ -380,6 +394,7 @@ pub fn get_logs(
 
     let page = page.unwrap_or(0).max(0);
     let page_size = page_size.unwrap_or(20).clamp(1, 100);
+    debug!(op_type = ?op_type, page, page_size, "Listing op logs");
 
     let mut query = op_log::table
         .select(OpLog::as_select())
@@ -394,8 +409,12 @@ pub fn get_logs(
         .limit(page_size)
         .offset(page * page_size)
         .load(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .map_err(|e| {
+            error!(error = %e, "Failed to list op logs");
+            Status::InternalServerError
+        })?;
 
+    debug!(count = logs.len(), "Op logs fetched");
     let entries = logs
         .into_iter()
         .map(|log| fetch_details(conn, log))
@@ -683,6 +702,7 @@ pub async fn rollback_log(
     lock_manager: &State<LockManager>,
     bus: &State<EventBus>,
 ) -> Result<Json<Vec<OpLogEntry>>, Status> {
+    info!(id, "Starting rollback");
     let conn = &mut establish_connection();
 
     // Verify the target entry exists.
@@ -691,11 +711,19 @@ pub async fn rollback_log(
         .filter(op_log::id.eq(id))
         .first(conn)
         .map_err(|e| match e {
-            diesel::result::Error::NotFound => Status::NotFound,
-            _ => Status::InternalServerError,
+            diesel::result::Error::NotFound => {
+                warn!(id, "Rollback target not found");
+                Status::NotFound
+            }
+            e => {
+                error!(id, error = %e, "Failed to verify rollback target");
+                Status::InternalServerError
+            }
         })?;
 
     let entries = compute_undo_order(conn, id)?;
+
+    info!(id, affected = entries.len(), "Executing rollback for entries");
 
     let lock_paths = collect_lock_paths(&entries);
     let path_refs: Vec<&PathBuf> = lock_paths.iter().collect();
@@ -711,7 +739,11 @@ pub async fn rollback_log(
             Ok::<(), Status>(())
         }
     })
-    .await?;
+    .await
+    .map_err(|e| {
+        error!(id, status = %e, "Rollback execution failed");
+        e
+    })?;
 
     // Stamp rolled_back_at so the client and a future redo endpoint can tell
     // which entries are currently in a rolled-back state.
@@ -720,7 +752,10 @@ pub async fn rollback_log(
     diesel::update(op_log::table.filter(op_log::id.eq_any(&ids)))
         .set(op_log::rolled_back_at.eq(Some(now)))
         .execute(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .map_err(|e| {
+            error!(id, error = %e, "Failed to stamp rolled_back_at");
+            Status::InternalServerError
+        })?;
 
     // Re-fetch to return the updated entries (with rolled_back_at populated).
     let updated_logs: Vec<OpLog> = op_log::table
@@ -728,13 +763,17 @@ pub async fn rollback_log(
         .filter(op_log::id.eq_any(&ids))
         .order(op_log::id.desc())
         .load(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .map_err(|e| {
+            error!(id, error = %e, "Failed to re-fetch rolled-back entries");
+            Status::InternalServerError
+        })?;
 
     let updated_entries: Vec<OpLogEntry> = updated_logs
         .into_iter()
         .map(|log| fetch_details(conn, log))
         .collect();
 
+    info!(id, rolled_back = updated_entries.len(), "Rollback complete");
     emit_op_log_changed(&bus.inner().0, &updated_entries);
 
     Ok(Json(updated_entries))
@@ -804,6 +843,7 @@ pub async fn redo_log(
     lock_manager: &State<LockManager>,
     bus: &State<EventBus>,
 ) -> Result<Json<Vec<OpLogEntry>>, Custom<Json<RedoConflict>>> {
+    info!(id, force = ?force, "Starting redo");
     let conn = &mut establish_connection();
 
     // Verify the anchor entry exists.
@@ -811,13 +851,23 @@ pub async fn redo_log(
         .select(OpLog::as_select())
         .filter(op_log::id.eq(id))
         .first(conn)
-        .map_err(|e| Custom(match e {
-            diesel::result::Error::NotFound => Status::NotFound,
-            _ => Status::InternalServerError,
-        }, Json(RedoConflict { conflicting_ops: vec![], message: "Not found".into() })))?;
+        .map_err(|e| {
+            let status = match e {
+                diesel::result::Error::NotFound => {
+                    warn!(id, "Redo target not found");
+                    Status::NotFound
+                }
+                ref e => {
+                    error!(id, error = %e, "Failed to fetch redo target");
+                    Status::InternalServerError
+                }
+            };
+            Custom(status, Json(RedoConflict { conflicting_ops: vec![], message: "Not found".into() }))
+        })?;
 
     // Check if sealed
     if anchor.sealed_at.is_some() {
+        warn!(id, "Redo attempted on sealed entry");
         return Err(Custom(Status::UnprocessableEntity, Json(RedoConflict {
             conflicting_ops: vec![],
             message: "Operation is sealed and cannot be redone".into(),
@@ -834,11 +884,14 @@ pub async fn redo_log(
                 message: "Internal error checking conflicts".into(),
             })))?;
         if !conflicts.is_empty() {
+            warn!(id, conflicting_ops = ?conflicts, "Redo blocked by conflicting operations");
             return Err(Custom(Status::Conflict, Json(RedoConflict {
                 conflicting_ops: conflicts,
                 message: "Redo conflicts with newer operations on the same space(s)".into(),
             })));
         }
+    } else if force.unwrap_or(false) {
+        debug!(id, "Redo forced, skipping conflict check");
     }
 
     let entries = compute_redo_order(conn, id)
@@ -849,6 +902,8 @@ pub async fn redo_log(
 
     let lock_paths = collect_lock_paths(&entries);
     let path_refs: Vec<&PathBuf> = lock_paths.iter().collect();
+
+    info!(id, count = entries.len(), "Executing redo for entries");
 
     // Lock all affected spaces, then redo in topological order.
     crate::routes::spaces::with_lock(lock_manager, &path_refs, || {
@@ -862,20 +917,26 @@ pub async fn redo_log(
         }
     })
     .await
-    .map_err(|s| Custom(s, Json(RedoConflict {
-        conflicting_ops: vec![],
-        message: "Redo execution failed".into(),
-    })))?;
+    .map_err(|s| {
+        error!(id, status = %s, "Redo execution failed");
+        Custom(s, Json(RedoConflict {
+            conflicting_ops: vec![],
+            message: "Redo execution failed".into(),
+        }))
+    })?;
 
     // Clear rolled_back_at to mark these entries as active again.
     let ids: Vec<i32> = entries.iter().map(|e| e.id).collect();
     diesel::update(op_log::table.filter(op_log::id.eq_any(&ids)))
         .set(op_log::rolled_back_at.eq(None::<chrono::NaiveDateTime>))
         .execute(conn)
-        .map_err(|_| Custom(Status::InternalServerError, Json(RedoConflict {
-            conflicting_ops: vec![],
-            message: "Failed to update entries".into(),
-        })))?;
+        .map_err(|e| {
+            error!(id, error = %e, "Failed to clear rolled_back_at after redo");
+            Custom(Status::InternalServerError, Json(RedoConflict {
+                conflicting_ops: vec![],
+                message: "Failed to update entries".into(),
+            }))
+        })?;
 
     // Re-fetch to return the updated entries (with rolled_back_at cleared).
     let updated_logs: Vec<OpLog> = op_log::table
@@ -883,16 +944,20 @@ pub async fn redo_log(
         .filter(op_log::id.eq_any(&ids))
         .order(op_log::id.desc())
         .load(conn)
-        .map_err(|_| Custom(Status::InternalServerError, Json(RedoConflict {
-            conflicting_ops: vec![],
-            message: "Failed to fetch updated entries".into(),
-        })))?;
+        .map_err(|e| {
+            error!(id, error = %e, "Failed to re-fetch redone entries");
+            Custom(Status::InternalServerError, Json(RedoConflict {
+                conflicting_ops: vec![],
+                message: "Failed to fetch updated entries".into(),
+            }))
+        })?;
 
     let updated_entries: Vec<OpLogEntry> = updated_logs
         .into_iter()
         .map(|log| fetch_details(conn, log))
         .collect();
 
+    info!(id, redone = updated_entries.len(), "Redo complete");
     emit_op_log_changed(&bus.inner().0, &updated_entries);
 
     Ok(Json(updated_entries))
@@ -909,6 +974,7 @@ pub struct CheckpointResponse {
 /// making them read-only and excluded from undo/redo/graph computations.
 #[post("/logs/checkpoint")]
 pub fn create_checkpoint(_token: Token) -> Result<Json<CheckpointResponse>, Status> {
+    info!("Creating checkpoint");
     let conn = &mut establish_connection();
 
     // Find the max id among live, non-sealed ops
@@ -917,11 +983,17 @@ pub fn create_checkpoint(_token: Token) -> Result<Json<CheckpointResponse>, Stat
         .filter(op_log::rolled_back_at.is_null())
         .filter(op_log::sealed_at.is_null())
         .first(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .map_err(|e| {
+            error!(error = %e, "Failed to find max op log id for checkpoint");
+            Status::InternalServerError
+        })?;
 
     let max_id = match max_id {
         Some(id) => id,
-        None => return Ok(Json(CheckpointResponse { sealed_count: 0 })),
+        None => {
+            debug!("No live ops to seal; checkpoint is a no-op");
+            return Ok(Json(CheckpointResponse { sealed_count: 0 }));
+        }
     };
 
     let now = Utc::now().naive_utc();
@@ -932,8 +1004,12 @@ pub fn create_checkpoint(_token: Token) -> Result<Json<CheckpointResponse>, Stat
     )
     .set(op_log::sealed_at.eq(Some(now)))
     .execute(conn)
-    .map_err(|_| Status::InternalServerError)?;
+    .map_err(|e| {
+        error!(error = %e, "Failed to seal ops during checkpoint");
+        Status::InternalServerError
+    })?;
 
+    info!(sealed = sealed_count, "Checkpoint created");
     Ok(Json(CheckpointResponse { sealed_count }))
 }
 
@@ -942,6 +1018,7 @@ pub fn create_checkpoint(_token: Token) -> Result<Json<CheckpointResponse>, Stat
 /// Returns the most recent live, non-sealed op created by the requesting token.
 #[get("/logs/my-last-undoable")]
 pub fn my_last_undoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
+    debug!(token_id = token.id, "Fetching last undoable op");
     let conn = &mut establish_connection();
 
     let log: OpLog = op_log::table
@@ -952,8 +1029,14 @@ pub fn my_last_undoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
         .order(op_log::id.desc())
         .first(conn)
         .map_err(|e| match e {
-            diesel::result::Error::NotFound => Status::NotFound,
-            _ => Status::InternalServerError,
+            diesel::result::Error::NotFound => {
+                debug!(token_id = token.id, "No undoable ops found for token");
+                Status::NotFound
+            }
+            e => {
+                error!(token_id = token.id, error = %e, "Failed to fetch last undoable op");
+                Status::InternalServerError
+            }
         })?;
 
     Ok(Json(fetch_details(conn, log)))
@@ -963,6 +1046,7 @@ pub fn my_last_undoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
 /// requesting token — i.e. the next op this user would want to redo.
 #[get("/logs/my-last-redoable")]
 pub fn my_last_redoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
+    debug!(token_id = token.id, "Fetching last redoable op");
     let conn = &mut establish_connection();
 
     let log: OpLog = op_log::table
@@ -973,8 +1057,14 @@ pub fn my_last_redoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
         .order(op_log::id.desc())
         .first(conn)
         .map_err(|e| match e {
-            diesel::result::Error::NotFound => Status::NotFound,
-            _ => Status::InternalServerError,
+            diesel::result::Error::NotFound => {
+                debug!(token_id = token.id, "No redoable ops found for token");
+                Status::NotFound
+            }
+            e => {
+                error!(token_id = token.id, error = %e, "Failed to fetch last redoable op");
+                Status::InternalServerError
+            }
         })?;
 
     Ok(Json(fetch_details(conn, log)))

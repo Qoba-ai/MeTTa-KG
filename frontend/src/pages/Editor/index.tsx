@@ -247,6 +247,13 @@ const App: Component = () => {
 
     const activePanel = () => panels().find(p => p.id === activePanelId())
 
+    // Transient namespace value while the user is typing in the toolbar selector.
+    // Kept separate from panels so that mid-input keystrokes don't trigger effects
+    // that depend on the panel namespace (e.g. the status subscription).
+    const [draftNamespace, setDraftNamespace] = createSignal<string | null>(null)
+    createEffect(on(activePanelId, () => setDraftNamespace(null), { defer: true }))
+    const displayedNamespace = () => draftNamespace() ?? activePanel()?.namespace ?? '/'
+
     // Editor Content State
     const [editorMode, setEditorMode] = createSignal<EditorMode>(
         (TOKEN || localStorage.getItem('rootToken')) ? EditorMode.EDIT : EditorMode.DEFAULT
@@ -1172,6 +1179,8 @@ const App: Component = () => {
                 }
             }
 
+            console.log(`data: ${JSON.stringify(data)}`)
+
             collectFromNode(data, relParts)
             setFocusTokens(newTokens)
             return result
@@ -1739,11 +1748,16 @@ const App: Component = () => {
                                         </button>
                                     </div>
                                     <NamespaceSelector
-                                        value={activePanel()?.namespace || '/'}
-                                        onInput={(ns) => {
-                                            setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, namespace: ns } : p))
+                                        value={displayedNamespace()}
+                                        onInput={(ns) => setDraftNamespace(ns)}
+                                        onCommit={() => {
+                                            const ns = draftNamespace()
+                                            if (ns !== null) {
+                                                setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, namespace: ns } : p))
+                                                setDraftNamespace(null)
+                                            }
+                                            read()
                                         }}
-                                        onCommit={() => read()}
                                         fetchExploreResults={fetchExploreResults}
                                         disabled={editorMode() !== EditorMode.EDIT}
                                     />

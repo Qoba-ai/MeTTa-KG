@@ -1,4 +1,5 @@
 use rocket::serde::json::{serde_json, Json};
+use tracing::{debug, error, info, warn};
 use rocket::State;
 use rocket::{get, http::Status, post, put};
 use serde::{Deserialize, Serialize};
@@ -17,7 +18,7 @@ use crate::{
     schema::{op_log, op_log_clear, op_log_import, op_log_transform},
 };
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
-use mork_client::{path_to_sexpr, ExploreResult, MorkClient, MorkError, NamespaceInfo};
+use mork_client::{ExploreResult, MorkClient, MorkError, NamespaceInfo};
 
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 
@@ -105,7 +106,8 @@ impl Permission {
     }
 }
 
-fn permission_error_to_status(_: PermissionError) -> Status {
+fn permission_error_to_status(e: PermissionError) -> Status {
+    warn!(error = ?e, "Permission denied");
     Status::Unauthorized
 }
 
@@ -121,9 +123,8 @@ fn permission_from_token(token: &Token) -> Permission {
 }
 
 fn mork_error_to_status(e: MorkError) -> Status {
-    match e {
-        _ => Status::InternalServerError,
-    }
+    error!(error = %e, "MORK request failed");
+    Status::InternalServerError
 }
 
 fn get_mork_client() -> MorkClient {
@@ -169,10 +170,11 @@ where
             Ok(val) => return Ok(val),
             Err(e) if is_lock_conflict(&e) && attempts < max_retries => {
                 attempts += 1;
-                // Wait for the path to become available before retrying
+                warn!(path = %path.display(), attempt = attempts, max_retries, "MORK lock conflict, retrying");
                 let _ = get_mork_client().wait_for_available(path, wait_ms).await;
             }
             Err(e) if is_lock_conflict(&e) => {
+                warn!(path = %path.display(), max_retries, "MORK lock conflict, giving up after max retries");
                 return Err(Status::Conflict);
             }
             Err(e) => return Err(mork_error_to_status(e)),
@@ -199,6 +201,7 @@ where
                 .await
             {
                 if entry.is_locked {
+                    debug!(path = %path.display(), ancestor = %ancestor.display(), "Rejecting: ancestor is locked");
                     return Err(Status::Conflict);
                 }
             }
@@ -210,6 +213,7 @@ where
             .await
         {
             if entry.descendants_locked > 0 {
+                debug!(path = %path.display(), "Rejecting: descendant paths are locked");
                 return Err(Status::Conflict);
             }
         }
@@ -281,6 +285,7 @@ pub async fn transform(
     if transformation.input_spaces.len() != transformation.patterns.len()
         || transformation.output_spaces.len() != transformation.templates.len()
     {
+        warn!(token_id = token.id, "Transform rejected: mismatched input/output counts");
         return Err(Status::BadRequest);
     }
 
@@ -290,6 +295,7 @@ pub async fn transform(
         .chain(transformation.templates.iter())
         .all(|s| mork_client::is_balanced(s));
     if !all_balanced {
+        warn!(token_id = token.id, "Transform rejected: unbalanced patterns or templates");
         return Err(Status::UnprocessableEntity);
     }
 
@@ -336,6 +342,14 @@ pub async fn transform(
 
     let operation_id = Uuid::new_v4();
 
+    info!(
+        token_id = token.id,
+        inputs = transformation.input_spaces.len(),
+        outputs = transformation.output_spaces.len(),
+        operation_id = %operation_id,
+        "Starting transform"
+    );
+
     let input_for_cmd: Vec<(std::path::PathBuf, String)> = input
         .iter()
         .map(|(p, pat)| (p.clone(), pat.to_string()))
@@ -364,6 +378,7 @@ pub async fn transform(
 
     match result {
         Ok(()) => {
+            info!(operation_id = %operation_id, "Transform command submitted successfully");
             if let Some(log_id) = insert_op_log("Transform", token.id) {
                 let input_json = serde_json::to_value(
                     transformation
@@ -410,11 +425,13 @@ pub async fn transform(
                     .await
                 {
                     Ok(()) => {
+                        info!(operation_id = %operation_id, "Transform complete");
                         let _ = bus_tx.send(SpaceEvent::TransformComplete {
                             path: event_path.clone(),
                         });
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        error!(operation_id = %operation_id, error = %e, "Transform timed out waiting for MORK");
                         let _ = bus_tx.send(SpaceEvent::TransformError {
                             path: event_path.clone(),
                             message: "Timed out waiting for transform to complete".into(),
@@ -426,6 +443,7 @@ pub async fn transform(
             Ok(Json(true))
         }
         Err(e) => {
+            error!(operation_id = %operation_id, status = %e, "Transform command failed");
             let _ = bus.0.send(SpaceEvent::TransformError {
                 path: event_path.clone(),
                 message: format!("{:?}", e),
@@ -448,7 +466,7 @@ pub async fn import_root(
     do_import(&token, &PathBuf::new(), &space, &bus.0, &lock_manager).await
 }
 
-#[post("/spaces/<path..>", data = "<space>")]
+#[post("/spaces/<path..>", rank = 5, data = "<space>")]
 pub async fn import(
     token: Token,
     path: PathBuf,
@@ -474,14 +492,16 @@ pub async fn do_import(
     perm.check_namespace(path)
         .map_err(permission_error_to_status)?;
 
+    info!(path = %path.display(), token_id = token.id, "Starting MeTTa import");
+
     let file_id = Uuid::new_v4();
     let file_path = format!("static/{}.metta", file_id);
     let mut file = File::create(&file_path).map_err(|e| {
-        eprintln!("Error creating temp file: {}", e);
+        error!(error = %e, "Error creating temp file");
         Status::InternalServerError
     })?;
     file.write_all(space.as_bytes()).map_err(|e| {
-        eprintln!("Error writing temp file: {}", e);
+        error!(error = %e, "Error writing temp file");
         Status::InternalServerError
     })?;
     drop(file);
@@ -516,6 +536,7 @@ pub async fn do_import(
 
     match cmd_result {
         Ok(()) => {
+            info!(path = %path.display(), operation_id = %operation_id, "Import command submitted successfully");
             if let Some(log_id) = insert_op_log("Import", token.id) {
                 let _ = diesel::insert_into(op_log_import::table)
                     .values(&OpLogImportInsert {
@@ -537,11 +558,13 @@ pub async fn do_import(
                     .await
                 {
                     Ok(()) => {
+                        info!(path = %monitor_path.display(), "Import complete");
                         let _ = bus_clone.send(SpaceEvent::ImportComplete {
                             path: event_path.clone(),
                         });
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        error!(path = %monitor_path.display(), error = %e, "Import timed out waiting for MORK");
                         let _ = bus_clone.send(SpaceEvent::ImportError {
                             path: event_path.clone(),
                             message: "Timed out waiting for import to complete".into(),
@@ -549,12 +572,12 @@ pub async fn do_import(
                     }
                 }
                 let _ = bus_clone.send(SpaceEvent::Unlocked { path: event_path });
-                // Clean up temp file
                 let _ = std::fs::remove_file(&file_path);
             });
             Ok(Json(operation_id.to_string()))
         }
         Err(status) => {
+            error!(path = %path.display(), status = %status, "Import command failed");
             let _ = bus.send(SpaceEvent::ImportError {
                 path: event_path.clone(),
                 message: "Import failed".into(),
@@ -600,6 +623,9 @@ async fn clear_inner(
     perm.require_write().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
+
+    info!(path = %path.display(), pattern = %pattern, token_id = token.id, "Starting space clear");
+
     let event_path = path_to_event_path(&path);
     let _ = bus.0.send(SpaceEvent::Locked {
         path: event_path.clone(),
@@ -626,6 +652,7 @@ async fn clear_inner(
 
     match cmd_result {
         Ok(()) => {
+            info!(path = %path.display(), operation_id = %operation_id, "Clear command submitted successfully");
             if let Some(log_id) = insert_op_log("Clear", token.id) {
                 let _ = diesel::insert_into(op_log_clear::table)
                     .values(&OpLogClearInsert {
@@ -650,11 +677,13 @@ async fn clear_inner(
                     .await
                 {
                     Ok(()) => {
+                        info!(path = %monitor_path.display(), "Clear complete");
                         let _ = bus_tx.send(SpaceEvent::ClearComplete {
                             path: event_path.clone(),
                         });
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        error!(path = %monitor_path.display(), error = %e, "Clear timed out waiting for MORK");
                         let _ = bus_tx.send(SpaceEvent::ClearError {
                             path: event_path.clone(),
                             message: "Timed out waiting for clear to complete".into(),
@@ -666,6 +695,7 @@ async fn clear_inner(
             Ok(Json(true))
         }
         Err(status) => {
+            error!(path = %path.display(), status = %status, "Clear command failed");
             let _ = bus.0.send(SpaceEvent::ClearError {
                 path: event_path.clone(),
                 message: "Clear failed".into(),
@@ -698,6 +728,7 @@ pub async fn explore(
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
     let depth = depth.unwrap_or(1).max(1);
+    debug!(path = %path.display(), focus_token = %focus_token, depth, "Explore request");
     with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
         let path = path.clone();
         let root = PathBuf::from("space");
@@ -728,6 +759,7 @@ pub async fn explore_namespaces(
     perm.require_read().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
+    debug!(path = %path.display(), "Explore namespaces request");
     with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
         let root = PathBuf::from("space");
 
@@ -760,6 +792,7 @@ pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, Status> {
     perm.require_read().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
+    debug!(path = %path.display(), "Count request");
     with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
         let path = path.clone();
 
@@ -788,6 +821,7 @@ pub async fn status(token: Token, path: PathBuf) -> Result<Json<serde_json::Valu
     perm.require_read().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
+    debug!(path = %path.display(), "Status request");
     let root = PathBuf::from("space");
     let augmented_path = if !path.as_os_str().is_empty() {
         root.join(path.clone())
@@ -822,6 +856,7 @@ pub async fn subtract(
     if req.input_spaces.len() != req.patterns.len()
         || req.output_spaces.len() != req.templates.len()
     {
+        warn!(token_id = token.id, "Subtract rejected: mismatched input/output counts");
         return Err(Status::BadRequest);
     }
 
@@ -831,8 +866,11 @@ pub async fn subtract(
         .chain(req.templates.iter())
         .all(|s| mork_client::is_balanced(s));
     if !all_balanced {
+        warn!(token_id = token.id, "Subtract rejected: unbalanced patterns or templates");
         return Err(Status::UnprocessableEntity);
     }
+
+    info!(token_id = token.id, inputs = req.input_spaces.len(), outputs = req.output_spaces.len(), "Starting subtract");
 
     let perm = permission_from_token(&token);
     perm.require_read().map_err(permission_error_to_status)?;
@@ -871,66 +909,68 @@ pub async fn subtract(
             .map_err(mork_error_to_status)?;
     }
 
+    info!(token_id = token.id, "Subtract complete");
     Ok(Json(true))
 }
 
 // ─── Import from uploaded files ───────────────────────────────────────────────
 
-#[post("/spaces/import/csv/<path..>?<parse_parameters..>", data = "<file>")]
+#[post("/spaces/import/csv/<path..>?<params..>", data = "<file>")]
 pub async fn import_csv(
     token: Token,
     path: PathBuf,
     file: rocket::fs::TempFile<'_>,
-    parse_parameters: crate::routes::translations::CSVParserParameters,
+    params: crate::routes::translations::CsvParams,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
-    let space = crate::routes::translations::create_from_csv(file, parse_parameters)
+    info!(path = %path.display(), token_id = token.id, "File import: CSV");
+    let space = crate::routes::translations::create_from_csv(file, params)
         .await?
         .into_inner();
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
-#[post("/spaces/import/nt/<path..>?<parse_parameters..>", data = "<file>")]
+#[post("/spaces/import/nt/<path..>", data = "<file>")]
 pub async fn import_nt(
     token: Token,
     path: PathBuf,
     file: rocket::fs::TempFile<'_>,
-    parse_parameters: crate::routes::translations::NTParserParameters,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
-    let space = crate::routes::translations::create_from_nt(file, parse_parameters)
+    info!(path = %path.display(), token_id = token.id, "File import: N-Triples");
+    let space = crate::routes::translations::create_from_nt(file)
         .await?
         .into_inner();
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
-#[post("/spaces/import/jsonld/<path..>?<parse_parameters..>", data = "<file>")]
+#[post("/spaces/import/jsonld/<path..>", data = "<file>")]
 pub async fn import_jsonld(
     token: Token,
     path: PathBuf,
     file: rocket::fs::TempFile<'_>,
-    parse_parameters: crate::routes::translations::JSONLDParserParameters,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
-    let space = crate::routes::translations::create_from_jsonld(file, parse_parameters)
+    info!(path = %path.display(), token_id = token.id, "File import: JSON-LD");
+    let space = crate::routes::translations::create_from_jsonld(file)
         .await?
         .into_inner();
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
-#[post("/spaces/import/n3/<path..>?<parse_parameters..>", data = "<file>")]
+#[post("/spaces/import/n3/<path..>", data = "<file>")]
 pub async fn import_n3(
     token: Token,
     path: PathBuf,
     file: rocket::fs::TempFile<'_>,
-    parse_parameters: crate::routes::translations::N3ParserParameters,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
-    let space = crate::routes::translations::create_from_n3(file, parse_parameters)
+    info!(path = %path.display(), token_id = token.id, "File import: N3");
+    let space = crate::routes::translations::create_from_n3(file)
         .await?
         .into_inner();
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
@@ -941,15 +981,15 @@ pub async fn import_n3(
 async fn fetch_url_bytes(url: &str) -> Result<Vec<u8>, Status> {
     let client = reqwest::Client::new();
     let resp = client.get(url).send().await.map_err(|e| {
-        eprintln!("Error fetching URL '{}': {}", url, e);
+        error!(error = %e, url, "Error fetching URL");
         Status::BadRequest
     })?;
     if !resp.status().is_success() {
-        eprintln!("URL fetch returned error status: {}", resp.status());
+        error!(status = %resp.status(), "URL fetch returned error status");
         return Err(Status::BadRequest);
     }
     resp.bytes().await.map(|b| b.to_vec()).map_err(|e| {
-        eprintln!("Error reading URL response bytes: {}", e);
+        error!(error = %e, "Error reading URL response bytes");
         Status::InternalServerError
     })
 }
@@ -961,72 +1001,32 @@ pub async fn import_url_metta(
     url: String,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<bool>, Status> {
-    let perm = permission_from_token(&token);
-    perm.require_write().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path)
-        .map_err(permission_error_to_status)?;
-    let event_path = path_to_event_path(&path);
-    let _ = bus.0.send(SpaceEvent::Locked {
-        path: event_path.clone(),
-    });
-
-    let result = get_mork_client().import(&path, "$", "$", &url).await;
-
-    match result {
-        Ok(_) => {
-            let bus_tx = bus.0.clone();
-            let monitor_path = path.clone();
-            tokio::spawn(async move {
-                match get_mork_client()
-                    .wait_for_available(&monitor_path, MONITOR_TIMEOUT_MS)
-                    .await
-                {
-                    Ok(()) => {
-                        let _ = bus_tx.send(SpaceEvent::ImportComplete {
-                            path: event_path.clone(),
-                        });
-                    }
-                    Err(_) => {
-                        let _ = bus_tx.send(SpaceEvent::ImportError {
-                            path: event_path.clone(),
-                            message: "Timed out waiting for import to complete".into(),
-                        });
-                    }
-                }
-                let _ = bus_tx.send(SpaceEvent::Unlocked { path: event_path });
-            });
-            Ok(Json(true))
-        }
-        Err(e) => {
-            let _ = bus.0.send(SpaceEvent::ImportError {
-                path: event_path.clone(),
-                message: format!("{:?}", e),
-            });
-            let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
-            Err(mork_error_to_status(e))
-        }
-    }
+) -> Result<Json<String>, Status> {
+    info!(url = %url, path = %path.display(), token_id = token.id, "URL import: MeTTa");
+    let bytes = fetch_url_bytes(&url).await?;
+    let space = String::from_utf8(bytes).map_err(|e| {
+        error!(error = %e, "URL content is not valid UTF-8");
+        Status::UnprocessableEntity
+    })?;
+    do_import(&token, &path, &space, &bus.0, lock_manager).await
 }
 
-#[get("/spaces/import/url/csv/<path..>?<url>&<parse_parameters..>")]
+#[get("/spaces/import/url/csv/<path..>?<url>&<params..>")]
 pub async fn import_url_csv(
     token: Token,
     path: PathBuf,
     url: String,
-    parse_parameters: crate::routes::translations::CSVParserParameters,
+    params: crate::routes::translations::CsvParams,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
+    info!(url = %url, path = %path.display(), token_id = token.id, "URL import: CSV");
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
-        "csv",
         bytes,
-        crate::routes::translations::ParserParameters {
-            csv_parameters: Some(parse_parameters),
-            nt_parameters: None,
-            jsonld_parameters: None,
-            n3_parameters: None,
+        crate::routes::translations::ParseFormat::Csv {
+            direction: params.direction as u8,
+            delimiter: params.delimiter,
         },
     )
     .await?;
@@ -1041,18 +1041,11 @@ pub async fn import_url_nt(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
+    info!(url = %url, path = %path.display(), token_id = token.id, "URL import: N-Triples");
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
-        "nt",
         bytes,
-        crate::routes::translations::ParserParameters {
-            csv_parameters: None,
-            nt_parameters: Some(crate::routes::translations::NTParserParameters {
-                dummy: String::new(),
-            }),
-            jsonld_parameters: None,
-            n3_parameters: None,
-        },
+        crate::routes::translations::ParseFormat::Nt,
     )
     .await?;
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
@@ -1066,18 +1059,11 @@ pub async fn import_url_jsonld(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
+    info!(url = %url, path = %path.display(), token_id = token.id, "URL import: JSON-LD");
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
-        "jsonld",
         bytes,
-        crate::routes::translations::ParserParameters {
-            csv_parameters: None,
-            nt_parameters: None,
-            jsonld_parameters: Some(crate::routes::translations::JSONLDParserParameters {
-                dummy: String::new(),
-            }),
-            n3_parameters: None,
-        },
+        crate::routes::translations::ParseFormat::JsonLd,
     )
     .await?;
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
@@ -1091,18 +1077,11 @@ pub async fn import_url_n3(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
 ) -> Result<Json<String>, Status> {
+    info!(url = %url, path = %path.display(), token_id = token.id, "URL import: N3");
     let bytes = fetch_url_bytes(&url).await?;
     let space = crate::routes::translations::create_from_bytes(
-        "n3",
         bytes,
-        crate::routes::translations::ParserParameters {
-            csv_parameters: None,
-            nt_parameters: None,
-            jsonld_parameters: None,
-            n3_parameters: Some(crate::routes::translations::N3ParserParameters {
-                dummy: String::new(),
-            }),
-        },
+        crate::routes::translations::ParseFormat::N3,
     )
     .await?;
     do_import(&token, &path, &space, &bus.0, &lock_manager).await

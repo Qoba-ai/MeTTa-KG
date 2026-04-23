@@ -5,17 +5,17 @@ use regex::Regex;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use rocket::{delete, get, post};
+use tracing::instrument;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::{db::establish_connection, model::Token, model::TokenInsert};
 
+#[instrument]
 #[get("/tokens")]
 pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
     let conn = &mut establish_connection();
 
-    // get all tokens recursively
-    // TODO: find a better way to do this
-    // TODO: verify that this sanitizes inputs (token.id is not user input, but still)
     let results = diesel::sql_query(
         "WITH RECURSIVE rectree AS (
         SELECT * 
@@ -33,15 +33,20 @@ pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
 
     match results {
         Ok(results) => Ok(Json(results)),
-        Err(_) => Err(Status::InternalServerError),
+        Err(e) => {
+            error!(error = %e, "Failed to get tokens recursively");
+            Err(Status::InternalServerError)
+        }
     }
 }
 
+#[instrument]
 #[get("/token")]
 pub fn get(token: Token) -> Result<Json<Token>, Status> {
     return Ok(Json(token));
 }
 
+#[instrument]
 #[post("/tokens", data = "<new_token>")]
 pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Status> {
     use crate::schema::tokens::dsl::*;
@@ -51,22 +56,29 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
     // permission"
 
     if !token.permission_share_write && new_token.permission_write {
-        println!("User tried to create write token without share_write permission");
+        warn!("User tried to create write token without share_write permission");
         return Err(Status::BadRequest);
     }
 
     if !token.permission_share_read && new_token.permission_read {
-        println!("User tried to create read token without share_read permission");
+        warn!("User tried to create read token without share_read permission");
         return Err(Status::BadRequest);
     }
 
+    if !token.namespace.ends_with("/") {
+        error!(
+            "User tried to create new token using token on namespace that does not end with '/'"
+        );
+        return Err(Status::InternalServerError);
+    }
+
     if !new_token.namespace.starts_with(&token.namespace) {
-        println!("User tried to create token for invalid namespace");
+        warn!("User tried to create token for invalid namespace");
         return Err(Status::BadRequest);
     }
 
     if !new_token.namespace.ends_with("/") {
-        println!("User tried to create token for invalid namespace (missing trailing '/')");
+        warn!("User tried to create token for invalid namespace (missing trailing '/')");
         return Err(Status::BadRequest);
     }
 
@@ -74,7 +86,7 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
         Regex::new(r"^/(([a-zA-Z0-9])+([a-zA-Z0-9]|\-|_)*([a-zA-Z0-9])/)*$").unwrap();
 
     if !namespace_regex.is_match(&new_token.namespace) {
-        println!("User tried to create token for invalid namespace (invalid characters)");
+        warn!("User tried to create token for invalid namespace (invalid characters)");
         return Err(Status::BadRequest);
     }
 
@@ -82,12 +94,12 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
     let token_name = match &new_token.name {
         Some(n) => n.clone(),
         None => {
-            println!("User tried to create token without a name");
+            warn!("User tried to create token without a name");
             return Err(Status::BadRequest);
         }
     };
     if token_name.len() < 3 || token_name.len() > 10 {
-        println!("User tried to create token with invalid name length");
+        warn!("User tried to create token with invalid name length");
         return Err(Status::BadRequest);
     }
 
@@ -99,10 +111,13 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
         .optional();
     match name_conflict {
         Ok(Some(_)) => {
-            println!("User tried to create token with duplicate name in namespace");
+            warn!("User tried to create token with duplicate name in namespace");
             return Err(Status::Conflict);
         }
-        Err(_) => return Err(Status::InternalServerError),
+        Err(e) => {
+            error!(error = %e, "Failed to check new token name uniqueness");
+            return Err(Status::InternalServerError);
+        }
         _ => {}
     }
 
@@ -127,11 +142,18 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
         .get_result(conn);
 
     match result {
-        Ok(token) => Ok(Json(token)),
-        Err(_) => Err(Status::InternalServerError),
+        Ok(token) => {
+            info!("Inserted token");
+            Ok(Json(token))
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to insert new token");
+            Err(Status::InternalServerError)
+        }
     }
 }
 
+#[instrument]
 #[delete("/tokens", data = "<token_ids>")]
 pub fn delete_batch(token: Token, token_ids: Json<Vec<i32>>) -> Result<Json<i32>, Status> {
     use crate::schema::tokens::dsl::*;
@@ -147,11 +169,15 @@ pub fn delete_batch(token: Token, token_ids: Json<Vec<i32>>) -> Result<Json<i32>
     .execute(conn);
 
     match result {
-        Ok(rows_affected) => Ok(Json(rows_affected as i32)),
+        Ok(rows_affected) => {
+            info!(n = rows_affected, "Deleted tokens");
+            Ok(Json(rows_affected as i32))
+        }
         Err(_) => Err(Status::NotFound),
     }
 }
 
+#[instrument]
 #[post("/tokens/<token_id>")]
 pub fn update(token: Token, token_id: i32) -> Result<Json<Token>, Status> {
     use crate::schema::tokens::dsl::*;
@@ -165,8 +191,14 @@ pub fn update(token: Token, token_id: i32) -> Result<Json<Token>, Status> {
             .get_result(conn);
 
         match result {
-            Ok(result) => Ok(Json(result)),
-            Err(_) => Err(Status::NotFound),
+            Ok(result) => {
+                info!(token_id, "Token code rotated (self)");
+                Ok(Json(result))
+            }
+            Err(e) => {
+                warn!(token_id, error = %e, "Token code rotation failed: not found");
+                Err(Status::NotFound)
+            }
         }
     } else {
         let result = diesel::update(tokens.filter(id.eq(token_id)).filter(parent.eq(&token.id)))
@@ -174,13 +206,19 @@ pub fn update(token: Token, token_id: i32) -> Result<Json<Token>, Status> {
             .get_result(conn);
 
         match result {
-            Ok(result) => Ok(Json(result)),
-            Err(_) => Err(Status::NotFound),
+            Ok(result) => {
+                info!(token_id, "Token code rotated");
+                Ok(Json(result))
+            }
+            Err(e) => {
+                warn!(token_id, error = %e, "Token code rotation failed: not found or not owned");
+                Err(Status::NotFound)
+            }
         }
     }
 }
 
-/// delete child token
+#[instrument]
 #[delete("/tokens/<token_id>")]
 pub fn delete(token: Token, token_id: i32) -> Status {
     use crate::schema::tokens::dsl::*;
@@ -190,7 +228,17 @@ pub fn delete(token: Token, token_id: i32) -> Status {
         diesel::delete(tokens.filter(id.eq(token_id)).filter(parent.eq(&token.id))).execute(conn);
 
     match result {
-        Ok(_) => Status::Ok,
-        Err(_) => Status::NotFound,
+        Ok(rows) if rows > 0 => {
+            info!(token_id, "Token deleted");
+            Status::Ok
+        }
+        Ok(_) => {
+            warn!(token_id, "Token delete: not found or not owned");
+            Status::NotFound
+        }
+        Err(e) => {
+            error!(token_id, error = %e, "Failed to delete token");
+            Status::NotFound
+        }
     }
 }

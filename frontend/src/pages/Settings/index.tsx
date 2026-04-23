@@ -1,14 +1,16 @@
 import type { Component } from 'solid-js'
-import { For } from 'solid-js'
+import { For, Show } from 'solid-js'
 import { VsSettings } from 'solid-icons/vs'
 import styles from './Settings.module.scss'
 import commonStyles from '../../styles/Common.module.scss'
 import { useTheme } from '../../ThemeContext'
-import { schemes } from '../../themes'
+import { themes } from '../../themes'
 import { Navbar } from '../../components/Navbar/Navbar'
 
 const Settings: Component = () => {
-    const { theme, setTheme, scheme, setScheme } = useTheme()
+    const { themeId, variantId, setThemeId, setVariantId } = useTheme()
+
+    const currentVariants = () => Object.entries(themes[themeId()]?.variants ?? {})
 
     return (
         <div class={styles.MainLayout}>
@@ -33,33 +35,11 @@ const Settings: Component = () => {
                     </h2>
 
                     <div style={{ "width": "100%", "display": "flex", "flex-direction": "column", "gap": "40px" }}>
-                        <section>
-                            <h3 style={{ "margin-bottom": "16px", "color": "var(--gold)" }}>System Theme</h3>
-                            <p style={{ "margin-bottom": "16px", "font-size": "0.9rem", "color": "var(--subtle)" }}>
-                                Choose between Light and Dark modes. Some colour schemes might override these settings.
-                            </p>
-                            <div style={{ "display": "flex", "gap": "16px" }}>
-                                <button
-                                    class={theme() === 'dark' ? commonStyles.Button : commonStyles.OutlineButton}
-                                    onclick={() => setTheme('dark')}
-                                    style={{ "flex": "1", "padding": "12px" }}
-                                >
-                                    Dark Mode
-                                </button>
-                                <button
-                                    class={theme() === 'light' ? commonStyles.Button : commonStyles.OutlineButton}
-                                    onclick={() => setTheme('light')}
-                                    style={{ "flex": "1", "padding": "12px" }}
-                                >
-                                    Light Mode
-                                </button>
-                            </div>
-                        </section>
 
                         <section>
-                            <h3 style={{ "margin-bottom": "8px", "color": "var(--gold)" }}>Colour Scheme</h3>
+                            <h3 style={{ "margin-bottom": "8px", "color": "var(--gold)" }}>Colour Theme</h3>
                             <p style={{ "margin-bottom": "20px", "font-size": "0.9rem", "color": "var(--subtle)" }}>
-                                Select a palette from the <a href="https://github.com/tinted-theming/schemes" target="_blank" style={{ "color": "var(--foam)" }}>tinted-theming</a> collection.
+                                Choose a colour theme family.
                             </p>
                             <div style={{
                                 "display": "grid",
@@ -68,32 +48,64 @@ const Settings: Component = () => {
                                 "padding": "8px",
                                 "border": "1px solid var(--highlight-low)",
                                 "border-radius": "8px",
-                                "background": "var(--base)"
                             }}>
-                                <For each={Object.entries(schemes)}>
-                                    {([id, s]) => (
+                                <For each={Object.entries(themes)}>
+                                    {([id, t]) => (
                                         <button
-                                            class={scheme() === id ? commonStyles.Button : commonStyles.OutlineButton}
-                                            onclick={() => setScheme(id)}
+                                            class={themeId() === id ? commonStyles.Button : commonStyles.OutlineButton}
+                                            onclick={() => setThemeId(id)}
                                             style={{
                                                 "font-size": "0.85rem",
                                                 "padding": "12px 8px",
                                                 "text-align": "center",
-                                                "background": scheme() === id ? "var(--love)" : "var(--surface)",
-                                                "color": scheme() === id ? "var(--text)" : "var(--text)",
-                                                "border-color": scheme() === id ? "var(--love)" : "var(--highlight-high)",
                                                 "white-space": "nowrap",
                                                 "overflow": "hidden",
                                                 "text-overflow": "ellipsis"
                                             }}
-                                            title={s.author}
                                         >
-                                            {s.name}
+                                            {t.name}
                                         </button>
                                     )}
                                 </For>
                             </div>
                         </section>
+
+                        <Show when={currentVariants().length > 1}>
+                            <section>
+                                <h3 style={{ "margin-bottom": "8px", "color": "var(--gold)" }}>Variant</h3>
+                                <p style={{ "margin-bottom": "20px", "font-size": "0.9rem", "color": "var(--subtle)" }}>
+                                    Choose a variant of <strong>{themes[themeId()]?.name}</strong>.
+                                </p>
+                                <div style={{
+                                    "display": "grid",
+                                    "grid-template-columns": "repeat(auto-fill, minmax(140px, 1fr))",
+                                    "gap": "12px",
+                                    "padding": "8px",
+                                    "border": "1px solid var(--highlight-low)",
+                                    "border-radius": "8px",
+                                }}>
+                                    <For each={currentVariants()}>
+                                        {([id, v]) => (
+                                            <button
+                                                class={variantId() === id ? commonStyles.Button : commonStyles.OutlineButton}
+                                                onclick={() => setVariantId(id)}
+                                                style={{
+                                                    "font-size": "0.85rem",
+                                                    "padding": "12px 8px",
+                                                    "text-align": "center",
+                                                    "white-space": "nowrap",
+                                                    "overflow": "hidden",
+                                                    "text-overflow": "ellipsis"
+                                                }}
+                                            >
+                                                {v.name}
+                                            </button>
+                                        )}
+                                    </For>
+                                </div>
+                            </section>
+                        </Show>
+
                     </div>
                 </div>
             </main>

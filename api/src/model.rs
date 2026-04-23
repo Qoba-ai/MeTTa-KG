@@ -1,12 +1,11 @@
 use crate::schema::{op_log, op_log_clear, op_log_copy, op_log_import, op_log_transform, tokens};
 use chrono::NaiveDateTime;
 use diesel::{Insertable, Queryable, QueryableByName, Selectable};
-use diesel::sql_types::{Int4, Timestamp, Varchar};
 use rocket::serde::{Deserialize, Serialize};
 
 // ─── Tokens ──────────────────────────────────────────────────────────────────
 
-#[derive(Serialize, Deserialize, Insertable, Clone)]
+#[derive(Debug, Serialize, Deserialize, Insertable, Clone)]
 #[diesel(table_name = tokens)]
 pub struct TokenInsert {
     pub code: String,
@@ -22,7 +21,7 @@ pub struct TokenInsert {
     pub name: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Queryable, Selectable, Clone, QueryableByName)]
+#[derive(Debug, Serialize, Deserialize, Queryable, Selectable, Clone, QueryableByName)]
 #[diesel(table_name = tokens)]
 pub struct Token {
     pub id: i32,

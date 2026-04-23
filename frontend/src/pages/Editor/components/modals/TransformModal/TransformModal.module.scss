@@ -86,4 +86,15 @@
         color: var(--foam);
         transform: scale(1.1);
     }
+
+    &:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+
+        &:hover {
+            background: transparent;
+            color: var(--subtle);
+            transform: none;
+        }
+    }
 }

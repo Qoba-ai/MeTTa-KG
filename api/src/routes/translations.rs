@@ -1,19 +1,21 @@
+use csv_sexpr::csv_modes::{CsvMode, CsvModeConfig};
+use csv_sexpr::jsonld::JsonLdConfig;
+use csv_sexpr::n3::N3Config;
+use csv_sexpr::rdf::NtConfig;
+use csv_sexpr::{parse, FormatConfig};
 use rocket::form::{FromForm, FromFormField};
 use rocket::fs::TempFile;
 use rocket::http::Status;
 use rocket::post;
 use rocket::serde::json::Json;
-use std::env;
 use std::fs;
-use std::process::Command;
+use tracing::{error, info};
 use uuid::Uuid;
 
-fn get_translations_path() -> String {
-    env::var("TRANSLATIONS_RELATIVE_PATH").unwrap_or_else(|_| "../translations".to_string())
-}
+// ── Form types (query-string parsing only) ────────────────────────────────────
 
 #[derive(FromFormField, Copy, Clone)]
-pub enum CSVParseDirection {
+pub enum CsvDirection {
     Row = 1,
     Column = 2,
     CellUnlabeled = 3,
@@ -21,332 +23,200 @@ pub enum CSVParseDirection {
 }
 
 #[derive(FromForm, Clone)]
-pub struct CSVParserParameters {
-    pub direction: CSVParseDirection,
+pub struct CsvParams {
+    pub direction: CsvDirection,
     pub delimiter: String,
 }
 
-#[derive(FromForm, Clone)]
-pub struct NTParserParameters {
-    // TODO: figure out how to deal with this normally empty struct
-    pub dummy: String,
+// ── Internal format discriminant ──────────────────────────────────────────────
+
+pub enum ParseFormat {
+    Csv { direction: u8, delimiter: String },
+    Nt,
+    JsonLd,
+    N3,
 }
 
-#[derive(FromForm, Clone)]
-pub struct N3ParserParameters {
-    // TODO: figure out how to deal with this normally empty struct
-    pub dummy: String,
+impl ParseFormat {
+    fn ext(&self) -> &'static str {
+        match self {
+            Self::Csv { .. } => "csv",
+            Self::Nt => "nt",
+            Self::JsonLd => "jsonld",
+            Self::N3 => "n3",
+        }
+    }
+
+    fn translate(&self, bytes: &[u8]) -> Result<String, Status> {
+        match self {
+            Self::Csv {
+                direction,
+                delimiter,
+            } => translate_csv(bytes, *direction, delimiter),
+            Self::Nt => translate_nt(bytes),
+            Self::JsonLd => translate_jsonld(bytes),
+            Self::N3 => translate_n3(bytes),
+        }
+    }
 }
 
-#[derive(FromForm, Clone)]
-pub struct JSONLDParserParameters {
-    // TODO: figure out how to deal with this normally empty struct
-    pub dummy: String,
+// ── In-process translators (csv_sexpr) ────────────────────────────────────────
+
+fn translate_csv(bytes: &[u8], direction: u8, delimiter: &str) -> Result<String, Status> {
+    let content = std::str::from_utf8(bytes).map_err(|e| {
+        error!(error = %e, "CSV file is not valid UTF-8");
+        Status::UnprocessableEntity
+    })?;
+    let mode = match direction {
+        1 => CsvMode::RowBased,
+        2 => CsvMode::ColumnBased,
+        3 => CsvMode::CellUnlabeled,
+        4 => CsvMode::CellLabeled,
+        _ => {
+            error!(direction, "Invalid CSV direction");
+            return Err(Status::BadRequest);
+        }
+    };
+    let delim_byte = delimiter.bytes().next().unwrap_or(b',');
+    let cfg = FormatConfig::Csv(CsvModeConfig {
+        mode,
+        delimiter: delim_byte,
+        ..Default::default()
+    });
+    parse(&cfg, content)
+        .map(|exprs| {
+            exprs
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .map_err(|e| {
+            error!(error = %e, "CSV translation failed");
+            Status::InternalServerError
+        })
 }
 
-#[derive(FromForm, Clone)]
-pub struct ParserParameters {
-    pub csv_parameters: Option<CSVParserParameters>,
-    pub nt_parameters: Option<NTParserParameters>,
-    pub jsonld_parameters: Option<JSONLDParserParameters>,
-    pub n3_parameters: Option<N3ParserParameters>,
+fn translate_nt(bytes: &[u8]) -> Result<String, Status> {
+    let content = std::str::from_utf8(bytes).map_err(|e| {
+        error!(error = %e, "NT file is not valid UTF-8");
+        Status::UnprocessableEntity
+    })?;
+    let cfg = FormatConfig::Nt(NtConfig::default());
+    parse(&cfg, content)
+        .map(|exprs| {
+            exprs
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .map_err(|e| {
+            error!(error = %e, "NT translation failed");
+            Status::InternalServerError
+        })
 }
 
-pub async fn create(
-    ext: &str,
-    mut file: TempFile<'_>,
-    parse_parameters: ParserParameters,
-) -> Result<String, Status> {
-    let id = Uuid::new_v4();
+fn translate_jsonld(bytes: &[u8]) -> Result<String, Status> {
+    let content = std::str::from_utf8(bytes).map_err(|e| {
+        error!(error = %e, "JSON-LD file is not valid UTF-8");
+        Status::UnprocessableEntity
+    })?;
+    let cfg = FormatConfig::JsonLd(JsonLdConfig::default());
+    parse(&cfg, content)
+        .map(|exprs| {
+            exprs
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .map_err(|e| {
+            error!(error = %e, "JSON-LD translation failed");
+            Status::InternalServerError
+        })
+}
 
+fn translate_n3(bytes: &[u8]) -> Result<String, Status> {
+    let content = std::str::from_utf8(bytes).map_err(|e| {
+        error!(error = %e, "N3 file is not valid UTF-8");
+        Status::UnprocessableEntity
+    })?;
+    let cfg = FormatConfig::N3(N3Config::default());
+    parse(&cfg, content)
+        .map(|exprs| {
+            exprs
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .map_err(|e| {
+            error!(error = %e, "N3 translation failed");
+            Status::InternalServerError
+        })
+}
+
+// ── Shared entry points ───────────────────────────────────────────────────────
+
+pub async fn create(mut file: TempFile<'_>, fmt: ParseFormat) -> Result<String, Status> {
     if let Err(e) = fs::create_dir_all("temp") {
-        eprintln!("Failed to create temp directory: {}", e);
+        error!(error = %e, "Failed to create temp directory");
+        return Err(Status::InternalServerError);
+    }
+    let path_with_ext = format!("temp/translations-{}.{}", Uuid::new_v4(), fmt.ext());
+
+    if let Err(e) = file.persist_to(&path_with_ext).await {
+        error!(error = %e, "Failed to persist uploaded file");
         return Err(Status::InternalServerError);
     }
 
-    let path = format!("temp/translations-{}", id);
-
-    let path_with_extension = format!("{}.{}", path, ext);
-
-    let result = file.persist_to(&path_with_extension).await;
-
-    match result {
-        Ok(_) => (),
-        Err(err) => {
-            eprintln!("Failed to persist file: {}", err);
-            return Err(Status::InternalServerError);
-        }
-    }
-
-    let status = match parse_parameters {
-        ParserParameters {
-            csv_parameters: Some(parameters),
-            nt_parameters: None,
-            jsonld_parameters: None,
-            n3_parameters: None,
-        } => {
-            let direction = (parameters.direction as u8).to_string();
-            let delimiter = parameters.delimiter;
-
-            let translations_path = get_translations_path();
-            Command::new("python3")
-                .arg(format!("{}/src/csv_to_metta_run.py", translations_path))
-                .arg(&path)
-                .arg(&direction)
-                .arg(&delimiter)
-                .status()
-        }
-        ParserParameters {
-            csv_parameters: None,
-            nt_parameters: Some(_parameters),
-            jsonld_parameters: None,
-            n3_parameters: None,
-        } => {
-            let translations_path = get_translations_path();
-            Command::new("python3")
-                .arg(format!("{}/src/nt_to_metta_run.py", translations_path))
-                .arg(&path)
-                .status()
-        }
-        ParserParameters {
-            csv_parameters: None,
-            nt_parameters: None,
-            jsonld_parameters: Some(_parameters),
-            n3_parameters: None,
-        } => {
-            let translations_path = get_translations_path();
-            Command::new("python3")
-                .arg(format!("{}/src/jsonld_to_metta_run.py", translations_path))
-                .arg(&path)
-                .status()
-        }
-        ParserParameters {
-            csv_parameters: None,
-            nt_parameters: None,
-            jsonld_parameters: None,
-            n3_parameters: Some(_parameters),
-        } => {
-            let translations_path = get_translations_path();
-            Command::new("python3")
-                .arg(format!("{}/src/n3_to_metta_run.py", translations_path))
-                .arg(&path)
-                .status()
-        }
-        _ => {
-            eprintln!("Invalid parser parameters combination");
+    let bytes = match fs::read(&path_with_ext) {
+        Ok(b) => b,
+        Err(e) => {
+            error!(error = %e, "Failed to read uploaded file");
+            let _ = fs::remove_file(&path_with_ext);
             return Err(Status::InternalServerError);
         }
     };
+    let _ = fs::remove_file(&path_with_ext);
 
-    match status {
-        Ok(s) if s.success() => (),
-        Ok(s) => {
-            eprintln!("Python translation script failed with status: {}", s);
-            return Err(Status::InternalServerError);
-        }
-        Err(e) => {
-            eprintln!("Failed to execute python translation script: {}", e);
-            return Err(Status::InternalServerError);
-        }
-    };
-
-    let contents = fs::read_to_string(format!("{}-output.metta", path));
-
-    match contents {
-        Ok(contents) => {
-            // Clean up files
-            let _ = fs::remove_file(&path_with_extension);
-            let _ = fs::remove_file(format!("{}-output.metta", path));
-            Ok(contents)
-        }
-        Err(e) => {
-            eprintln!("Failed to read translation output: {}", e);
-            Err(Status::InternalServerError)
-        }
-    }
+    fmt.translate(&bytes)
 }
 
-#[post("/translations/csv?<parse_parameters..>", data = "<file>")]
+pub async fn create_from_bytes(bytes: Vec<u8>, fmt: ParseFormat) -> Result<String, Status> {
+    fmt.translate(&bytes)
+}
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+
 pub async fn create_from_csv(
     file: TempFile<'_>,
-    parse_parameters: CSVParserParameters,
+    params: CsvParams,
 ) -> Result<Json<String>, Status> {
-    println!("Received CSV translation request: direction={:?}, delimiter='{}'", parse_parameters.direction as u8, parse_parameters.delimiter);
+    info!(direction = params.direction as u8, delimiter = %params.delimiter, "Received CSV translation request");
     create(
-        "csv",
         file,
-        ParserParameters {
-            csv_parameters: Some(parse_parameters),
-            nt_parameters: None,
-            jsonld_parameters: None,
-            n3_parameters: None,
+        ParseFormat::Csv {
+            direction: params.direction as u8,
+            delimiter: params.delimiter,
         },
     )
     .await
-    .map(|r| Json(r))
+    .map(Json)
 }
 
-#[post("/translations/nt?<parse_parameters..>", data = "<file>")]
-pub async fn create_from_nt(
-    file: TempFile<'_>,
-    parse_parameters: NTParserParameters,
-) -> Result<Json<String>, Status> {
-    println!("Received NT translation request");
-    create(
-        "nt",
-        file,
-        ParserParameters {
-            csv_parameters: None,
-            nt_parameters: Some(parse_parameters),
-            jsonld_parameters: None,
-            n3_parameters: None,
-        },
-    )
-    .await
-    .map(|r| Json(r))
+pub async fn create_from_nt(file: TempFile<'_>) -> Result<Json<String>, Status> {
+    info!("Received NT translation request");
+    create(file, ParseFormat::Nt).await.map(Json)
 }
 
-#[post("/translations/jsonld?<parse_parameters..>", data = "<file>")]
-pub async fn create_from_jsonld(
-    file: TempFile<'_>,
-    parse_parameters: JSONLDParserParameters,
-) -> Result<Json<String>, Status> {
-    println!("Received JSONLD translation request");
-    create(
-        "jsonld",
-        file,
-        ParserParameters {
-            csv_parameters: None,
-            nt_parameters: None,
-            jsonld_parameters: Some(parse_parameters),
-            n3_parameters: None,
-        },
-    )
-    .await
-    .map(|r| Json(r))
+pub async fn create_from_jsonld(file: TempFile<'_>) -> Result<Json<String>, Status> {
+    info!("Received JSONLD translation request");
+    create(file, ParseFormat::JsonLd).await.map(Json)
 }
 
-pub async fn create_from_bytes(
-    ext: &str,
-    bytes: Vec<u8>,
-    parse_parameters: ParserParameters,
-) -> Result<String, Status> {
-    let id = Uuid::new_v4();
-
-    if let Err(e) = fs::create_dir_all("temp") {
-        eprintln!("Failed to create temp directory: {}", e);
-        return Err(Status::InternalServerError);
-    }
-
-    let path = format!("temp/translations-{}", id);
-    let path_with_extension = format!("{}.{}", path, ext);
-
-    if let Err(e) = fs::write(&path_with_extension, &bytes) {
-        eprintln!("Failed to write bytes to temp file: {}", e);
-        return Err(Status::InternalServerError);
-    }
-
-    let status = match parse_parameters {
-        ParserParameters {
-            csv_parameters: Some(parameters),
-            nt_parameters: None,
-            jsonld_parameters: None,
-            n3_parameters: None,
-        } => {
-            let direction = (parameters.direction as u8).to_string();
-            let delimiter = parameters.delimiter;
-            let translations_path = get_translations_path();
-            Command::new("python3")
-                .arg(format!("{}/src/csv_to_metta_run.py", translations_path))
-                .arg(&path)
-                .arg(&direction)
-                .arg(&delimiter)
-                .status()
-        }
-        ParserParameters {
-            csv_parameters: None,
-            nt_parameters: Some(_),
-            jsonld_parameters: None,
-            n3_parameters: None,
-        } => {
-            let translations_path = get_translations_path();
-            Command::new("python3")
-                .arg(format!("{}/src/nt_to_metta_run.py", translations_path))
-                .arg(&path)
-                .status()
-        }
-        ParserParameters {
-            csv_parameters: None,
-            nt_parameters: None,
-            jsonld_parameters: Some(_),
-            n3_parameters: None,
-        } => {
-            let translations_path = get_translations_path();
-            Command::new("python3")
-                .arg(format!("{}/src/jsonld_to_metta_run.py", translations_path))
-                .arg(&path)
-                .status()
-        }
-        ParserParameters {
-            csv_parameters: None,
-            nt_parameters: None,
-            jsonld_parameters: None,
-            n3_parameters: Some(_),
-        } => {
-            let translations_path = get_translations_path();
-            Command::new("python3")
-                .arg(format!("{}/src/n3_to_metta_run.py", translations_path))
-                .arg(&path)
-                .status()
-        }
-        _ => {
-            eprintln!("Invalid parser parameters combination");
-            return Err(Status::InternalServerError);
-        }
-    };
-
-    match status {
-        Ok(s) if s.success() => (),
-        Ok(s) => {
-            eprintln!("Python translation script failed with status: {}", s);
-            return Err(Status::InternalServerError);
-        }
-        Err(e) => {
-            eprintln!("Failed to execute python translation script: {}", e);
-            return Err(Status::InternalServerError);
-        }
-    };
-
-    let contents = fs::read_to_string(format!("{}-output.metta", path));
-    match contents {
-        Ok(contents) => {
-            let _ = fs::remove_file(&path_with_extension);
-            let _ = fs::remove_file(format!("{}-output.metta", path));
-            Ok(contents)
-        }
-        Err(e) => {
-            eprintln!("Failed to read translation output: {}", e);
-            Err(Status::InternalServerError)
-        }
-    }
-}
-
-#[post("/translations/n3?<parse_parameters..>", data = "<file>")]
-pub async fn create_from_n3(
-    file: TempFile<'_>,
-    parse_parameters: N3ParserParameters,
-) -> Result<Json<String>, Status> {
-    println!("Received N3 translation request");
-    create(
-        "n3",
-        file,
-        ParserParameters {
-            csv_parameters: None,
-            nt_parameters: None,
-            jsonld_parameters: None,
-            n3_parameters: Some(parse_parameters),
-        },
-    )
-    .await
-    .map(|r| Json(r))
+pub async fn create_from_n3(file: TempFile<'_>) -> Result<Json<String>, Status> {
+    info!("Received N3 translation request");
+    create(file, ParseFormat::N3).await.map(Json)
 }

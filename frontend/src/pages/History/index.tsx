@@ -409,7 +409,7 @@ const History: Component = () => {
     const [error, setError]             = createSignal<string | null>(null)
     const [selectedEntry, setSelectedEntry] = createSignal<OpLogEntry | null>(null)
     const [actionBusy, setActionBusy]   = createSignal(false)
-    const [layoutMode, setLayoutMode]   = createSignal<'timeline' | 'dependency' | 'compact'>('timeline')
+    const [layoutMode, setLayoutMode]   = createSignal<'timeline' | 'compact'>('timeline')
     const [filterNs,   setFilterNs]     = createSignal('')
     const [tokenMap,   setTokenMap]     = createSignal<Map<number, string | null>>(new Map())
     const [filterTokenName, setFilterTokenName] = createSignal('')
@@ -631,24 +631,6 @@ const History: Component = () => {
         setTimeout(() => cy?.fit(undefined, 60), dur + 30)
     }
 
-    /** Dependency: force-directed cose layout emphasising the causal DAG. */
-    const applyDependency = (dur = 500) => {
-        if (!cy) return
-        cy.layout({
-            name:              'cose',
-            animate:           dur > 0,
-            animationDuration: dur,
-            nodeRepulsion:     8000,
-            idealEdgeLength:   180,
-            edgeElasticity:    0.4,
-            gravity:           0.3,
-            numIter:           1000,
-            padding:           60,
-            randomize:         false,
-        } as any).run()
-        setTimeout(() => cy?.fit(undefined, 60), dur + 30)
-    }
-
     /** Compact: dense vertical list sorted by time, edges hidden. */
     const applyCompact = (dur = 300) => {
         if (!cy) return
@@ -668,9 +650,8 @@ const History: Component = () => {
 
     /** Dispatch to the correct apply function (used by initGraph and switchMode). */
     const applyMode = (mode: ReturnType<typeof layoutMode>, dur?: number) => {
-        if      (mode === 'timeline')   applyTimeline(dur)
-        else if (mode === 'dependency') applyDependency(dur)
-        else if (mode === 'compact')    applyCompact(dur)
+        if   (mode === 'timeline') applyTimeline(dur)
+        else                       applyCompact(dur)
     }
 
     /** Switch the active display mode. */
@@ -794,9 +775,8 @@ const History: Component = () => {
                 <div class={styles.ModeBar}>
                     {(
                         [
-                            ['timeline',   'Timeline',   'Left → right by timestamp, children fanned vertically'],
-                            ['dependency', 'Dependency', 'Force-directed layout emphasising the causal graph'],
-                            ['compact',    'Compact',    'Dense vertical list — edges hidden'],
+                            ['timeline', 'Timeline', 'Left → right by timestamp, children fanned vertically'],
+                            ['compact',  'Compact',  'Dense vertical list — edges hidden'],
                         ] as const
                     ).map(([mode, label, tip]) => (
                         <button

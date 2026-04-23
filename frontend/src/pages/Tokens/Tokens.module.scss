@@ -632,28 +632,35 @@
 
     th:nth-child(3),
     td:nth-child(3) {
+        // Creation
+        width: 80px;
+        max-width: 80px;
+    }
+
+    th:nth-child(4),
+    td:nth-child(4) {
         // Code
         width: 200px;
         min-width: 180px;
     }
 
-    th:nth-child(4),
-    td:nth-child(4) {
+    th:nth-child(5),
+    td:nth-child(5) {
         // Namespace
         width: 150px;
         max-width: 150px;
     }
 
-    th:nth-child(5),
-    td:nth-child(5) {
+    th:nth-child(6),
+    td:nth-child(6) {
         // Description
         width: 180px;
         max-width: 180px;
     }
 
     // Permissions column
-    th:nth-child(6),
-    td:nth-child(6) {
+    th:nth-child(7),
+    td:nth-child(7) {
         width: 200px;
         max-width: 200px;
         padding: 14px 20px 14px 16px;
@@ -669,7 +676,6 @@
 
     // Creation date styling
     td:nth-child(2) {
-        color: var(--text);
         font-weight: 500;
         font-size: 0.8rem;
     }

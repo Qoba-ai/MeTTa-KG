@@ -5,6 +5,108 @@ import { VsCloudUpload, VsFile, VsLink, VsSymbolString, VsChevronRight, VsChevro
 import { AiOutlineFolder, AiOutlineFolderOpen, AiOutlineFile } from "solid-icons/ai";
 import { ImportFormat, ImportSource, ImportCSVDirection } from "../../../../../types";
 import { NamespaceSelector } from "../../NamespaceSelector/NamespaceSelector";
+import { isBalancedSexpr } from "../../../lib/editorUtils";
+
+function validateMetta(text: string): string | null {
+    if (!isBalancedSexpr(text)) return "Unbalanced parentheses";
+    return null;
+}
+
+function validateCSV(text: string, delimiter: string): string | null {
+    const lines = text.split("\n").filter((l) => l.trim() !== "");
+    if (lines.length === 0) return null;
+
+    const parseRow = (line: string): string[] => {
+        const result: string[] = [];
+        let current = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+                if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+                else inQuotes = !inQuotes;
+            } else if (ch === delimiter && !inQuotes) {
+                result.push(current); current = "";
+            } else {
+                current += ch;
+            }
+        }
+        result.push(current);
+        return result;
+    };
+
+    const counts = lines.map((l) => parseRow(l).length);
+    const expected = counts[0];
+    const bad = counts.findIndex((c, i) => i > 0 && c !== expected);
+    if (bad >= 0)
+        return `Line ${bad + 1}: expected ${expected} column(s), got ${counts[bad]}`;
+    return null;
+}
+
+function validateJSONLD(text: string): string | null {
+    try {
+        const parsed = JSON.parse(text);
+        if (typeof parsed !== "object" || parsed === null)
+            return "JSON-LD must be a JSON object or array";
+        return null;
+    } catch (e: any) {
+        return `Invalid JSON: ${e.message}`;
+    }
+}
+
+function validateNTriples(text: string): string | null {
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || line.startsWith("#")) continue;
+        if (!line.endsWith("."))
+            return `Line ${i + 1}: triple must end with '.'`;
+        const content = line.slice(0, -1).trim();
+        const subjMatch = content.match(/^(<[^>]+>|_:\S+)\s+/);
+        if (!subjMatch)
+            return `Line ${i + 1}: invalid subject (expected IRI or blank node)`;
+        const afterSubj = content.slice(subjMatch[0].length);
+        const predMatch = afterSubj.match(/^<[^>]+>\s+/);
+        if (!predMatch)
+            return `Line ${i + 1}: invalid predicate (expected IRI)`;
+        const obj = afterSubj.slice(predMatch[0].length).trim();
+        if (!obj.match(/^(<[^>]+>|_:\S+|")/))
+            return `Line ${i + 1}: invalid object`;
+    }
+    return null;
+}
+
+function validateN3(text: string): string | null {
+    let braces = 0, brackets = 0;
+    let inString = false, inLineComment = false;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (inLineComment) { if (ch === "\n") inLineComment = false; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (ch === "#") { inLineComment = true; continue; }
+        if (ch === "{") braces++;
+        else if (ch === "}") { braces--; if (braces < 0) return "Unexpected '}'"; }
+        else if (ch === "[") brackets++;
+        else if (ch === "]") { brackets--; if (brackets < 0) return "Unexpected ']'"; }
+    }
+    if (braces !== 0) return "Unbalanced curly braces '{'";
+    if (brackets !== 0) return "Unbalanced square brackets '['";
+    return null;
+}
+
+function validateImportText(text: string, format: ImportFormat, delimiter: string): string | null {
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    switch (format) {
+        case ImportFormat.METTA:    return validateMetta(trimmed);
+        case ImportFormat.CSV:      return validateCSV(trimmed, delimiter);
+        case ImportFormat.JSONLD:   return validateJSONLD(trimmed);
+        case ImportFormat.NTRIPLES: return validateNTriples(trimmed);
+        case ImportFormat.N3:       return validateN3(trimmed);
+        default:                    return null;
+    }
+}
 
 const GITHUB_TREE_URL =
     "https://api.github.com/repos/trueagi-io/metta-examples/git/trees/main?recursive=1";
@@ -232,12 +334,19 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
         if (file) props.onFileSelect(file);
     };
 
+    const textValidationError = () => {
+        const fmt = props.format();
+        const text = props.importText();
+        if (!fmt || !text.trim()) return null;
+        return validateImportText(text, fmt, props.csvDelimiter());
+    };
+
     const isImportEnabled = () => {
         if (props.isTranslating()) return false;
         const src = props.importSource();
         if (src === ImportSource.FILE) return !!props.activeFile() && !!props.format();
         if (src === ImportSource.URL) return !!props.importUrl().trim() && !!props.format();
-        if (src === ImportSource.TEXT) return !!props.importText().trim() && !!props.format();
+        if (src === ImportSource.TEXT) return !!props.importText().trim() && !!props.format() && !textValidationError();
         if (src === ImportSource.EXAMPLES) return !!props.importExamplePath();
         return false;
     };
@@ -351,16 +460,6 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
                     {/* URL source */}
                     <Show when={props.importSource() === ImportSource.URL}>
                         <div class={styles.ImportSettingsContainer}>
-                            <div class={styles.ImportFieldGroup}>
-                                <label>URL</label>
-                                <input
-                                    class={styles.ImportInput}
-                                    type="url"
-                                    placeholder="https://example.com/data.metta"
-                                    value={props.importUrl()}
-                                    onInput={(e) => props.setImportUrl(e.currentTarget.value)}
-                                />
-                            </div>
                             <FormatSettings
                                 format={props.format}
                                 setManualFormat={props.setManualFormat}
@@ -370,6 +469,16 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
                                 setCsvDelimiter={props.setCsvDelimiter}
                                 showAutoDetect={false}
                             />
+                            <div class={styles.ImportFieldGroup}>
+                                <label>URL</label>
+                                <input
+                                    class={styles.ImportInput}
+                                    type="url"
+                                    placeholder={`https://example.com/data.${props.format() ?? 'metta'}`}
+                                    value={props.importUrl()}
+                                    onInput={(e) => props.setImportUrl(e.currentTarget.value)}
+                                />
+                            </div>
                         </div>
                     </Show>
 
@@ -389,10 +498,20 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
                                 <label>Content</label>
                                 <textarea
                                     class={styles.ImportTextArea}
-                                    placeholder={props.format() === ImportFormat.CSV ? "col1,col2\nval1,val2" : "(MyAtom (has value))"}
+                                    placeholder={
+                                        props.format() === ImportFormat.CSV ? "col1,col2\nval1,val2" :
+                                        props.format() === ImportFormat.NTRIPLES ? "<http://example.org/subject> <http://example.org/predicate> <http://example.org/object> ." :
+                                        props.format() === ImportFormat.N3 ? "@prefix ex: <http://example.org/> .\nex:subject ex:predicate ex:object ." :
+                                        props.format() === ImportFormat.JSONLD ? '{\n  "@context": "http://schema.org/",\n  "@type": "Thing",\n  "name": "Example"\n}' :
+                                        "(MyAtom (has value))"
+                                    }
                                     value={props.importText()}
                                     onInput={(e) => props.setImportText(e.currentTarget.value)}
+                                    style={textValidationError() ? { border: "1px solid var(--love)" } : {}}
                                 />
+                                <Show when={textValidationError()}>
+                                    <span style={{ color: "var(--love)", "font-size": "0.75rem" }}>{textValidationError()}</span>
+                                </Show>
                             </div>
                         </div>
                     </Show>

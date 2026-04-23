@@ -8,6 +8,7 @@ use rocket::State;
 use rocket_ws as ws;
 use std::path::PathBuf;
 use tokio::sync::broadcast;
+use tracing::{debug, error, info, warn};
 
 fn validate_token_code(token_code: &str) -> Option<crate::model::Token> {
     use crate::schema::tokens::dsl::*;
@@ -19,19 +20,13 @@ fn validate_token_code(token_code: &str) -> Option<crate::model::Token> {
         .ok()
 }
 
-/// Returns true if the event path falls within the subscriber's namespace.
-/// Namespace is like "/" (root) or "/foo/bar/".
-/// Event path is like "/" or "/foo/bar/baz/".
 fn event_in_namespace(event: &SpaceEvent, namespace: &str) -> bool {
-    // Root namespace receives all events
     if namespace == "/" || namespace.is_empty() {
         return true;
     }
     event.path().starts_with(namespace)
 }
 
-/// Global health/ping WebSocket — no token required.
-/// Sends `{"type":"ping"}` every 5 seconds.
 #[rocket::get("/ws/ping")]
 pub fn ws_ping(ws: ws::WebSocket, shutdown: &State<crate::Shutdown>) -> ws::Channel<'static> {
     use rocket::tokio::time::{interval, Duration};
@@ -42,7 +37,6 @@ pub fn ws_ping(ws: ws::WebSocket, shutdown: &State<crate::Shutdown>) -> ws::Chan
         Box::pin(async move {
             let (mut sink, mut source) = stream.split();
             let mut ticker = interval(Duration::from_secs(5));
-            // Send an immediate ping so the client knows it's connected
             let _ = sink
                 .send(ws::Message::Text(
                     serde_json::json!({"type": "ping"}).to_string(),
@@ -75,9 +69,6 @@ pub fn ws_ping(ws: ws::WebSocket, shutdown: &State<crate::Shutdown>) -> ws::Chan
     })
 }
 
-/// Authenticated space-event WebSocket.
-/// Connect with `?token_code=<your-token>`.
-/// Emits JSON events for spaces within the token's namespace.
 #[rocket::get("/ws/events?<token_code>")]
 pub fn ws_events(
     ws: ws::WebSocket,
@@ -85,11 +76,17 @@ pub fn ws_events(
     bus: &State<EventBus>,
     shutdown: &State<crate::Shutdown>,
 ) -> Result<ws::Channel<'static>, Status> {
-    let token = validate_token_code(&token_code).ok_or(Status::Unauthorized)?;
+    let token = validate_token_code(&token_code).ok_or_else(|| {
+        warn!("WebSocket events connection rejected: invalid token");
+        Status::Unauthorized
+    })?;
 
     if !token.permission_read {
+        warn!(token_id = token.id, "WebSocket events connection rejected: no read permission");
         return Err(Status::Unauthorized);
     }
+
+    info!(token_id = token.id, namespace = %token.namespace, "WebSocket events client connected");
 
     let mut rx: broadcast::Receiver<SpaceEvent> = bus.inner().0.subscribe();
     let namespace = token.namespace.clone();
@@ -115,17 +112,24 @@ pub fn ws_events(
                                     let json = serde_json::to_string(&event)
                                         .unwrap_or_default();
                                     if sink.send(ws::Message::Text(json)).await.is_err() {
+                                        debug!(token_id, "WebSocket events client disconnected");
                                         break;
                                     }
                                 }
                             }
-                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(token_id, skipped = n, "WebSocket events client lagged; events dropped");
+                                continue;
+                            }
                             Err(broadcast::error::RecvError::Closed) => break,
                         }
                     }
                     msg = source.next() => {
                         match msg {
-                            Some(Ok(ws::Message::Close(_))) | None => break,
+                            Some(Ok(ws::Message::Close(_))) | None => {
+                                debug!(token_id, "WebSocket events client closed connection");
+                                break;
+                            }
                             Some(Err(_)) => break,
                             _ => {}
                         }
@@ -151,8 +155,12 @@ async fn ws_status_inner(
     token_code: String,
     shutdown: &State<crate::Shutdown>,
 ) -> Result<ws::Channel<'static>, Status> {
-    let token = validate_token_code(&token_code).ok_or(Status::Unauthorized)?;
+    let token = validate_token_code(&token_code).ok_or_else(|| {
+        warn!("WebSocket status connection rejected: invalid token");
+        Status::Unauthorized
+    })?;
     if !token.permission_read {
+        warn!(token_id = token.id, "WebSocket status connection rejected: no read permission");
         return Err(Status::Unauthorized);
     }
 
@@ -163,8 +171,11 @@ async fn ws_status_inner(
         .unwrap_or(&token.namespace)
         .to_string();
     if !token_ns.is_empty() && !path.starts_with(&token_ns) {
+        warn!(token_id = token.id, path = %path.display(), "WebSocket status connection rejected: path outside namespace");
         return Err(Status::Unauthorized);
     }
+
+    info!(token_id = token.id, path = %path.display(), "WebSocket status client connected");
 
     let expr = path_to_metta_sexpr(&path);
     let encoded = urlencoding::encode(&expr).into_owned();
@@ -192,7 +203,10 @@ async fn ws_status_inner(
             // Connect to MORK SSE stream and forward events
             let sse_resp = match client.get(&stream_url).send().await {
                 Ok(r)  => r,
-                Err(_) => return Ok(()),
+                Err(e) => {
+                    error!(url = %stream_url, error = %e, "Failed to connect to MORK SSE stream");
+                    return Ok(());
+                }
             };
             let mut sse_stream = sse_resp.bytes_stream();
             let mut buf = String::new();

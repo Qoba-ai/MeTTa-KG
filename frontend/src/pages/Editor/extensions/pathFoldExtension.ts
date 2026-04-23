@@ -204,9 +204,10 @@ const pathFoldPlugin = ViewPlugin.fromClass(
             // Sort collapsed paths longest-first so more-specific paths match first
             const sortedPaths = [...collapsed].sort((a, b) => b.length - a.length)
 
-            // First pass: count atoms per collapsed path, record first line number
+            // First pass: count atoms per collapsed path, record first and last line numbers
             const pathCounts = new Map<string, number>()
             const pathFirstLine = new Map<string, number>()
+            const pathLastLine = new Map<string, number>()
 
             for (let i = 1; i <= doc.lines; i++) {
                 const text = doc.line(i).text
@@ -216,6 +217,7 @@ const pathFoldPlugin = ViewPlugin.fromClass(
                 if (matchedPath) {
                     pathCounts.set(matchedPath, (pathCounts.get(matchedPath) ?? 0) + 1)
                     if (!pathFirstLine.has(matchedPath)) pathFirstLine.set(matchedPath, i)
+                    pathLastLine.set(matchedPath, i)
                 }
             }
 
@@ -225,31 +227,33 @@ const pathFoldPlugin = ViewPlugin.fromClass(
                 const text = line.text
                 if (text.trim() === '') continue
                 const from = line.from
-                const to = line.to
-                const lineEnd = i < doc.lines ? to + 1 : to
 
                 const matchedPath = findMatchingCollapsedPath(text, sortedPaths)
                 if (matchedPath) {
-                    const label = lastSegment(matchedPath)
-                    const parentPrefix = parentLinePrefix(matchedPath)
-
                     if (pathFirstLine.get(matchedPath) === i) {
+                        // First line: emit a single widget spanning ALL lines for this path,
+                        // eliminating blank lines from subsequent matched lines.
+                        const lastLineNum = pathLastLine.get(matchedPath)!
+                        const lastLine = doc.line(lastLineNum)
+                        const fullEnd = lastLineNum < doc.lines ? lastLine.to + 1 : lastLine.to
+
+                        const label = lastSegment(matchedPath)
+                        const parentPrefix = parentLinePrefix(matchedPath)
+
                         if (parentPrefix.length === 0) {
-                            // Top-level fold: replace entire line with widget
-                            builder.add(from, lineEnd, Decoration.replace({
+                            // Top-level fold: replace all matched lines with widget
+                            builder.add(from, fullEnd, Decoration.replace({
                                 widget: new CollapsedWidget(label, pathCounts.get(matchedPath)!)
                             }))
                         } else {
-                            // Deep fold: keep parent prefix visible, fold from the matched segment
+                            // Deep fold: keep parent prefix of first line visible
                             const foldFrom = from + parentPrefix.length
-                            builder.add(foldFrom, lineEnd, Decoration.replace({
+                            builder.add(foldFrom, fullEnd, Decoration.replace({
                                 widget: new CollapsedWidget(label, pathCounts.get(matchedPath)!)
                             }))
                         }
-                    } else {
-                        // Subsequent lines: hide completely
-                        builder.add(from, to, Decoration.replace({}))
                     }
+                    // Subsequent matched lines are already covered by the first-line widget
                     continue
                 }
 
@@ -298,7 +302,7 @@ export function createPathFoldExtension(
         }),
         // Handle clicks on fringe $ widgets
         EditorView.domEventHandlers({
-            click(event, view) {
+            click(event, _) {
                 const target = event.target as HTMLElement
                 if (target.dataset?.fringePath && onFringeClick) {
                     onFringeClick(target.dataset.fringePath)
