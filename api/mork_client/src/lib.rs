@@ -625,9 +625,10 @@ impl MorkClient {
         path: &PathBuf,
         root: &PathBuf,
         focus_token: &str,
+        page_size: usize,
     ) -> Result<ExploreResult, MorkError> {
         let pattern = path_to_sexpr(path);
-        const PAGE_SIZE: usize = 100;
+        let page_size = page_size.max(1);
 
         let mut subspaces: Vec<(String, PathBuf)> = Vec::new();
         let mut metta_expressions: Vec<String> = Vec::new();
@@ -654,7 +655,7 @@ impl MorkClient {
                     if let Some(relative_expr) = strip_prefix(&response.expr, path) {
                         if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
                             all_parent_prefix = all_parent_prefix
-                                && parent_lhs.len() == lhs.len()
+                                && parent_lhs.len() <= lhs.len()
                                 && parent_lhs.as_str() <= lhs;
                             new_subnamespace_symbols.insert(lhs.to_string());
                         } else {
@@ -744,7 +745,7 @@ impl MorkClient {
                 if !metta_expressions.contains(&relative_expr) && nr_of_responses == 1 {
                     metta_expressions.push(relative_expr);
 
-                    if metta_expressions.len() >= PAGE_SIZE {
+                    if metta_expressions.len() >= page_size {
                         if !stack.is_empty() {
                             next_focus_token =
                                 Some(serde_json::to_string(&stack).unwrap_or_default());
@@ -758,7 +759,7 @@ impl MorkClient {
                 }
             }
 
-            if metta_expressions.len() >= PAGE_SIZE {
+            if metta_expressions.len() >= page_size {
                 break;
             }
         }
@@ -784,16 +785,17 @@ impl MorkClient {
         root: &'a PathBuf,
         focus_token: &'a str,
         depth: u32,
+        page_size: usize,
     ) -> Pin<Box<dyn Future<Output = Result<ExploreResult, MorkError>> + Send + 'a>> {
         Box::pin(async move {
-            let mut result = self.explore(path, root, focus_token).await?;
+            let mut result = self.explore(path, root, focus_token, page_size).await?;
             if depth > 1 {
                 let subspaces = result.subspaces.clone();
                 let mut children = Vec::new();
                 for (_, subspace_rel) in &subspaces {
                     let sub_path = root.join(subspace_rel);
                     match self
-                        .explore_with_depth(&sub_path, root, "", depth - 1)
+                        .explore_with_depth(&sub_path, root, "", depth - 1, page_size)
                         .await
                     {
                         Ok(sub_result) => children.push(sub_result),

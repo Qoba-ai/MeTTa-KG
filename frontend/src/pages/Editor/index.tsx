@@ -111,6 +111,7 @@ import {
     highlightActiveLine,
     highlightActiveLineGutter,
     keymap,
+    ViewPlugin,
 } from '@codemirror/view'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import {
@@ -160,6 +161,7 @@ import { TransformModal, SpaceConfig } from './components/modals/TransformModal/
 import { SelectSpaceModal } from './components/modals/SelectSpaceModal/SelectSpaceModal'
 import { ClearModal } from './components/modals/ClearModal/ClearModal'
 import { CopyModal } from './components/modals/CopyModal/CopyModal'
+import { ShareTokenModal } from './components/modals/ShareTokenModal/ShareTokenModal'
 import { DslConsole } from './components/DslConsole/DslConsole'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
@@ -234,6 +236,7 @@ const App: Component = () => {
     let confirmModal: HTMLDialogElement
     let clearModal: HTMLDialogElement
     let copyModal: HTMLDialogElement
+    let shareTokenModal: HTMLDialogElement
 
     // Space State
     const [token, setToken] = createSignal<Token>()
@@ -266,6 +269,7 @@ const App: Component = () => {
     // UI Layout State
     const [isFullscreen, setIsFullscreen] = createSignal<boolean>(false)
     const [exploreDepth, setExploreDepth] = createSignal(parseInt(localStorage.getItem('exploreDepth') || '1', 10))
+    const [pageSize, setPageSize] = createSignal(parseInt(localStorage.getItem('explorePageSize') || '100', 10))
     const [trieWidth, setTrieWidth] = createSignal(300)
     const [isResizing, setIsResizing] = createSignal(false)
     const [consoleHeight, setConsoleHeight] = createSignal(120)
@@ -276,6 +280,7 @@ const App: Component = () => {
     // Import State
     const [importSource, setImportSource] = createSignal<ImportSource>(ImportSource.FILE)
     const [importNamespace, setImportNamespace] = createSignal<string>('/')
+    const [shareNamespace, setShareNamespace] = createSignal<string>('/')
     const [isImportModalOpen, setIsImportModalOpen] = createSignal(false)
     const [activeImportFile, setActiveImportFile] = createSignal<File>()
     const [importUrl, setImportUrl] = createSignal<string>('')
@@ -325,6 +330,10 @@ const App: Component = () => {
 
     // Focus tokens for expandable paths — keyed by path, stores array of tokens per path
     const [focusTokens, setFocusTokens] = createSignal<Map<string, string[]>>(new Map())
+
+    // Prefetch cache: stores the next page of tokens already fetched in background
+    const [prefetchCache, setPrefetchCache] = createSignal<Map<string, string[][]>>(new Map())
+    const [prefetchInProgress, setPrefetchInProgress] = createSignal<Set<string>>(new Set())
 
     // Sidebar collapse state
     const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false)
@@ -420,8 +429,6 @@ const App: Component = () => {
     const [editorLastLoadedTokens, setEditorLastLoadedTokens] = createSignal<Map<string, string>>(new Map());
 
     const createEditorState = (initialDoc: string, astState: EditorASTState) => {
-        let scrollCheckTimeout: number | undefined;
-
         return EditorState.create({
             doc: initialDoc,
             extensions: [
@@ -474,38 +481,28 @@ const App: Component = () => {
                             setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, astState: { ...p.astState, ast: newAST } } : p))
                         })
                     }
-
-                    // Check for infinite scroll on scroll events
-                    if (update.view && update.view.scrollDOM) {
-                        if (scrollCheckTimeout) clearTimeout(scrollCheckTimeout);
+                }),
+                // Attach directly to scrollDOM so scroll events are never missed.
+                ViewPlugin.define((view) => {
+                    let scrollCheckTimeout: number | undefined;
+                    const handler = () => {
+                        clearTimeout(scrollCheckTimeout);
                         scrollCheckTimeout = window.setTimeout(async () => {
-                            const scroller = update.view.scrollDOM;
-                            const scrollTop = scroller.scrollTop;
-                            const scrollHeight = scroller.scrollHeight;
-                            const clientHeight = scroller.clientHeight;
-
-                            // Check if we're near the bottom (within 200px)
+                            const { scrollTop, scrollHeight, clientHeight } = view.scrollDOM;
                             if (scrollHeight - scrollTop - clientHeight < 200) {
                                 const p = activePanel();
                                 if (!p) return;
-
                                 const pathWithSlash = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/';
                                 const tokens = focusTokens().get(pathWithSlash) || [];
-
-                                // Check if there are tokens and neither the editor nor trie is already loading
-                                if (tokens.length > 0 && !isLoadingMore() && !editorLoadingPaths().has(pathWithSlash)) {
-                                    // Lock both components immediately
+                                const hasMore = tokens.length > 0 || prefetchCache().has(pathWithSlash);
+                                if (hasMore && !isLoadingMore() && !editorLoadingPaths().has(pathWithSlash) && !prefetchInProgress().has(pathWithSlash)) {
                                     setIsLoadingMore(true);
                                     setEditorLoadingPaths(prev => new Set(prev).add(pathWithSlash));
-
                                     try {
                                         await handleLoadMore(p.namespace);
-
                                         const newTokens = focusTokens().get(pathWithSlash) || [];
                                         const newToken = newTokens[0] || '';
                                         setEditorLastLoadedTokens(prev => new Map(prev).set(pathWithSlash, newToken));
-                                        // No scroll adjustment needed: incremental insert preserves scrollTop
-                                        // naturally, and new content appears below the current viewport.
                                     } catch (e) {
                                         console.error('Load more failed in editor:', e);
                                     } finally {
@@ -519,7 +516,9 @@ const App: Component = () => {
                                 }
                             }
                         }, 150);
-                    }
+                    };
+                    view.scrollDOM.addEventListener('scroll', handler, { passive: true });
+                    return { destroy() { view.scrollDOM.removeEventListener('scroll', handler); clearTimeout(scrollCheckTimeout); } };
                 }),
                 EditorView.domEventHandlers({
                     drop: (event, view) => {
@@ -611,7 +610,6 @@ const App: Component = () => {
                 return next
             })
             if (
-                event.type === 'transformComplete' ||
                 event.type === 'importComplete' ||
                 event.type === 'clearComplete'
             ) {
@@ -620,6 +618,10 @@ const App: Component = () => {
                 if (activeNs && event.path === activeNs) {
                     read()
                 }
+            }
+            if (event.type === 'transformComplete') {
+                invalidateNamespaceTree()
+                read()
             }
         })
         onCleanup(() => {
@@ -677,6 +679,7 @@ const App: Component = () => {
         setupModalBackdrop(confirmModal)
         setupModalBackdrop(clearModal)
         setupModalBackdrop(copyModal)
+        setupModalBackdrop(shareTokenModal)
 
         const effectiveToken = TOKEN || localStorage.getItem('rootToken');
         console.log("Token check:", { VITE_TOKEN: TOKEN, localStorage: localStorage.getItem('rootToken') });
@@ -815,19 +818,23 @@ const App: Component = () => {
 
         try {
             const pathWithSlash = path.endsWith('/') ? path : path + '/'
-            const pathFocusTokens = focusTokens().get(pathWithSlash) || []
-
-            if (pathFocusTokens.length === 0) {
-                notify.info('No more expressions to load')
-                return
-            }
-
-            // Get the pagination token (skip count)
-            const paginationToken = pathFocusTokens[0]
-
-            // Load next page - loadFringeAsTokens will update focusTokens with new token
             const activeNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
-            const newTokens = await loadFringeAsTokens(path, paginationToken, activeNs)
+
+            let newTokens: string[][]
+
+            const cached = prefetchCache().get(pathWithSlash)
+            if (cached !== undefined) {
+                // Serve pre-fetched page immediately
+                setPrefetchCache(prev => { const m = new Map(prev); m.delete(pathWithSlash); return m })
+                newTokens = cached
+            } else {
+                const pathFocusTokens = focusTokens().get(pathWithSlash) || []
+                if (pathFocusTokens.length === 0) {
+                    notify.info('No more expressions to load')
+                    return
+                }
+                newTokens = await loadFringeAsTokens(path, pathFocusTokens[0], activeNs)
+            }
 
             // Append new expressions to the AST
             const astState = p.astState
@@ -877,6 +884,9 @@ const App: Component = () => {
                 changes: { from: insertPos, insert: insertText },
                 annotations: [programmaticEdit.of(true)],
             }))
+
+            // Kick off background pre-fetch of the next page
+            prefetchNextPage(path)
 
         } catch (e) {
             console.error("Load more failed:", e)
@@ -1108,7 +1118,7 @@ const App: Component = () => {
 
         try {
             const tokenParam = encodeURIComponent(focusToken || '')
-            const url = `${BACKEND_URL}/explore/${encodedNs}?focus_token=${tokenParam}&depth=${exploreDepth()}`
+            const url = `${BACKEND_URL}/explore/${encodedNs}?focus_token=${tokenParam}&depth=${exploreDepth()}&page_size=${pageSize()}`
 
             const res = await fetch(url, {
                 headers: { Authorization: token()?.code ?? '' }
@@ -1195,6 +1205,29 @@ const App: Component = () => {
         }
     }
 
+    // Prefetch the next page for `path` in the background and store it in prefetchCache.
+    // Uses the current focus token from focusTokens (which is advanced as a side-effect),
+    // so by the time handleLoadMore runs, focusTokens already points to the page after
+    // the cached one — and the cached page is served immediately without a network round-trip.
+    const prefetchNextPage = async (path: string) => {
+        const pathWithSlash = path.endsWith('/') ? path : path + '/'
+        if (prefetchInProgress().has(pathWithSlash)) return
+        const cursor = focusTokens().get(pathWithSlash)?.[0]
+        if (!cursor) return  // nothing more to load
+        const p = activePanel()
+        if (!p) return
+        const tabNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
+        setPrefetchInProgress(prev => new Set(prev).add(pathWithSlash))
+        try {
+            const tokens = await loadFringeAsTokens(path, cursor, tabNs)
+            setPrefetchCache(prev => new Map(prev).set(pathWithSlash, tokens))
+        } catch (e) {
+            console.error('Prefetch failed:', e)
+        } finally {
+            setPrefetchInProgress(prev => { const s = new Set(prev); s.delete(pathWithSlash); return s })
+        }
+    }
+
     const fetchNamespaceInfo = async (ns: string): Promise<{ token: string, subnamespaces: any[] }> => {
         let namespace = ns
         if (namespace.startsWith('/')) namespace = namespace.substring(1)
@@ -1258,6 +1291,9 @@ const App: Component = () => {
                 setActivePanelId(id)
                 setEditorMode(EditorMode.EDIT)
             })
+
+            // Pre-fetch the second page in the background
+            prefetchNextPage(ns)
 
         } catch (e) {
             console.error(e)
@@ -1355,6 +1391,9 @@ const App: Component = () => {
     const read = async (ns?: string) => {
         const p = activePanel()
         const path = ns || p?.namespace || '/'
+        // Clear any stale prefetch cache for this path on a fresh load
+        const pathWithSlash = path.endsWith('/') ? path : path + '/'
+        setPrefetchCache(prev => { const m = new Map(prev); m.delete(pathWithSlash); return m })
         try {
             // First fetch namespace info to get focus tokens
             const namespaceInfo = await fetchNamespaceInfo(path)
@@ -1380,6 +1419,8 @@ const App: Component = () => {
                 const displayContent = getDisplayContentWithPaginationIndicator(astState, path)
                 setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
                 p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: displayContent } }))
+                // Pre-fetch the second page in the background
+                prefetchNextPage(path)
             } else {
                 addPanel(path)
             }
@@ -1532,6 +1573,9 @@ const App: Component = () => {
             })
             if (resp.ok) {
                 notify.success(`Successfully copied '${src}' to '${dst}'`)
+                fetchSpaceLogs()
+                invalidateNamespaceTree()
+                await read()
             } else {
                 notify.error(`Failed to copy '${src}' to '${dst}'`)
             }
@@ -1544,6 +1588,11 @@ const App: Component = () => {
 
     const openCopyModal = () => {
         copyModal.showModal()
+    }
+
+    const openShareModal = (path: string) => {
+        setShareNamespace(path)
+        shareTokenModal.showModal()
     }
 
     const deleteSubspace = async (path: string) => {
@@ -1811,6 +1860,21 @@ const App: Component = () => {
                                             aria-label="Increase explore depth"
                                         >+</button>
                                     </div>
+                                    <div class={styles.DepthControl} title="Number of expressions to load per page">
+                                        <button
+                                            class={styles.UndoRedoButton}
+                                            disabled={pageSize() <= 100}
+                                            onClick={() => { const s = Math.max(100, pageSize() - 100); setPageSize(s); localStorage.setItem('explorePageSize', String(s)); }}
+                                            aria-label="Decrease page size"
+                                        >−</button>
+                                        <span class={styles.DepthLabel}>{pageSize()}</span>
+                                        <button
+                                            class={styles.UndoRedoButton}
+                                            onClick={() => { const s = Math.min(10000, pageSize() + 100); setPageSize(s); localStorage.setItem('explorePageSize', String(s)); }}
+                                            aria-label="Increase page size"
+                                            disabled={pageSize() >= 10000}
+                                        >+</button>
+                                    </div>
                                 </div>
 
                                 {/* Main editor - takes remaining space */}
@@ -1839,6 +1903,7 @@ const App: Component = () => {
                                         onDelete={deleteSubspace}
                                         rootPath={activePanel()?.namespace || '/'}
                                         onOpenSubspace={(path) => addPanel(path)}
+                                        onShare={openShareModal}
                                         onConfigureTransform={(paths) => {
                                             setTransformConfigs(paths.map((p, i) => ({
                                                 path: p,
@@ -2016,6 +2081,13 @@ const App: Component = () => {
                 onConfirm={(src, dst) => copySpace(src, dst)}
                 onCancel={() => copyModal.close()}
                 fetchExploreResults={fetchExploreResults}
+            />
+
+            <ShareTokenModal
+                ref={shareTokenModal!}
+                namespace={shareNamespace}
+                rootTokenCode={rootTokenCode}
+                onClose={() => shareTokenModal.close()}
             />
 
             <Toaster toastOptions={{ className: commonStyles.Toaster }} containerStyle={{ 'margin-top': '60px' }} />

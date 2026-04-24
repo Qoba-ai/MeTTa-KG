@@ -40,8 +40,6 @@ pub mod copy {
     pub async fn execute(p: &Params) -> Result<(), Status> {
         let client = get_mork_client();
 
-        println!("{:?} {:?}", &p.src_path, &p.dst_path);
-
         client
             .copy(&p.dst_path, &pre_path(&p.operation_id))
             .await

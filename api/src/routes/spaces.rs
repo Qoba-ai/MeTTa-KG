@@ -745,6 +745,12 @@ pub async fn copy(
     perm.check_namespace(&dst_rel)
         .map_err(permission_error_to_status)?;
 
+    // Reject copies where one path is a subspace of the other (would cause
+    // recursive / self-referential behaviour).
+    if src_rel == dst_rel || src_rel.starts_with(&dst_rel) || dst_rel.starts_with(&src_rel) {
+        return Err(Status::UnprocessableEntity);
+    }
+
     info!(
         src = %src_rel.display(),
         dst = %dst_rel.display(),
@@ -826,28 +832,31 @@ pub async fn copy(
 
 // ─── Explore ─────────────────────────────────────────────────────────────────
 
-#[get("/explore?<focus_token>&<depth>")]
+#[get("/explore?<focus_token>&<depth>&<page_size>")]
 pub async fn explore_root(
     token: Token,
     focus_token: String,
     depth: Option<u32>,
+    page_size: Option<usize>,
 ) -> Result<Json<ExploreResult>, Status> {
-    explore(token, PathBuf::new(), focus_token, depth).await
+    explore(token, PathBuf::new(), focus_token, depth, page_size).await
 }
 
-#[rocket::get("/explore/<path..>?<focus_token>&<depth>")]
+#[rocket::get("/explore/<path..>?<focus_token>&<depth>&<page_size>")]
 pub async fn explore(
     token: Token,
     path: PathBuf,
     focus_token: String,
     depth: Option<u32>,
+    page_size: Option<usize>,
 ) -> Result<Json<ExploreResult>, Status> {
     let perm = permission_from_token(&token);
     perm.require_read().map_err(permission_error_to_status)?;
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
     let depth = depth.unwrap_or(1).max(1);
-    debug!(path = %path.display(), focus_token = %focus_token, depth, "Explore request");
+    let page_size = page_size.unwrap_or(100).clamp(1, 10000);
+    debug!(path = %path.display(), focus_token = %focus_token, depth, page_size, "Explore request");
     with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
         let path = path.clone();
         let root = PathBuf::from("space");
@@ -861,7 +870,7 @@ pub async fn explore(
         let focus_token = focus_token.clone();
         async move {
             get_mork_client()
-                .explore_with_depth(&augmented_path, &root, &focus_token, depth)
+                .explore_with_depth(&augmented_path, &root, &focus_token, depth, page_size)
                 .await
                 .map(Json)
         }

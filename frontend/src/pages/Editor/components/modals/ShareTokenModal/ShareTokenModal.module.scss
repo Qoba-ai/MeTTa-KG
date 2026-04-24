@@ -1,0 +1,146 @@
+.FieldGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+
+    label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--subtle);
+    }
+}
+
+.NamespaceFixed {
+    font-family: 'Fira Code', Consolas, monospace;
+    font-size: 0.875rem;
+    color: var(--text);
+    background: var(--highlight-low);
+    border: 1px solid var(--highlight-med);
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+
+.PermissionsRow {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    font-size: 0.9rem;
+
+    label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+    }
+}
+
+.Warning {
+    color: var(--gold);
+    font-size: 0.82rem;
+    margin: -8px 0 12px;
+}
+
+.Error {
+    color: var(--love);
+    font-size: 0.82rem;
+    margin: -8px 0 12px;
+}
+
+.Success {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px;
+}
+
+.SuccessHeader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: color-mix(in srgb, var(--foam) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--foam) 30%, transparent);
+    border-radius: 8px;
+    color: var(--foam);
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.SuccessDesc {
+    font-size: 0.9rem;
+    color: var(--subtle);
+    margin: -4px 0;
+
+    code {
+        font-family: 'Fira Code', Consolas, monospace;
+        color: var(--foam);
+    }
+}
+
+.CodeBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.CodeLabel {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.CodeRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--base);
+    border: 1px solid var(--highlight-high);
+    border-radius: 8px;
+    padding: 10px 14px;
+}
+
+.TokenCode {
+    font-family: 'Fira Code', Consolas, monospace;
+    font-size: 0.82rem;
+    color: var(--text);
+    flex: 1;
+    word-break: break-all;
+    user-select: all;
+}
+
+.CopyBtn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    background: var(--foam);
+    border: none;
+    color: var(--base);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+
+    &:hover {
+        opacity: 0.85;
+    }
+}
+
+.CopyBtnDone {
+    background: var(--highlight-high);
+    color: var(--subtle);
+    border: 1px solid var(--highlight-high);
+}
+
+.SaveWarning {
+    font-size: 0.82rem;
+    color: var(--gold);
+    margin: -6px 0;
+}

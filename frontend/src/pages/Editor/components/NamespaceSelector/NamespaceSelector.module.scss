@@ -48,9 +48,14 @@
         border-bottom: none;
     }
 
-    &:hover,
-    &.ExploreItemFocused {
+    &:hover {
         background: var(--highlight-med);
+    }
+
+    &.ExploreItemFocused {
+        background: var(--highlight-high);
+        border-left: 3px solid var(--iris);
+        padding-left: 13px;
     }
 
     .ExploreItemMain {

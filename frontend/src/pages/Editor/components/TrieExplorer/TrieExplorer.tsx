@@ -1,6 +1,6 @@
 import { Component, createSignal, createMemo, For, Show, onMount, onCleanup } from "solid-js";
 import styles from "./TrieExplorer.module.scss";
-import { VsChevronRight, VsChevronDown, VsSymbolEnum, VsTrash, VsFolderOpened, VsReplace } from "solid-icons/vs";
+import { VsChevronRight, VsChevronDown, VsSymbolEnum, VsTrash, VsFolderOpened, VsReplace, VsKey } from "solid-icons/vs";
 
 export interface TrieNode {
   children: { [key: string]: TrieNode };
@@ -15,6 +15,7 @@ interface TrieExplorerProps {
   onDelete?: (path: string) => void;
   onOpenSubspace?: (path: string) => void;
   onConfigureTransform?: (paths: string[]) => void;
+  onShare?: (path: string) => void;
   rootPath?: string;
   collapsedPaths?: () => Set<string>;
   onCollapse?: (path: string) => void;
@@ -143,6 +144,7 @@ const TrieBranch: Component<{
   path: string;
   onDelete?: (path: string) => void;
   onOpenSubspace?: (path: string) => void;
+  onShare?: (path: string) => void;
   isSelected: boolean;
   selectionCount: number;
   onAddSelect: (path: string) => void;
@@ -340,6 +342,15 @@ const TrieBranch: Component<{
                   <VsFolderOpened size={12} />
                 </button>
               </Show>
+              <Show when={props.onShare}>
+                <button
+                  class={styles.TrieActionBtn}
+                  onClick={(e) => { e.stopPropagation(); props.onShare!(props.path); }}
+                  title="Share — create access token for this namespace"
+                >
+                  <VsKey size={12} />
+                </button>
+              </Show>
               <Show when={props.onDelete}>
                 <button
                   class={`${styles.TrieActionBtn} ${styles.TrieDeleteBtn}`}
@@ -391,6 +402,7 @@ const TrieBranch: Component<{
                     path={childPath}
                     onDelete={props.onDelete}
                     onOpenSubspace={props.onOpenSubspace}
+                    onShare={props.onShare}
                     isSelected={props.onIsSelected(childPath)}
                     selectionCount={props.onGetSelectionCount(childPath)}
                     onAddSelect={props.onAddSelect}
@@ -628,6 +640,7 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
                   path={childPath}
                   onDelete={props.onDelete}
                   onOpenSubspace={props.onOpenSubspace}
+                  onShare={props.onShare}
                   isSelected={isSelected(childPath)}
                   selectionCount={getSelectionCount(childPath)}
                   onAddSelect={addSelect}

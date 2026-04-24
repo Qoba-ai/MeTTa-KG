@@ -1,4 +1,4 @@
-import { Component, createSignal, For, Show, onCleanup } from "solid-js";
+import { Component, createSignal, createEffect, For, Show } from "solid-js";
 import styles from "./NamespaceSelector.module.scss";
 import { VsFolder } from "solid-icons/vs";
 import { handleAutoClose } from "../../lib/editorUtils";
@@ -17,6 +17,12 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
   const [exploreResults, setExploreResults] = createSignal<any[]>([]);
   const [exploreFocusIndex, setExploreFocusIndex] = createSignal(-1);
   let inputRef: HTMLInputElement | undefined;
+  let itemRefs: (HTMLDivElement | undefined)[] = [];
+
+  createEffect(() => {
+    const idx = exploreFocusIndex();
+    if (idx >= 0) itemRefs[idx]?.scrollIntoView({ block: "nearest" });
+  });
 
   // Fetch suggestions for a given value. When the user is mid-segment (path
   // doesn't end with "/"), query the parent directory and filter client-side so
@@ -56,6 +62,26 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
     setTimeout(() => setIsExploring(false), 200);
   };
 
+  const navigateUp = async () => {
+    const val = props.value;
+    const trimmed = val.endsWith("/") ? val.slice(0, -1) : val;
+    const lastSlash = trimmed.lastIndexOf("/");
+    const parent = lastSlash >= 0 ? trimmed.slice(0, lastSlash + 1) : "/";
+    props.onInput(parent);
+    setExploreFocusIndex(-1);
+    const results = await props.fetchExploreResults(parent);
+    setExploreResults(results);
+  };
+
+  const navigateInto = async (path: string) => {
+    const target = path.endsWith("/") ? path : path + "/";
+    props.onInput(target);
+    setExploreFocusIndex(-1);
+    const results = await props.fetchExploreResults(target);
+    setExploreResults(results);
+    setIsExploring(true);
+  };
+
   const handleKeyDown = async (e: KeyboardEvent) => {
     handleAutoClose(e);
 
@@ -78,14 +104,16 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setExploreFocusIndex((prev) => Math.max(prev - 1, -1));
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      navigateUp();
     } else if (e.key === "Tab" || e.key === "ArrowRight") {
-      if (exploreFocusIndex() >= 0 && exploreFocusIndex() < exploreResults().length) {
-        e.preventDefault();
-        const res = exploreResults()[exploreFocusIndex()];
-        props.onInput(res.path);
-        setExploreFocusIndex(-1);
-        const nextResults = await props.fetchExploreResults(res.path);
-        setExploreResults(nextResults);
+      e.preventDefault();
+      const idx = exploreFocusIndex();
+      if (idx >= 0 && idx < exploreResults().length) {
+        navigateInto(exploreResults()[idx].path);
+      } else {
+        navigateInto(props.value);
       }
     } else if (e.key === "Enter") {
       e.preventDefault();
@@ -118,6 +146,7 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
           <For each={exploreResults()}>
             {(res, index) => (
               <div
+                ref={el => itemRefs[index()] = el}
                 class={`${styles.ExploreItem} ${
                   exploreFocusIndex() === index() ? styles.ExploreItemFocused : ""
                 }`}
