@@ -706,24 +706,26 @@ impl MorkClient {
 
         subspaces.sort_by(|a, b| a.0.cmp(&b.0));
 
-        let mut stack: Vec<String> = Vec::new();
+        let mut stack: VecDeque<String> = VecDeque::new();
 
         if focus_token.is_empty() {
-            stack.push(String::new());
+            stack.push_back(String::new());
         } else {
-            if let Ok(tokens) = serde_json::from_str::<Vec<String>>(focus_token) {
+            if let Ok(tokens) = serde_json::from_str::<VecDeque<String>>(focus_token) {
                 stack = tokens;
             } else {
-                stack.push(String::new());
+                stack.push_back(String::new());
             }
         }
 
-        while let Some(current_token) = stack.pop() {
+        while let Some(current_token) = stack.pop_front() {
             if !skip_tokens.insert(current_token.clone()) {
                 continue;
             }
 
-            let responses = self.explore_raw(&pattern, &current_token).await?;
+            let mut responses = self.explore_raw(&pattern, &current_token).await?;
+
+            responses.reverse();
 
             let nr_of_responses = responses.len();
 
@@ -751,7 +753,7 @@ impl MorkClient {
                     }
                 } else {
                     if !skip_tokens.contains(&encoded_token) {
-                        stack.push(encoded_token);
+                        stack.push_front(encoded_token);
                     }
                 }
             }

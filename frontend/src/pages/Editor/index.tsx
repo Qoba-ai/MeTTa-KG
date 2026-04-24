@@ -20,6 +20,7 @@ import {
     VsDiscard,
     VsRedo,
     VsLayers,
+    VsCopy,
 } from 'solid-icons/vs'
 import { createMemo, createSignal, onMount, onCleanup, Show, For, createEffect, batch, on, untrack } from 'solid-js'
 import { createOwnHistoryStore } from './stores/ownHistoryStore'
@@ -158,6 +159,7 @@ import { ImportModal } from './components/modals/ImportModal/ImportModal'
 import { TransformModal, SpaceConfig } from './components/modals/TransformModal/TransformModal'
 import { SelectSpaceModal } from './components/modals/SelectSpaceModal/SelectSpaceModal'
 import { ClearModal } from './components/modals/ClearModal/ClearModal'
+import { CopyModal } from './components/modals/CopyModal/CopyModal'
 import { DslConsole } from './components/DslConsole/DslConsole'
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
@@ -175,6 +177,7 @@ const extensionToImportFormat = (file: File): ImportFormat | undefined => {
         case 'json-ld':
             return ImportFormat.JSONLD
         case 'metta':
+        case 'mm2':
             return ImportFormat.METTA
         default:
             return undefined
@@ -230,6 +233,7 @@ const App: Component = () => {
     let transformModal: HTMLDialogElement
     let confirmModal: HTMLDialogElement
     let clearModal: HTMLDialogElement
+    let copyModal: HTMLDialogElement
 
     // Space State
     const [token, setToken] = createSignal<Token>()
@@ -672,6 +676,7 @@ const App: Component = () => {
         setupModalBackdrop(transformModal)
         setupModalBackdrop(confirmModal)
         setupModalBackdrop(clearModal)
+        setupModalBackdrop(copyModal)
 
         const effectiveToken = TOKEN || localStorage.getItem('rootToken');
         console.log("Token check:", { VITE_TOKEN: TOKEN, localStorage: localStorage.getItem('rootToken') });
@@ -1174,7 +1179,7 @@ const App: Component = () => {
                     return w
                 }
 
-                for (const expr of [...(node.metta_expressions || [])].reverse()) {
+                for (const expr of (node.metta_expressions || [])) {
                     if (expr) result.push(["!", wrap(expr)])
                 }
             }
@@ -1515,6 +1520,32 @@ const App: Component = () => {
         clearModal.showModal()
     }
 
+    const copySpace = async (src: string, dst: string) => {
+        try {
+            const resp = await fetch(`${BACKEND_URL}/spaces/copy`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: token()?.code ?? '',
+                },
+                body: JSON.stringify({ src, dst }),
+            })
+            if (resp.ok) {
+                notify.success(`Successfully copied '${src}' to '${dst}'`)
+            } else {
+                notify.error(`Failed to copy '${src}' to '${dst}'`)
+            }
+        } catch (e) {
+            console.error(e)
+            notify.error(`Error copying space`)
+        }
+        copyModal.close()
+    }
+
+    const openCopyModal = () => {
+        copyModal.showModal()
+    }
+
     const deleteSubspace = async (path: string) => {
         // Rocket's <path..> doesn't match trailing slashes well, and path.split('/') with trailing slash 
         // results in an empty last segment. We should filter empty segments.
@@ -1668,6 +1699,10 @@ const App: Component = () => {
                                         <button onclick={() => openClearModal()}>
                                             <VsClearAll size={16} />
                                             <span>Clear</span>
+                                        </button>
+                                        <button onclick={() => openCopyModal()}>
+                                            <VsCopy size={16} />
+                                            <span>Copy</span>
                                         </button>
                                         <button onclick={() => {
                                             if (transformConfigs().length === 0) {
@@ -1973,6 +2008,14 @@ const App: Component = () => {
                 namespace={activePanel()?.namespace || '/'}
                 onConfirm={(pattern) => clearSpace(pattern)}
                 onCancel={() => clearModal.close()}
+            />
+
+            <CopyModal
+                ref={copyModal!}
+                initialSrc={activePanel()?.namespace || '/'}
+                onConfirm={(src, dst) => copySpace(src, dst)}
+                onCancel={() => copyModal.close()}
+                fetchExploreResults={fetchExploreResults}
             />
 
             <Toaster toastOptions={{ className: commonStyles.Toaster }} containerStyle={{ 'margin-top': '60px' }} />

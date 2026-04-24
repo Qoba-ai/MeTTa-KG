@@ -74,12 +74,15 @@ export const Navbar: Component<NavbarProps> = (props) => {
                             <span class={styles.BadgeToken}>{rootTokenCode()?.substring(0, 8)}...</span>
                             <Show when={tokenData()}>
                                 {(token) => (
-                                    <div class={styles.BadgePermissions}>
-                                        <span title="Read" class={token().permission_read ? styles.PermissionEnabled : styles.PermissionDisabled}>R</span>
-                                        <span title="Write" class={token().permission_write ? styles.PermissionEnabled : styles.PermissionDisabled}>W</span>
-                                        <span title="Share Read" class={token().permission_share_read ? styles.PermissionEnabled : styles.PermissionDisabled}>SR</span>
-                                        <span title="Share Write" class={token().permission_share_write ? styles.PermissionEnabled : styles.PermissionDisabled}>SW</span>
-                                    </div>
+                                    <>
+                                        <span class={styles.BadgeNamespace}>{token().namespace}</span>
+                                        <div class={styles.BadgePermissions}>
+                                            <span title="Read" class={token().permission_read ? styles.PermissionEnabled : styles.PermissionDisabled}>R</span>
+                                            <span title="Write" class={token().permission_write ? styles.PermissionEnabled : styles.PermissionDisabled}>W</span>
+                                            <span title="Share Read" class={token().permission_share_read ? styles.PermissionEnabled : styles.PermissionDisabled}>SR</span>
+                                            <span title="Share Write" class={token().permission_share_write ? styles.PermissionEnabled : styles.PermissionDisabled}>SW</span>
+                                        </div>
+                                    </>
                                 )}
                             </Show>
                         </div>

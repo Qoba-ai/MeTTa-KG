@@ -59,7 +59,7 @@ fn fetch_details(conn: &mut PgConnection, log: OpLog) -> OpLogEntry {
         None
     };
 
-    let copy = if log.op_type == "Cpy" {
+    let copy = if log.op_type == "Copy" {
         op_log_copy::table
             .select(OpLogCopy::as_select())
             .filter(op_log_copy::op_log_id.eq(log.id))
@@ -123,6 +123,19 @@ async fn undo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
             }
             Ok(())
         }
+        "Copy" => {
+            if let Some(cpy) = &entry.copy {
+                if let Some(op_id) = &cpy.operation_id {
+                    return crate::commands::copy::undo(&crate::commands::copy::Params {
+                        src_path: augmented_path(&cpy.src),
+                        dst_path: augmented_path(&cpy.dst),
+                        operation_id: op_id.clone(),
+                    })
+                    .await;
+                }
+            }
+            Ok(())
+        }
         "Transform" => {
             if let Some(tr) = &entry.transform {
                 if let Some(op_id) = &tr.operation_id {
@@ -163,6 +176,19 @@ async fn redo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
                         target_path: augmented_path(&clr.path),
                         operation_id: op_id.clone(),
                         pattern: clr.pattern.clone(),
+                    })
+                    .await;
+                }
+            }
+            Ok(())
+        }
+        "Copy" => {
+            if let Some(cpy) = &entry.copy {
+                if let Some(op_id) = &cpy.operation_id {
+                    return crate::commands::copy::redo(&crate::commands::copy::Params {
+                        src_path: augmented_path(&cpy.src),
+                        dst_path: augmented_path(&cpy.dst),
+                        operation_id: op_id.clone(),
                     })
                     .await;
                 }
@@ -231,6 +257,8 @@ fn collect_lock_paths(entries: &[OpLogEntry]) -> Vec<PathBuf> {
             vec![imp.path.clone()]
         } else if let Some(clr) = &entry.clear {
             vec![clr.path.clone()]
+        } else if let Some(cpy) = &entry.copy {
+            vec![cpy.src.clone(), cpy.dst.clone()]
         } else if let Some(tr) = &entry.transform {
             let mut tp = Vec::new();
             if let Ok(ins) =
@@ -430,6 +458,9 @@ fn get_write_spaces(entry: &OpLogEntry) -> Vec<String> {
     }
     if let Some(clr) = &entry.clear {
         return vec![clr.path.clone()];
+    }
+    if let Some(cpy) = &entry.copy {
+        return vec![cpy.dst.clone()];
     }
     if let Some(tr) = &entry.transform {
         if let Ok(outs) = serde_json::from_value::<Vec<serde_json::Value>>(tr.output_spaces.clone())

@@ -1,5 +1,4 @@
 use rocket::serde::json::{serde_json, Json};
-use tracing::{debug, error, info, warn};
 use rocket::State;
 use rocket::{get, http::Status, post, put};
 use serde::{Deserialize, Serialize};
@@ -8,14 +7,18 @@ use std::io::prelude::*;
 use std::path::PathBuf;
 use std::{env, vec};
 use tokio::sync::broadcast;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::lock::{LockEntry, LockManager};
 use crate::{
     db::establish_connection,
     events::{EventBus, SpaceEvent},
-    model::{OpLog, OpLogClearInsert, OpLogImportInsert, OpLogInsert, OpLogTransformInsert, Token},
-    schema::{op_log, op_log_clear, op_log_import, op_log_transform},
+    model::{
+        OpLog, OpLogClearInsert, OpLogCopyInsert, OpLogImportInsert, OpLogInsert,
+        OpLogTransformInsert, Token,
+    },
+    schema::{op_log, op_log_clear, op_log_copy, op_log_import, op_log_transform},
 };
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use mork_client::{ExploreResult, MorkClient, MorkError, NamespaceInfo};
@@ -285,7 +288,10 @@ pub async fn transform(
     if transformation.input_spaces.len() != transformation.patterns.len()
         || transformation.output_spaces.len() != transformation.templates.len()
     {
-        warn!(token_id = token.id, "Transform rejected: mismatched input/output counts");
+        warn!(
+            token_id = token.id,
+            "Transform rejected: mismatched input/output counts"
+        );
         return Err(Status::BadRequest);
     }
 
@@ -295,7 +301,10 @@ pub async fn transform(
         .chain(transformation.templates.iter())
         .all(|s| mork_client::is_balanced(s));
     if !all_balanced {
-        warn!(token_id = token.id, "Transform rejected: unbalanced patterns or templates");
+        warn!(
+            token_id = token.id,
+            "Transform rejected: unbalanced patterns or templates"
+        );
         return Err(Status::UnprocessableEntity);
     }
 
@@ -705,6 +714,116 @@ async fn clear_inner(
         }
     }
 }
+// ─── Copy ────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CopyRequest {
+    pub src: PathBuf,
+    pub dst: PathBuf,
+}
+
+#[post("/spaces/copy", data = "<req>")]
+pub async fn copy(
+    token: Token,
+    req: Json<CopyRequest>,
+    bus: &State<EventBus>,
+    lock_manager: &State<LockManager>,
+) -> Result<Json<bool>, Status> {
+    // Strip leading slashes so that PathBuf::join doesn't treat them as absolute paths,
+    // which would replace the "space/" prefix entirely.
+    let src_rel = PathBuf::from(
+        req.src.to_string_lossy().trim_start_matches('/')
+    );
+    let dst_rel = PathBuf::from(
+        req.dst.to_string_lossy().trim_start_matches('/')
+    );
+
+    let perm = permission_from_token(&token);
+    perm.require_write().map_err(permission_error_to_status)?;
+    perm.check_namespace(&src_rel)
+        .map_err(permission_error_to_status)?;
+    perm.check_namespace(&dst_rel)
+        .map_err(permission_error_to_status)?;
+
+    info!(
+        src = %src_rel.display(),
+        dst = %dst_rel.display(),
+        token_id = token.id,
+        "Starting space copy"
+    );
+
+    let root = PathBuf::from("space");
+    let src_augmented = if !src_rel.as_os_str().is_empty() {
+        root.join(&src_rel)
+    } else {
+        root.clone()
+    };
+    let dst_augmented = if !dst_rel.as_os_str().is_empty() {
+        root.join(&dst_rel)
+    } else {
+        root.clone()
+    };
+
+    let dst_event_path = path_to_event_path(&dst_rel);
+    let _ = bus.0.send(SpaceEvent::Locked {
+        path: dst_event_path.clone(),
+    });
+
+    let operation_id = Uuid::new_v4();
+
+    let copy_command = crate::commands::copy::Params {
+        src_path: src_augmented,
+        dst_path: dst_augmented,
+        operation_id: operation_id.to_string(),
+    };
+
+    let src_path = src_rel.clone();
+    let dst_path = dst_rel.clone();
+
+    let cmd_result = with_lock(lock_manager, &[&src_path, &dst_path], || {
+        crate::commands::copy::execute(&copy_command)
+    })
+    .await;
+
+    match cmd_result {
+        Ok(()) => {
+            info!(
+                src = %req.src.display(),
+                dst = %req.dst.display(),
+                operation_id = %operation_id,
+                "Copy command completed successfully"
+            );
+            if let Some(log_id) = insert_op_log("Copy", token.id) {
+                let _ = diesel::insert_into(op_log_copy::table)
+                    .values(&OpLogCopyInsert {
+                        op_log_id: log_id,
+                        src: src_rel.to_string_lossy().into_owned(),
+                        dst: dst_rel.to_string_lossy().into_owned(),
+                        operation_id: Some(operation_id.to_string()),
+                    })
+                    .execute(&mut establish_connection());
+                emit_new_op(&bus.0, log_id, token.id);
+            }
+            let _ = bus.0.send(SpaceEvent::Unlocked {
+                path: dst_event_path,
+            });
+            Ok(Json(true))
+        }
+        Err(status) => {
+            error!(
+                src = %src_rel.display(),
+                dst = %dst_rel.display(),
+                status = %status,
+                "Copy command failed"
+            );
+            let _ = bus.0.send(SpaceEvent::Unlocked {
+                path: dst_event_path,
+            });
+            Err(status)
+        }
+    }
+}
+
 // ─── Explore ─────────────────────────────────────────────────────────────────
 
 #[get("/explore?<focus_token>&<depth>")]
@@ -856,7 +975,10 @@ pub async fn subtract(
     if req.input_spaces.len() != req.patterns.len()
         || req.output_spaces.len() != req.templates.len()
     {
-        warn!(token_id = token.id, "Subtract rejected: mismatched input/output counts");
+        warn!(
+            token_id = token.id,
+            "Subtract rejected: mismatched input/output counts"
+        );
         return Err(Status::BadRequest);
     }
 
@@ -866,17 +988,26 @@ pub async fn subtract(
         .chain(req.templates.iter())
         .all(|s| mork_client::is_balanced(s));
     if !all_balanced {
-        warn!(token_id = token.id, "Subtract rejected: unbalanced patterns or templates");
+        warn!(
+            token_id = token.id,
+            "Subtract rejected: unbalanced patterns or templates"
+        );
         return Err(Status::UnprocessableEntity);
     }
 
-    info!(token_id = token.id, inputs = req.input_spaces.len(), outputs = req.output_spaces.len(), "Starting subtract");
+    info!(
+        token_id = token.id,
+        inputs = req.input_spaces.len(),
+        outputs = req.output_spaces.len(),
+        "Starting subtract"
+    );
 
     let perm = permission_from_token(&token);
     perm.require_read().map_err(permission_error_to_status)?;
     perm.require_write().map_err(permission_error_to_status)?;
     for path in req.input_spaces.iter().chain(req.output_spaces.iter()) {
-        perm.check_namespace(path).map_err(permission_error_to_status)?;
+        perm.check_namespace(path)
+            .map_err(permission_error_to_status)?;
     }
 
     let root = PathBuf::from("space");

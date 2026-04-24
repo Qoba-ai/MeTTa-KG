@@ -26,6 +26,14 @@
         font-family: 'Fira Code', monospace;
     }
 
+    .BadgeNamespace {
+        color: var(--iris);
+        font-family: 'Fira Code', monospace;
+        font-size: 0.85em;
+        padding-left: 6px;
+        border-left: 1px solid var(--highlight-med);
+    }
+
     .BadgePermissions {
         display: flex;
         gap: 4px;

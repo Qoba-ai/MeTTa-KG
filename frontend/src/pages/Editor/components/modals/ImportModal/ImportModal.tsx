@@ -7,6 +7,16 @@ import { ImportFormat, ImportSource, ImportCSVDirection } from "../../../../../t
 import { NamespaceSelector } from "../../NamespaceSelector/NamespaceSelector";
 import { isBalancedSexpr } from "../../../lib/editorUtils";
 
+const MAX_FILE_SIZE = 1000 * 1024 * 1024 * 1024; // 1000 GiB
+
+function validateFileSize(file: File): boolean {
+    if (file.size > MAX_FILE_SIZE) {
+        alert(`File "${file.name}" exceeds the maximum allowed size of 1000 GiB.`);
+        return false;
+    }
+    return true;
+}
+
 function validateMetta(text: string): string | null {
     if (!isBalancedSexpr(text)) return "Unbalanced parentheses";
     return null;
@@ -142,7 +152,7 @@ function buildExampleTree(items: Array<{ path: string; type: string }>): Example
     }
 
     for (const item of items) {
-        if (item.type === "blob" && item.path.endsWith(".metta")) {
+        if (item.type === "blob" && (item.path.endsWith(".metta") || item.path.endsWith(".mm2"))) {
             const parts = item.path.split("/");
             const name = parts[parts.length - 1];
             const parentPath = parts.slice(0, -1).join("/");
@@ -331,7 +341,7 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
     const handleFileChange = (e: any) => {
         e.stopPropagation();
         const file = e.target.files?.[0];
-        if (file) props.onFileSelect(file);
+        if (file && validateFileSize(file)) props.onFileSelect(file);
     };
 
     const textValidationError = () => {
@@ -423,7 +433,7 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
                                 e.preventDefault(); e.stopPropagation();
                                 props.setIsDraggingOver(false);
                                 const file = e.dataTransfer?.files?.[0];
-                                if (file) props.onFileSelect(file);
+                                if (file && validateFileSize(file)) props.onFileSelect(file);
                             }}
                         >
                             <VsCloudUpload size={props.activeFile() ? 32 : 48} class={styles.DropZoneIcon} />
@@ -431,7 +441,7 @@ export const ImportModal: Component<ImportModalProps> = (props) => {
                                 {props.activeFile() ? "Change Selection" : "Click or drag file to upload"}
                             </div>
                             <Show when={!props.activeFile()}>
-                                <div class={styles.DropZoneHint}>Accepted: .csv, .n3, .jsonld, .nt, .metta</div>
+                                <div class={styles.DropZoneHint}>Accepted: .csv, .n3, .jsonld, .nt, .metta, .mm2</div>
                             </Show>
                         </div>
 

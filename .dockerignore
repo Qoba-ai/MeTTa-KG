@@ -10,6 +10,8 @@ translations/examples/
 translations/metta_queries/
 translations/README.md
 
+api/csv_sexpr/target/
+api/mork_client/target/
 api/logs
 api/static
 api/target

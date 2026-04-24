@@ -9,8 +9,10 @@ use mork_client::MorkClient;
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
 use rocket::http::Method;
-use rocket::{self, launch, routes, Build, Rocket};
+use rocket::{self, catch, catchers, launch, routes, Build, Rocket};
 use rocket_cors::{catch_all_options_routes, AllowedOrigins};
+use serde_json::json;
+use serde_json::Value;
 use tokio::sync::{broadcast, Mutex};
 use tracing::{error, info, instrument, warn};
 
@@ -173,6 +175,7 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::import_url_nt,
                 routes::spaces::import_url_jsonld,
                 routes::spaces::import_url_n3,
+                routes::spaces::copy,
                 routes::spaces::subtract,
                 routes::events::ws_ping,
                 routes::events::ws_events,

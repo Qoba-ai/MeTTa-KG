@@ -15,6 +15,67 @@ fn mork_err(e: mork_client::MorkError) -> Status {
     Status::InternalServerError
 }
 
+pub mod copy {
+    use super::{get_mork_client, mork_err};
+    use rocket::http::Status;
+    use std::path::PathBuf;
+    use tracing::instrument;
+
+    #[derive(Debug)]
+    pub struct Params {
+        pub src_path: PathBuf,
+        pub dst_path: PathBuf,
+        pub operation_id: String,
+    }
+
+    fn pre_path(op_id: &str) -> PathBuf {
+        PathBuf::from(format!("copy/{}/pre", op_id))
+    }
+
+    fn post_path(op_id: &str) -> PathBuf {
+        PathBuf::from(format!("copy/{}/post", op_id))
+    }
+
+    #[instrument]
+    pub async fn execute(p: &Params) -> Result<(), Status> {
+        let client = get_mork_client();
+
+        println!("{:?} {:?}", &p.src_path, &p.dst_path);
+
+        client
+            .copy(&p.dst_path, &pre_path(&p.operation_id))
+            .await
+            .map_err(mork_err)?;
+        client
+            .copy(&p.src_path, &post_path(&p.operation_id))
+            .await
+            .map_err(mork_err)?;
+        client
+            .copy(&post_path(&p.operation_id), &p.dst_path)
+            .await
+            .map_err(mork_err)?;
+        Ok(())
+    }
+
+    #[instrument]
+    pub async fn undo(p: &Params) -> Result<(), Status> {
+        let client = get_mork_client();
+        client
+            .copy(&pre_path(&p.operation_id), &p.dst_path)
+            .await
+            .map_err(mork_err)
+    }
+
+    #[instrument]
+    pub async fn redo(p: &Params) -> Result<(), Status> {
+        let client = get_mork_client();
+        client
+            .copy(&post_path(&p.operation_id), &p.dst_path)
+            .await
+            .map_err(mork_err)
+    }
+}
+
 pub mod import {
     use super::{get_mork_client, mork_err, TRANSFORM_WAIT_MS};
     use rocket::http::Status;

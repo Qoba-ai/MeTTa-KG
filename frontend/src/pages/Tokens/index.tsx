@@ -956,8 +956,8 @@ const Tokens: Component = () => {
                                         type="text"
                                         required
                                         minlength={3}
-                                        maxlength={10}
-                                        placeholder="Name (3–10 chars)"
+                                        maxlength={32}
+                                        placeholder="Name (3–32 chars)"
                                         disabled={
                                             !tokens().find(
                                                 (t) => t.code === rootTokenCode()
@@ -971,10 +971,10 @@ const Tokens: Component = () => {
                                         <input
                                             ref={newTokenNamespaceInput!}
                                             type="text"
-                                            placeholder="Namespace (e.g., /myproject/)"
+                                            placeholder="Namespace (e.g., /myproject)"
                                             required
                                             pattern={
-                                                '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/)*$'
+                                                '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/?)*$'
                                             }
                                             disabled={
                                                 !tokens().find(
@@ -994,7 +994,7 @@ const Tokens: Component = () => {
                                             }}
                                             oninvalid={() =>
                                                 newTokenNamespaceInput.setCustomValidity(
-                                                    "Namespaces start with '/' followed by 2 or more alphanumeric characters and end with '/'."
+                                                    "Namespaces start with '/' followed by 2 or more alphanumeric characters."
                                                 )
                                             }
                                             value={
@@ -1032,8 +1032,7 @@ const Tokens: Component = () => {
                                     <input
                                         ref={newTokenDescriptionInput!}
                                         type="text"
-                                        required
-                                        placeholder="Description"
+                                        placeholder="Description (optional)"
                                         disabled={
                                             !tokens().find(
                                                 (t) => t.code === rootTokenCode()

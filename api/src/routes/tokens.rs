@@ -72,20 +72,22 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
         return Err(Status::InternalServerError);
     }
 
-    if !new_token.namespace.starts_with(&token.namespace) {
-        warn!("User tried to create token for invalid namespace");
-        return Err(Status::BadRequest);
-    }
+    // Normalize: ensure namespace ends with '/'
+    let ns = if new_token.namespace.ends_with('/') {
+        new_token.namespace.clone()
+    } else {
+        format!("{}/", new_token.namespace)
+    };
 
-    if !new_token.namespace.ends_with("/") {
-        warn!("User tried to create token for invalid namespace (missing trailing '/')");
+    if !ns.starts_with(&token.namespace) {
+        warn!("User tried to create token for invalid namespace");
         return Err(Status::BadRequest);
     }
 
     let namespace_regex =
         Regex::new(r"^/(([a-zA-Z0-9])+([a-zA-Z0-9]|\-|_)*([a-zA-Z0-9])/)*$").unwrap();
 
-    if !namespace_regex.is_match(&new_token.namespace) {
+    if !namespace_regex.is_match(&ns) {
         warn!("User tried to create token for invalid namespace (invalid characters)");
         return Err(Status::BadRequest);
     }
@@ -98,14 +100,14 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
             return Err(Status::BadRequest);
         }
     };
-    if token_name.len() < 3 || token_name.len() > 10 {
+    if token_name.len() < 3 || token_name.len() > 32 {
         warn!("User tried to create token with invalid name length");
         return Err(Status::BadRequest);
     }
 
     // Enforce uniqueness of name within the namespace
     let name_conflict = tokens
-        .filter(namespace.eq(&new_token.namespace))
+        .filter(namespace.eq(&ns))
         .filter(name.eq(&token_name))
         .first::<Token>(conn)
         .optional();
@@ -126,7 +128,7 @@ pub fn create(token: Token, new_token: Json<Token>) -> Result<Json<Token>, Statu
     let to_insert = TokenInsert {
         code: token_code.to_string(),
         description: new_token.description.clone(),
-        namespace: new_token.namespace.clone(),
+        namespace: ns,
         creation_timestamp: Utc::now().naive_utc(),
         permission_read: new_token.permission_read,
         permission_write: new_token.permission_write,
