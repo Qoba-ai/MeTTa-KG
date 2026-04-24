@@ -223,6 +223,53 @@ interface EditorPanel {
     view?: EditorView;
 }
 
+// Walk down the namespace tree from rootPath and return the path that should be
+// lazy-loaded on editor scroll, or null if loading is ambiguous or impossible.
+//
+// Rules:
+//   - If rootPath itself has a pending focus token, return it (existing behaviour).
+//   - Otherwise look one level deeper: if exactly one direct child has tokens
+//     anywhere below it, recurse into that child and apply the same rules.
+//   - If multiple siblings at the same level have tokens below them, return null
+//     (ambiguous — don't auto-load).
+const findNextPaginatablePath = (
+    rootPath: string,
+    focusTokensMap: Map<string, string[]>,
+    prefetchCacheMap: Map<string, string[][]>,
+): string | null => {
+    const norm = rootPath.endsWith('/') ? rootPath : rootPath + '/'
+
+    const hasMore = (p: string) =>
+        (focusTokensMap.get(p)?.length ?? 0) > 0 || prefetchCacheMap.has(p)
+
+    if (hasMore(norm)) return norm
+
+    // Collect all descendant paths that have tokens
+    const allKeys = new Set([...focusTokensMap.keys(), ...prefetchCacheMap.keys()])
+    const descendants = [...allKeys].filter(p => p.startsWith(norm) && p !== norm && hasMore(p))
+
+    if (descendants.length === 0) return null
+
+    // Map each descendant to its direct-child prefix of norm
+    // (the path segment immediately below norm)
+    const normSlashes = (norm.match(/\//g) || []).length
+    const directChildren = new Set(
+        descendants.map(p => {
+            let count = 0
+            for (let i = 0; i < p.length; i++) {
+                if (p[i] === '/') count++
+                if (count === normSlashes + 1) return p.slice(0, i + 1)
+            }
+            return p
+        })
+    )
+
+    if (directChildren.size !== 1) return null  // multiple siblings — ambiguous
+
+    const [singleChild] = directChildren
+    return findNextPaginatablePath(singleChild, focusTokensMap, prefetchCacheMap)
+}
+
 const App: Component = () => {
     console.log("VITE_TOKEN detected:", TOKEN);
     // Refs
@@ -289,6 +336,8 @@ const App: Component = () => {
     const [isDraggingOver, setIsDraggingOver] = createSignal(false)
     const [manualImportFormat, setManualImportFormat] = createSignal<ImportFormat>()
     const [isTranslating, setIsTranslating] = createSignal(false)
+    const [pendingOps, setPendingOps] = createSignal<{ id: string; label: string }[]>([])
+    let pendingOpCounter = 0
     const [importCSVDirection, setImportCSVDirection] = createSignal<ImportCSVDirection>(ImportCSVDirection.CELL_LABELED)
     const [importCSVDelimiter, setImportCSVDelimiter] = createSignal<string>('\u002C')
 
@@ -492,23 +541,22 @@ const App: Component = () => {
                             if (scrollHeight - scrollTop - clientHeight < 200) {
                                 const p = activePanel();
                                 if (!p) return;
-                                const pathWithSlash = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/';
-                                const tokens = focusTokens().get(pathWithSlash) || [];
-                                const hasMore = tokens.length > 0 || prefetchCache().has(pathWithSlash);
-                                if (hasMore && !isLoadingMore() && !editorLoadingPaths().has(pathWithSlash) && !prefetchInProgress().has(pathWithSlash)) {
+                                const rootPath = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/';
+                                const targetPath = findNextPaginatablePath(rootPath, focusTokens(), prefetchCache());
+                                if (targetPath && !isLoadingMore() && !editorLoadingPaths().has(targetPath) && !prefetchInProgress().has(targetPath)) {
                                     setIsLoadingMore(true);
-                                    setEditorLoadingPaths(prev => new Set(prev).add(pathWithSlash));
+                                    setEditorLoadingPaths(prev => new Set(prev).add(targetPath));
                                     try {
-                                        await handleLoadMore(p.namespace);
-                                        const newTokens = focusTokens().get(pathWithSlash) || [];
+                                        await handleLoadMore(targetPath);
+                                        const newTokens = focusTokens().get(targetPath) || [];
                                         const newToken = newTokens[0] || '';
-                                        setEditorLastLoadedTokens(prev => new Map(prev).set(pathWithSlash, newToken));
+                                        setEditorLastLoadedTokens(prev => new Map(prev).set(targetPath, newToken));
                                     } catch (e) {
                                         console.error('Load more failed in editor:', e);
                                     } finally {
                                         setEditorLoadingPaths(prev => {
                                             const next = new Set(prev);
-                                            next.delete(pathWithSlash);
+                                            next.delete(targetPath);
                                             return next;
                                         });
                                         setIsLoadingMore(false);
@@ -659,14 +707,7 @@ const App: Component = () => {
 
         const setupModalBackdrop = (modal: HTMLDialogElement) => {
             modal.addEventListener('click', (event) => {
-                const rect = modal.getBoundingClientRect()
-                const isInDialog =
-                    rect.top <= event.clientY &&
-                    event.clientY <= rect.top + rect.height &&
-                    rect.left <= event.clientX &&
-                    event.clientX <= rect.left + rect.width
-                if (!isInDialog) {
-                    event.stopPropagation()
+                if (event.target === modal) {
                     modal.close()
                 }
             })
@@ -959,29 +1000,43 @@ const App: Component = () => {
         const format = activeImportFileFormat()
         if (!format) return
 
-        setIsTranslating(true)
+        // Capture all modal state before closing
+        const targetNs = importNamespace()
+        const encodedPath = targetNs.split('/').map(encodeURIComponent).join('/')
+        const src = importSource()
+        const file = activeImportFile()
+        const url = importUrl().trim()
+        const text = importText().trim()
+        const exPath = importExamplePath()
+        const parserParams = getParserParameters()
+
+        // Close modal immediately and reset form state
+        setIsImportModalOpen(false)
+        importFileModal.close()
+        setActiveImportFile(undefined)
+        setImportUrl('')
+        setImportText('')
+        setImportExamplePath('')
+        setManualImportFormat(undefined)
+
+        // Track this operation in the in-progress panel
+        const opId = String(++pendingOpCounter)
+        setPendingOps(prev => [...prev, { id: opId, label: `${format === ImportFormat.METTA ? 'Import' : 'Translate & Import'} → ${targetNs}` }])
 
         try {
-            const p = activePanel()
-            if (!p || !p.view) throw new Error('No active editor view')
-            const targetNs = importNamespace()
-            const encodedPath = targetNs.split('/').map(encodeURIComponent).join('/')
-            const src = importSource()
-
             if (src === ImportSource.FILE) {
-                const file = activeImportFile()
-                if (!file) return
+                if (!file) throw new Error('No file selected')
 
                 if (format === ImportFormat.METTA) {
-                    const text = await file.text()
+                    const fileText = await file.text()
                     const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
-                        body: text,
+                        body: fileText,
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 } else {
-                    const parameters = new URLSearchParams(getParserParameters() as any)
+                    const parameters = new URLSearchParams(parserParams as any)
                     const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}${encodedPath}?${parameters.toString()}`, {
                         method: 'POST',
                         headers: { Authorization: token()?.code ?? '' },
@@ -991,8 +1046,7 @@ const App: Component = () => {
                 }
 
             } else if (src === ImportSource.URL) {
-                const url = importUrl().trim()
-                if (!url) return
+                if (!url) throw new Error('No URL provided')
 
                 if (format === ImportFormat.METTA) {
                     const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta${encodedPath}?url=${encodeURIComponent(url)}`, {
@@ -1000,7 +1054,7 @@ const App: Component = () => {
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 } else {
-                    const parameters = new URLSearchParams({ ...getParserParameters() as any, url })
+                    const parameters = new URLSearchParams({ ...parserParams as any, url })
                     const resp = await fetch(`${BACKEND_URL}/spaces/import/url/${format}${encodedPath}?${parameters.toString()}`, {
                         headers: { Authorization: token()?.code ?? '' },
                     })
@@ -1008,8 +1062,7 @@ const App: Component = () => {
                 }
 
             } else if (src === ImportSource.TEXT) {
-                const text = importText().trim()
-                if (!text) return
+                if (!text) throw new Error('No text provided')
 
                 if (format === ImportFormat.METTA) {
                     const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
@@ -1019,7 +1072,7 @@ const App: Component = () => {
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 } else {
-                    const parameters = new URLSearchParams(getParserParameters() as any)
+                    const parameters = new URLSearchParams(parserParams as any)
                     const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}${encodedPath}?${parameters.toString()}`, {
                         method: 'POST',
                         headers: { Authorization: token()?.code ?? '' },
@@ -1028,8 +1081,7 @@ const App: Component = () => {
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 }
             } else if (src === ImportSource.EXAMPLES) {
-                const exPath = importExamplePath()
-                if (!exPath) return
+                if (!exPath) throw new Error('No example selected')
                 const rawUrl = `https://raw.githubusercontent.com/trueagi-io/metta-examples/main/${exPath}`
                 const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta${encodedPath}?url=${encodeURIComponent(rawUrl)}`, {
                     headers: { Authorization: token()?.code ?? '' },
@@ -1037,26 +1089,19 @@ const App: Component = () => {
                 if (!resp.ok) throw new Error(`Status ${resp.status}`)
             }
 
-            if (targetNs === activePanel()?.namespace) {
-                await read();
-            } else {
-                await read(); await addPanel(targetNs)
+            await read()
+            if (targetNs !== activePanel()?.namespace) {
+                await addPanel(targetNs)
             }
 
             notify.success(format === ImportFormat.METTA ? 'Successfully imported to space' : 'Successfully translated and imported to space')
             fetchSpaceLogs()
             setEditorMode(EditorMode.EDIT)
-            setActiveImportFile(undefined)
-            setImportUrl('')
-            setImportText('')
-            setImportExamplePath('')
-            setManualImportFormat(undefined)
-            setIsImportModalOpen(false)
-            importFileModal.close()
         } catch (e) {
             console.error(e)
             notify.error(`Failed to ${format === ImportFormat.METTA ? 'import' : 'translate and import'} (Backend error or invalid format).`)
         } finally {
+            setPendingOps(prev => prev.filter(op => op.id !== opId))
             setIsTranslating(false)
         }
     }
@@ -1436,6 +1481,14 @@ const App: Component = () => {
         const patterns = configs.filter(c => c.type === 'input').map(c => c.patternOrTemplate)
         const templates = configs.filter(c => c.type === 'output').map(c => c.patternOrTemplate)
 
+        // Close modal immediately
+        transformModal.close()
+
+        // Track this operation in the in-progress panel
+        const opId = String(++pendingOpCounter)
+        const outputLabel = output_spaces.length > 0 ? `/${output_spaces[0]}${output_spaces.length > 1 ? ` +${output_spaces.length - 1}` : ''}` : ''
+        setPendingOps(prev => [...prev, { id: opId, label: `Transform → ${outputLabel}` }])
+
         try {
             const resp = await fetch(`${BACKEND_URL}/spaces`, {
                 method: 'PUT',
@@ -1445,9 +1498,15 @@ const App: Component = () => {
             if (resp.ok) {
                 notify.success('Transformation successfully dispatched')
                 fetchSpaceLogs()
-                transformModal.close()
-            } else notify.error(`Transformation failed (Status: ${resp.status})`)
-        } catch (e) { console.error(e); notify.error('Error during transformation') }
+            } else {
+                notify.error(`Transformation failed (Status: ${resp.status})`)
+            }
+        } catch (e) {
+            console.error(e)
+            notify.error('Error during transformation')
+        } finally {
+            setPendingOps(prev => prev.filter(op => op.id !== opId))
+        }
     }
 
     const fetchExploreResults = async (path: string) => {
@@ -2089,6 +2148,19 @@ const App: Component = () => {
                 rootTokenCode={rootTokenCode}
                 onClose={() => shareTokenModal.close()}
             />
+
+            <Show when={pendingOps().length > 0}>
+                <div class={styles.PendingOpsPanel}>
+                    <For each={pendingOps()}>
+                        {(op) => (
+                            <div class={styles.PendingOp}>
+                                <div class={styles.Spinner} />
+                                <span>{op.label}</span>
+                            </div>
+                        )}
+                    </For>
+                </div>
+            </Show>
 
             <Toaster toastOptions={{ className: commonStyles.Toaster }} containerStyle={{ 'margin-top': '60px' }} />
         </div>

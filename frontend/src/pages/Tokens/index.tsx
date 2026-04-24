@@ -12,6 +12,7 @@ import { useTheme } from '../../ThemeContext'
 import { Token } from '../../types'
 import { Navbar } from '../../components/Navbar/Navbar'
 import { wsService } from '../../websocket'
+import { NamespaceSelector } from '../Editor/components/NamespaceSelector/NamespaceSelector'
 
 enum SortableColumns {
     TIMESTAMP,
@@ -129,58 +130,18 @@ const deleteTokens = async (
     })
 }
 
-interface NamespaceNode {
-    namespace: string
-    subnamespaces: NamespaceNode[] | null
-}
-
-const parseNamespaceTree = (node: NamespaceNode): string[] => {
-    const results: string[] = []
-
-    // The namespace is already a fully qualified path from the backend
-    if (node.namespace) {
-        // Add trailing slash if not present
-        const fullPath = node.namespace.endsWith('/')
-            ? node.namespace
-            : node.namespace + '/'
-        results.push(fullPath)
-    }
-
-    // Recursively process all subnamespaces
-    if (node.subnamespaces) {
-        for (const child of node.subnamespaces) {
-            results.push(...parseNamespaceTree(child))
-        }
-    }
-
-    return results
-}
-
-const fetchNamespaces = async (
-    root: string | null
-): Promise<string[]> => {
-    if (!root) {
-        return []
-    }
-
+const fetchNamespaces = async (root: string | null): Promise<any | null> => {
+    if (!root) return null
     try {
         const resp = await fetch(`${BACKEND_URL}/namespaces/`, {
             method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: root,
-            },
+            headers: { 'Content-Type': 'application/json', Authorization: root },
         })
-
-        if (resp.ok) {
-            const tree: NamespaceNode = await resp.json()
-            const namespaces = parseNamespaceTree(tree)
-            return namespaces
-        }
-        return []
+        if (resp.ok) return await resp.json()
+        return null
     } catch (e) {
         console.error('Failed to fetch namespaces:', e)
-        return []
+        return null
     }
 }
 
@@ -191,7 +152,6 @@ const Tokens: Component = () => {
     let newTokenForm: HTMLFormElement
     let newTokenNameInput: HTMLInputElement
     let newTokenDescriptionInput: HTMLInputElement
-    let newTokenNamespaceInput: HTMLInputElement
     let newTokenReadCheckbox: HTMLInputElement
     let newTokenWriteCheckbox: HTMLInputElement
     let newTokenShareReadCheckbox: HTMLInputElement
@@ -235,8 +195,7 @@ const Tokens: Component = () => {
     const [showDescriptionFilter, setShowDescriptionFilter] = createSignal(false)
     const [copiedToken, setCopiedToken] = createSignal<Token | null>()
     const [online, setOnline] = createSignal(false)
-    const [namespaceSuggestions, setNamespaceSuggestions] = createSignal<string[]>([])
-    const [showNamespaceSuggestions, setShowNamespaceSuggestions] = createSignal(false)
+    const [nsTree, setNsTree] = createSignal<any>(null)
     const [namespaceInputValue, setNamespaceInputValue] = createSignal('')
 
     const [tokens, { refetch: refetchTokens, mutate: mutateTokens }] =
@@ -248,9 +207,9 @@ const Tokens: Component = () => {
         wsService.connectPing()
         const unsubOnline = wsService.onOnlineChange(setOnline)
 
-        // Fetch namespace suggestions
-        const namespaces = await fetchNamespaces(rootTokenCode())
-        setNamespaceSuggestions(namespaces)
+        // Fetch namespace tree
+        const tree = await fetchNamespaces(rootTokenCode())
+        setNsTree(tree)
 
         onCleanup(() => {
             unsubOnline()
@@ -259,15 +218,7 @@ const Tokens: Component = () => {
         // dismiss import dialog when clicking on backdrop
         // TODO: put this in separate component
         refreshTokensModel.addEventListener('click', function (event) {
-            const rect = refreshTokensModel.getBoundingClientRect()
-            const isInDialog =
-                rect.top <= event.clientY &&
-                event.clientY <= rect.top + rect.height &&
-                rect.left <= event.clientX &&
-                event.clientX <= rect.left + rect.width
-
-            if (!isInDialog) {
-                event.stopPropagation()
+            if (event.target === refreshTokensModel) {
                 refreshTokensModel.close()
             }
         })
@@ -275,15 +226,7 @@ const Tokens: Component = () => {
         // dismiss import dialog when clicking on backdrop
         // TODO: put this in separate component
         deleteTokensModal.addEventListener('click', function (event) {
-            const rect = deleteTokensModal.getBoundingClientRect()
-            const isInDialog =
-                rect.top <= event.clientY &&
-                event.clientY <= rect.top + rect.height &&
-                rect.left <= event.clientX &&
-                event.clientX <= rect.left + rect.width
-
-            if (!isInDialog) {
-                event.stopPropagation()
+            if (event.target === deleteTokensModal) {
                 deleteTokensModal.close()
             }
         })
@@ -304,7 +247,7 @@ const Tokens: Component = () => {
 
                 const tokenName = newTokenNameInput.value
                 const description = newTokenDescriptionInput.value
-                const namespace = newTokenNamespaceInput.value
+                const namespace = namespaceInputValue()
                 const read = newTokenReadCheckbox.checked
                 const write = newTokenWriteCheckbox.checked
                 const shareRead = newTokenShareReadCheckbox.checked
@@ -325,10 +268,6 @@ const Tokens: Component = () => {
                     )
 
                     mutateTokens((v) => [...v, newToken])
-
-                    // bit of a hack
-                    // signals propagate: the mutateTokens call above causes newTokenNamespaceInput to re-render
-                    newTokenNamespaceInput.value = namespace
 
                     notify.custom(
                         (t) => (
@@ -483,6 +422,38 @@ const Tokens: Component = () => {
         } else {
             return -result
         }
+    }
+
+    const fetchExploreResults = async (path: string): Promise<any[]> => {
+        const tree = nsTree()
+        if (!tree) return []
+
+        let ns = path
+        if (ns.startsWith('/')) ns = ns.substring(1)
+        if (ns.endsWith('/')) ns = ns.slice(0, -1)
+        const parts = ns.split('/').filter((p: string) => p.length > 0)
+
+        let node: any = tree
+        for (const part of parts) {
+            const subs: any[] = node?.subnamespaces || []
+            node = subs.find((s: any) => {
+                const subNs: string = (s.namespace || '').toString().replace(/\\/g, '/')
+                return subNs.split('/').filter((x: string) => x.length > 0).pop() === part
+            }) ?? null
+            if (!node) break
+        }
+
+        const results: any[] = []
+        const seen = new Set<string>()
+        for (const sub of node?.subnamespaces || []) {
+            const namespace: string = (sub.namespace || '').toString().replace(/\\/g, '/')
+            const resultPath = '/' + namespace + '/'
+            if (!seen.has(resultPath)) {
+                seen.add(resultPath)
+                results.push({ path: resultPath, expr: '' })
+            }
+        }
+        return results
     }
 
     return (
@@ -967,65 +938,13 @@ const Tokens: Component = () => {
                                 </label>
                                 <label class={styles.NamespaceInputContainer}>
                                     Namespace
-                                    <div class={styles.AutocompleteWrapper}>
-                                        <input
-                                            ref={newTokenNamespaceInput!}
-                                            type="text"
-                                            placeholder="Namespace (e.g., /myproject)"
-                                            required
-                                            pattern={
-                                                '^/(([a-zA-Z0-9])+([a-zA-Z0-9]|-|_)*([a-zA-Z0-9])/?)*$'
-                                            }
-                                            disabled={
-                                                !tokens().find(
-                                                    (t) => t.code === rootTokenCode()
-                                                )
-                                            }
-                                            oninput={(e) => {
-                                                const value = e.currentTarget.value
-                                                setNamespaceInputValue(value)
-                                                setShowNamespaceSuggestions(true)
-                                                newTokenNamespaceInput.setCustomValidity('')
-                                            }}
-                                            onfocus={() => setShowNamespaceSuggestions(true)}
-                                            onblur={() => {
-                                                // Delay to allow clicking on suggestions
-                                                setTimeout(() => setShowNamespaceSuggestions(false), 200)
-                                            }}
-                                            oninvalid={() =>
-                                                newTokenNamespaceInput.setCustomValidity(
-                                                    "Namespaces start with '/' followed by 2 or more alphanumeric characters."
-                                                )
-                                            }
-                                            value={
-                                                namespaceInputValue() ||
-                                                (tokens().find((t) => t.code === rootTokenCode())
-                                                    ?.namespace ?? '')
-                                            }
-                                        />
-                                        <Show when={showNamespaceSuggestions() && namespaceSuggestions().length > 0}>
-                                            <div class={styles.SuggestionsList}>
-                                                <For each={namespaceSuggestions().filter(ns =>
-                                                    namespaceInputValue() === '' ||
-                                                    ns.toLowerCase().includes(namespaceInputValue().toLowerCase())
-                                                ).slice(0, 8)}>
-                                                    {(namespace) => (
-                                                        <div
-                                                            class={styles.SuggestionItem}
-                                                            onmousedown={(e) => {
-                                                                e.preventDefault()
-                                                                newTokenNamespaceInput.value = namespace
-                                                                setNamespaceInputValue(namespace)
-                                                                setShowNamespaceSuggestions(false)
-                                                            }}
-                                                        >
-                                                            <span class={styles.SuggestionNamespace}>{namespace}</span>
-                                                        </div>
-                                                    )}
-                                                </For>
-                                            </div>
-                                        </Show>
-                                    </div>
+                                    <NamespaceSelector
+                                        value={namespaceInputValue() || (tokens().find((t) => t.code === rootTokenCode())?.namespace ?? '/')}
+                                        onInput={setNamespaceInputValue}
+                                        placeholder="Namespace (e.g., /myproject)"
+                                        disabled={!tokens().find((t) => t.code === rootTokenCode())}
+                                        fetchExploreResults={fetchExploreResults}
+                                    />
                                 </label>
                                 <label>
                                     Description

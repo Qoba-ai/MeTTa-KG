@@ -4,7 +4,7 @@ use rocket::{get, http::Status, post, put};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{env, vec};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
@@ -20,6 +20,7 @@ use crate::{
     },
     schema::{op_log, op_log_clear, op_log_copy, op_log_import, op_log_transform},
 };
+use diesel::sql_types::Integer;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use mork_client::{ExploreResult, MorkClient, MorkError, NamespaceInfo};
 
@@ -888,23 +889,118 @@ pub async fn explore_namespaces(
     perm.check_namespace(&path)
         .map_err(permission_error_to_status)?;
     debug!(path = %path.display(), "Explore namespaces request");
-    with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
-        let root = PathBuf::from("space");
 
-        let augmented_path = if !path.as_os_str().is_empty() {
-            root.join(path.clone())
-        } else {
-            root.clone()
-        };
+    // Collect all descendant token namespaces to build the "virtual" tree.
+    // These are namespaces that have tokens but may not yet exist in MORK.
+    let child_tokens = diesel::sql_query(
+        "WITH RECURSIVE rectree AS (
+            SELECT * FROM tokens WHERE id = $1
+            UNION ALL
+            SELECT t.* FROM tokens t JOIN rectree ON t.parent = rectree.id
+        ) SELECT * FROM rectree;",
+    )
+    .bind::<Integer, _>(token.id)
+    .get_results::<Token>(&mut establish_connection())
+    .unwrap_or_default();
 
+    let token_namespaces: Vec<String> = child_tokens
+        .iter()
+        .map(|t| t.namespace.trim_matches('/').to_string())
+        .filter(|ns| !ns.is_empty())
+        .collect();
+
+    let virtual_info = build_namespace_tree(&path, &token_namespaces);
+
+    let root = PathBuf::from("space");
+    let augmented_path = if !path.as_os_str().is_empty() {
+        root.join(path.clone())
+    } else {
+        root.clone()
+    };
+
+    let mork_result = with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
+        let root = root.clone();
+        let augmented_path = augmented_path.clone();
         async move {
             get_mork_client()
                 .explore_namespaces(&augmented_path, &root)
                 .await
-                .map(Json)
         }
     })
-    .await
+    .await;
+
+    let result = match mork_result {
+        Ok(mork_info) => merge_namespace_info(virtual_info, mork_info),
+        Err(_) => virtual_info,
+    };
+
+    Ok(Json(result))
+}
+
+// ─── Namespace tree helpers ───────────────────────────────────────────────────
+
+/// Recursively builds a `NamespaceInfo` tree rooted at `current_path` from a
+/// flat list of normalized namespace strings (no leading/trailing slashes,
+/// e.g. `"myproject/sub"`).
+fn build_namespace_tree(current_path: &Path, all_ns: &[String]) -> NamespaceInfo {
+    let current_str = current_path.to_string_lossy();
+    let mut child_names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for ns in all_ns {
+        if current_str.is_empty() {
+            if let Some(first) = ns.split('/').next() {
+                if !first.is_empty() {
+                    child_names.insert(first.to_string());
+                }
+            }
+        } else {
+            let prefix = format!("{}/", current_str);
+            if ns.starts_with(prefix.as_str()) {
+                let rest = &ns[prefix.len()..];
+                if let Some(next) = rest.split('/').next() {
+                    if !next.is_empty() {
+                        child_names.insert(next.to_string());
+                    }
+                }
+            }
+        }
+    }
+    let subnamespaces: Vec<NamespaceInfo> = child_names
+        .into_iter()
+        .map(|name| {
+            let child_path = if current_str.is_empty() {
+                PathBuf::from(&name)
+            } else {
+                current_path.join(&name)
+            };
+            build_namespace_tree(&child_path, all_ns)
+        })
+        .collect();
+    NamespaceInfo {
+        namespace: current_path.to_path_buf(),
+        subnamespaces: if subnamespaces.is_empty() {
+            None
+        } else {
+            Some(subnamespaces)
+        },
+    }
+}
+
+/// Merges two `NamespaceInfo` trees, keeping `a`'s root namespace.
+/// Sub-trees present in both are merged recursively; those only in `b` are appended.
+fn merge_namespace_info(a: NamespaceInfo, b: NamespaceInfo) -> NamespaceInfo {
+    let mut subs = a.subnamespaces.unwrap_or_default();
+    for sub_b in b.subnamespaces.unwrap_or_default() {
+        if let Some(existing) = subs.iter_mut().find(|s| s.namespace == sub_b.namespace) {
+            let owned = existing.clone();
+            *existing = merge_namespace_info(owned, sub_b);
+        } else {
+            subs.push(sub_b);
+        }
+    }
+    NamespaceInfo {
+        namespace: a.namespace,
+        subnamespaces: if subs.is_empty() { None } else { Some(subs) },
+    }
 }
 
 // ─── Count ───────────────────────────────────────────────────────────────────
