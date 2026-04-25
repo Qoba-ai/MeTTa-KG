@@ -209,7 +209,7 @@ const TrieBranch: Component<{
   const handleDoubleClick = (e: MouseEvent) => {
     e.stopPropagation();
     if (props.onOpenSubspace) {
-      props.onOpenSubspace(props.path);
+      // props.onOpenSubspace(props.path);
     }
   };
 
