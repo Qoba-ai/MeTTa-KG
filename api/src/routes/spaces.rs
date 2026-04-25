@@ -732,12 +732,8 @@ pub async fn copy(
 ) -> Result<Json<bool>, Status> {
     // Strip leading slashes so that PathBuf::join doesn't treat them as absolute paths,
     // which would replace the "space/" prefix entirely.
-    let src_rel = PathBuf::from(
-        req.src.to_string_lossy().trim_start_matches('/')
-    );
-    let dst_rel = PathBuf::from(
-        req.dst.to_string_lossy().trim_start_matches('/')
-    );
+    let src_rel = PathBuf::from(req.src.to_string_lossy().trim_start_matches('/'));
+    let dst_rel = PathBuf::from(req.dst.to_string_lossy().trim_start_matches('/'));
 
     let perm = permission_from_token(&token);
     perm.require_write().map_err(permission_error_to_status)?;
