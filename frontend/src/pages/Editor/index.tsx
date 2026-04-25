@@ -146,7 +146,7 @@ import {
 } from './extensions/mettaLanguageSupport'
 import { Expression, Symbol, Variable } from '../../parser/parser.terms'
 import { diffExtension, setOriginalContentEffect } from './extensions/diffExtension'
-import { setCollapsedPathsEffect, collapsedPathsField, createPathFoldExtension, getFoldedPaths, extractLinePathTokens } from './extensions/pathFoldExtension'
+import { createPathFoldExtension } from './extensions/pathFoldExtension'
 import { NamespaceSelector } from './components/NamespaceSelector/NamespaceSelector'
 import { TrieExplorer, buildTrie, TrieNode } from './components/TrieExplorer/TrieExplorer'
 import { EditorASTState, astToString, initializeEditorState, emptyEditorState, parseMeTTaString, buildASTFromTokens, mergeTokensIntoAST, unexpandFringe, hasFringeDescendant, computeDiff, ASTNode, ExprNode } from './lib/ast'
@@ -374,9 +374,6 @@ const App: Component = () => {
         return namespaceFetchPromise
     }
 
-    // Trie/Editor fold sync state — full paths like "/key/" or "/key/sub/" that are collapsed
-    const [collapsedPaths, setCollapsedPaths] = createSignal<Set<string>>(new Set())
-
     // Focus tokens for expandable paths — keyed by path, stores array of tokens per path
     const [focusTokens, setFocusTokens] = createSignal<Map<string, string[]>>(new Map())
 
@@ -580,12 +577,6 @@ const App: Component = () => {
                     },
                 }),
                 createPathFoldExtension(
-                    (foldedPaths) => {
-                        const p = activePanel()
-                        if (!p) return
-                        const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
-                        setCollapsedPaths(new Set(Array.from(foldedPaths).map(k => `${ns}${k}/`)))
-                    },
                     (fringePath) => {
                         // Handle $ click — expand fringe
                         const p = activePanel()
@@ -631,13 +622,8 @@ const App: Component = () => {
                         parent: mettaInput
                     })
                     setPanels(prev => prev.map(item => item.id === p.id ? { ...item, view } : item))
-                    setCollapsedPaths(new Set<string>())
                 } else {
                     mettaInput.appendChild(p.view.dom)
-                    // Restore collapsed paths from this panel's current fold state
-                    const ns = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
-                    const foldedPaths = getFoldedPaths(p.view.state)
-                    setCollapsedPaths(new Set(Array.from(foldedPaths).map(k => `${ns}${k}/`)))
                 }
             }
         }
@@ -765,6 +751,9 @@ const App: Component = () => {
             unexpandFringe(astState.ast, astState.nodeMap, relPath)
             unexpandFringe(astState.originalAST, astState.originalNodeMap, relPath)
             astState.expandedPaths.delete(relPath)
+            for (const p of [...astState.expandedPaths]) {
+                if (p.startsWith(relPath + '/')) astState.expandedPaths.delete(p)
+            }
 
             // Re-render
             const displayContent = getDisplayContentWithPaginationIndicator(astState, p.namespace)
@@ -774,17 +763,25 @@ const App: Component = () => {
                 annotations: [programmaticEdit.of(true)],
             }))
 
-            // Remove from collapsed set: the path is now a fringe marker, not a fold
-            const newCollapsed = new Set(p.view.state.field(collapsedPathsField))
-            newCollapsed.delete(relPath)
-            p.view.dispatch({ effects: setCollapsedPathsEffect.of(newCollapsed) })
+            // Reset pagination so re-expanding starts from page 1
+            const pathWithSlash = path.endsWith('/') ? path : path + '/'
+            setFocusTokens(prev => {
+                const m = new Map(prev)
+                for (const key of m.keys()) {
+                    if (key === pathWithSlash || key.startsWith(pathWithSlash)) m.delete(key)
+                }
+                return m
+            })
+            setPrefetchCache(prev => {
+                const m = new Map(prev)
+                for (const key of m.keys()) {
+                    if (key === pathWithSlash || key.startsWith(pathWithSlash)) m.delete(key)
+                }
+                return m
+            })
+
             return
         }
-
-        // Regular collapse (non-fringe path): add to collapsed set
-        const newCollapsed = new Set(p.view.state.field(collapsedPathsField))
-        newCollapsed.add(relPath)
-        p.view.dispatch({ effects: setCollapsedPathsEffect.of(newCollapsed) })
     }
 
     const handleTrieExpand = async (path: string) => {
@@ -794,14 +791,7 @@ const App: Component = () => {
         if (!path.startsWith(activeNs)) return
         const relPath = path.slice(activeNs.length).replace(/\/$/, '')
 
-        const currentCollapsed = new Set(p.view.state.field(collapsedPathsField))
-
-        // If this path is NOT a fringe node (no $ child in AST), just remove it from collapsed paths
-        if (!hasFringeDescendant(p.astState.ast, relPath)) {
-            currentCollapsed.delete(relPath)
-            p.view.dispatch({ effects: setCollapsedPathsEffect.of(currentCollapsed) })
-            return
-        }
+        if (!hasFringeDescendant(p.astState.ast, relPath)) return
 
         try {
             // Look up all focus tokens for this path
@@ -810,14 +800,20 @@ const App: Component = () => {
 
             // Fetch results for all focus tokens and combine them
             let allTokens: string[][] = []
+            let allInlineExpandedPaths: string[] = []
             if (pathFocusTokens.length === 0) {
                 // No focus tokens, make a single request without token
-                allTokens = await loadFringeAsTokens(path, undefined, activeNs)
+                const { tokens, inlineExpandedPaths } = await loadFringeAsTokens(path, undefined, activeNs)
+                allTokens = tokens
+                allInlineExpandedPaths = inlineExpandedPaths
             } else {
                 // Make one request per focus token and combine results
                 for (const focusToken of pathFocusTokens) {
-                    const tokens = await loadFringeAsTokens(path, focusToken, activeNs)
+                    const { tokens, inlineExpandedPaths } = await loadFringeAsTokens(path, focusToken, activeNs)
                     allTokens = allTokens.concat(tokens)
+                    for (const p of inlineExpandedPaths) {
+                        if (!allInlineExpandedPaths.includes(p)) allInlineExpandedPaths.push(p)
+                    }
                 }
             }
 
@@ -834,6 +830,9 @@ const App: Component = () => {
             mergeTokensIntoAST(astState.ast, astState.nodeMap, pathKey, strippedTokens)
             mergeTokensIntoAST(astState.originalAST, astState.originalNodeMap, pathKey, strippedTokens)
             astState.expandedPaths.add(pathKey)
+            for (const childPath of allInlineExpandedPaths) {
+                astState.expandedPaths.add(childPath)
+            }
 
             // Re-render
             const displayContent = getDisplayContentWithPaginationIndicator(astState, p.namespace)
@@ -846,11 +845,6 @@ const App: Component = () => {
         } catch (e) {
             console.error("Expand exploration failed:", e)
         }
-
-        // Also remove from the collapsed set so CM decoration updates
-        const newCollapsed = new Set(p.view.state.field(collapsedPathsField))
-        newCollapsed.delete(relPath)
-        p.view.dispatch({ effects: setCollapsedPathsEffect.of(newCollapsed) })
     }
 
     const handleLoadMore = async (path: string) => {
@@ -874,7 +868,7 @@ const App: Component = () => {
                     notify.info('No more expressions to load')
                     return
                 }
-                newTokens = await loadFringeAsTokens(path, pathFocusTokens[0], activeNs)
+                ; ({ tokens: newTokens } = await loadFringeAsTokens(path, pathFocusTokens[0], activeNs))
             }
 
             // Append new expressions to the AST
@@ -1147,7 +1141,7 @@ const App: Component = () => {
         }
     }
 
-    const loadFringeAsTokens = async (path: string, focusToken?: string, tabNamespace?: string): Promise<string[][]> => {
+    const loadFringeAsTokens = async (path: string, focusToken?: string, tabNamespace?: string): Promise<{ tokens: string[][], inlineExpandedPaths: string[] }> => {
         let ns = path
         if (ns.startsWith('/')) ns = ns.substring(1)
         const encodedNs = ns.split('/').map(encodeURIComponent).join('/')
@@ -1173,6 +1167,7 @@ const App: Component = () => {
 
             const newTokens = new Map(focusTokens())
             const result: string[][] = []
+            const inlineExpandedPaths = new Set<string>()
 
             // Normalize a raw path value from the API (PathBuf → string, strip slashes/backslashes)
             const normPath = (p: any): string =>
@@ -1217,12 +1212,13 @@ const App: Component = () => {
                     if (child) {
                         // Interior node: already fully expanded in children — recurse, no marker
                         const childRelParts = subNorm.split('/').filter(p => p.length > 0).slice(tabNsParts.length)
+                        inlineExpandedPaths.add(childRelParts.join('/'))
                         collectFromNode(child, childRelParts)
                     } else {
                         // Leaf node: emit subspace marker and store focus token placeholder
                         const key = '/' + subNorm + '/'
                         if (!newTokens.has(key)) newTokens.set(key, [])
-                        result.push(["!", subspaceToRelSexpr(subNorm)])
+                        result.push(["!", subspaceToRelSexpr(subNorm), nodeRelParts.join('/')])
                     }
                 }
 
@@ -1234,16 +1230,15 @@ const App: Component = () => {
                     return w
                 }
 
+                const ownerPath = nodeRelParts.join('/')
                 for (const expr of (node.metta_expressions || [])) {
-                    if (expr) result.push(["!", wrap(expr)])
+                    if (expr) result.push(["!", wrap(expr), ownerPath])
                 }
             }
 
-            console.log(`data: ${JSON.stringify(data)}`)
-
             collectFromNode(data, relParts)
             setFocusTokens(newTokens)
-            return result
+            return { tokens: result, inlineExpandedPaths: [...inlineExpandedPaths] }
         } catch (e) {
             console.error("Explore API failed:", e)
             throw e
@@ -1264,7 +1259,7 @@ const App: Component = () => {
         const tabNs = p.namespace.endsWith('/') ? p.namespace : p.namespace + '/'
         setPrefetchInProgress(prev => new Set(prev).add(pathWithSlash))
         try {
-            const tokens = await loadFringeAsTokens(path, cursor, tabNs)
+            const { tokens } = await loadFringeAsTokens(path, cursor, tabNs)
             setPrefetchCache(prev => new Map(prev).set(pathWithSlash, tokens))
         } catch (e) {
             console.error('Prefetch failed:', e)
@@ -1322,8 +1317,9 @@ const App: Component = () => {
             setFocusTokens(newTokens)
 
             // Now load the space content using the root token
-            const fringeTokens = await loadFringeAsTokens(ns, namespaceInfo.token, ns)
+            const { tokens: fringeTokens, inlineExpandedPaths } = await loadFringeAsTokens(ns, namespaceInfo.token, ns)
             const astState = createASTStateFromTokens(fringeTokens, ns)
+            for (const p of inlineExpandedPaths) astState.expandedPaths.add(p)
 
             const newPanel: EditorPanel = {
                 id,
@@ -1456,11 +1452,12 @@ const App: Component = () => {
             setFocusTokens(newTokens)
 
             // Now load the space content using the root token
-            const tokens = await loadFringeAsTokens(path, namespaceInfo.token, path)
+            const { tokens, inlineExpandedPaths } = await loadFringeAsTokens(path, namespaceInfo.token, path)
 
             if (p && !ns) {
                 // Update current panel
                 const astState = createASTStateFromTokens(tokens, path)
+                for (const ep of inlineExpandedPaths) astState.expandedPaths.add(ep)
                 const displayContent = getDisplayContentWithPaginationIndicator(astState, path)
                 setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
                 p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: displayContent } }))
@@ -1971,7 +1968,6 @@ const App: Component = () => {
                                             })));
                                             transformModal.showModal();
                                         }}
-                                        collapsedPaths={() => collapsedPaths()}
                                         onCollapse={handleTrieCollapse}
                                         onExpand={handleTrieExpand}
                                         focusTokens={() => focusTokens()}

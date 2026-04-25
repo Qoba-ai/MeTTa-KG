@@ -287,16 +287,18 @@ export function buildASTFromTokens(tokenPaths: string[][]): { ast: ASTDocument; 
     if (tp.length === 0) continue
 
     // Check for raw expression marker "!"
-    // Format: ["!", "(a b c d)"] - non-binary expression to be parsed as-is
+    // Format: ["!", "(a b c d)", ownerPath?] — non-binary expression to be parsed as-is.
+    // ownerPath (tp[2]) is the path that "owns" this expression for collapse bookkeeping.
     if (tp.length >= 2 && tp[0] === '!') {
       const rawExpr = tp[1]
+      const ownerPath = tp.length >= 3 ? tp[2] : undefined
       if (!emittedRawExprs.has(rawExpr)) {
         emittedRawExprs.add(rawExpr)
-        // Parse the raw expression and add to AST
         const parsed = parseMeTTaString(rawExpr, 'loaded')
         for (const node of parsed) {
           nodeMap.set(node.id, node)
           if (node.type === 'expr') {
+            if (ownerPath) (node as ExprNode).expandedFrom = ownerPath
             buildNodeMapRecursive((node as ExprNode).children, nodeMap)
           }
           atoms.push(node)
@@ -400,9 +402,6 @@ export function mergeTokensIntoAST(
   // Remove the old atom from nodeMap
   removeNodesFromMap(ast[idx])
 
-  // Build new atoms from newTokens
-  const { ast: newAtoms } = buildASTFromTokens(newTokens)
-
   // Deduplicate: skip atoms whose serialized form already exists in the AST
   const existingStrings = new Set<string>()
   for (let i = 0; i < ast.length; i++) {
@@ -410,12 +409,41 @@ export function mergeTokensIntoAST(
   }
 
   const uniqueNewAtoms: ASTNode[] = []
-  for (const a of newAtoms) {
-    const s = astToString([a])
-    if (!existingStrings.has(s)) {
-      if (a.type === 'expr') (a as ExprNode).expandedFrom = fringePath
-      uniqueNewAtoms.push(a)
-      existingStrings.add(s)
+
+  // Separate raw expr tokens (["!", expr, ?ownerPath]) from path tokens
+  const rawTokens = newTokens.filter(tp => tp.length >= 2 && tp[0] === '!')
+  const pathTokens = newTokens.filter(tp => !(tp.length >= 2 && tp[0] === '!'))
+
+  // Non-raw path tokens: build together and assign fringePath as expandedFrom
+  if (pathTokens.length > 0) {
+    const { ast: pathAtoms } = buildASTFromTokens(pathTokens)
+    for (const a of pathAtoms) {
+      const s = astToString([a])
+      if (!existingStrings.has(s)) {
+        if (a.type === 'expr') (a as ExprNode).expandedFrom = fringePath
+        uniqueNewAtoms.push(a)
+        existingStrings.add(s)
+      }
+    }
+  }
+
+  // Raw expr tokens: process one by one so token[2] (owner path) is used for expandedFrom.
+  // With depth >= 2, child paths emit tokens tagged with their specific sub-path so that
+  // unexpandFringe can target each child independently.
+  const emittedRawExprs = new Set<string>()
+  for (const token of rawTokens) {
+    const rawExpr = token[1]
+    const ownerPath = token.length >= 3 ? token[2] : fringePath
+    if (emittedRawExprs.has(rawExpr)) continue
+    emittedRawExprs.add(rawExpr)
+    const parsed = parseMeTTaString(rawExpr, 'loaded')
+    for (const a of parsed) {
+      const s = astToString([a])
+      if (!existingStrings.has(s)) {
+        if (a.type === 'expr') (a as ExprNode).expandedFrom = ownerPath
+        uniqueNewAtoms.push(a)
+        existingStrings.add(s)
+      }
     }
   }
 
@@ -438,7 +466,7 @@ export function unexpandFringe(
     const n = ast[i]
     if (n.type === 'expr') {
       const ep = (n as ExprNode).expandedFrom
-      if (ep && (ep === fringePath || ep.startsWith(fringePath + '/'))) {
+      if (!ep || (ep && (ep === fringePath || ep.startsWith(fringePath + '/')))) {
         toRemove.push(i)
       }
     }
@@ -454,6 +482,16 @@ export function unexpandFringe(
 
   const { ast: fringeAtoms, nodeMap: fringeNodeMap } = buildASTFromTokens([[...fringePath.split('/'), '|$|']])
   for (const [id, node] of fringeNodeMap) nodeMap.set(id, node)
+
+  // Tag re-inserted fringe nodes with the parent path so ancestor unexpandFringe calls can find them.
+  // e.g. collapsing 'home/tim/projects' re-inserts a node that belongs to the 'home/tim' expansion.
+  const parentPath = fringePath.includes('/') ? fringePath.split('/').slice(0, -1).join('/') : ''
+  if (parentPath) {
+    for (const a of fringeAtoms) {
+      if (a.type === 'expr') (a as ExprNode).expandedFrom = parentPath
+    }
+  }
+
   ast.splice(insertIdx, 0, ...fringeAtoms)
 }
 

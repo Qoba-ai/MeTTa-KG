@@ -17,7 +17,6 @@ interface TrieExplorerProps {
   onConfigureTransform?: (paths: string[]) => void;
   onShare?: (path: string) => void;
   rootPath?: string;
-  collapsedPaths?: () => Set<string>;
   onCollapse?: (path: string) => void;
   onExpand?: (path: string) => void;
   focusTokens?: () => Map<string, string[]>;
@@ -151,7 +150,6 @@ const TrieBranch: Component<{
   onRemoveSelect: (path: string) => void;
   onIsSelected: (path: string) => boolean;
   onGetSelectionCount: (path: string) => number;
-  collapsedPaths?: () => Set<string>;
   onCollapse?: (path: string) => void;
   onExpand?: (path: string) => void;
   focusTokens?: () => Map<string, string[]>;
@@ -162,24 +160,24 @@ const TrieBranch: Component<{
   isLast?: boolean;
 }> = (props) => {
 
-  const [localOpen, setLocalOpen] = createSignal(false);
+  const [localOpen, setLocalOpen] = createSignal(
+    Object.keys(props.node.children).length > 0 || props.node.terminals.length > 0
+  );
   const [isHovering, setIsHovering] = createSignal(false);
   const isOpen = () => {
     // If it's a fringe node with no actual children (unexplored), it should appear closed
     if (props.node.isFringe && Object.keys(props.node.children).length === 0 && props.node.terminals.length === 0) {
       return false;
     }
-    return props.collapsedPaths ? !props.collapsedPaths().has(props.path) : localOpen();
+    return localOpen();
   };
 
   const toggleOpen = (e: MouseEvent) => {
     e.stopPropagation();
-    if (props.onCollapse && props.onExpand) {
-      if (isOpen()) props.onCollapse(props.path);
-      else props.onExpand(props.path);
-    } else {
-      setLocalOpen(!localOpen());
-    }
+    const opening = !isOpen();
+    setLocalOpen(opening);
+    if (opening) props.onExpand?.(props.path);
+    else props.onCollapse?.(props.path);
   };
 
   // A node is a leaf only if it has no navigable children AND no terminals, and is not a fringe boundary.
@@ -267,16 +265,6 @@ const TrieBranch: Component<{
   };
 
   const showActions = () => isHovering();
-  const showCollapseExpand = () => isHovering() && !isLeaf() && props.onExpand;
-
-  const expandAllChildren = (e: MouseEvent) => {
-    e.stopPropagation();
-    if (!props.onExpand) return;
-    if (!isOpen()) props.onExpand(props.path);
-    for (const childName of Object.keys(props.node.children)) {
-      props.onExpand(`${props.path}${childName}/`);
-    }
-  };
 
   return (
     <div style={{ width: "100%" }}>
@@ -324,15 +312,6 @@ const TrieBranch: Component<{
 
           <Show when={showActions()}>
             <div class={styles.TrieActions}>
-              <Show when={showCollapseExpand()}>
-                <button
-                  class={styles.TrieActionBtn}
-                  onClick={expandAllChildren}
-                  title="Expand all subkeys"
-                >
-                  <VsChevronDown size={12} />
-                </button>
-              </Show>
               <Show when={props.onOpenSubspace}>
                 <button
                   class={styles.TrieActionBtn}
@@ -409,7 +388,6 @@ const TrieBranch: Component<{
                     onRemoveSelect={props.onRemoveSelect}
                     onIsSelected={props.onIsSelected}
                     onGetSelectionCount={props.onGetSelectionCount}
-                    collapsedPaths={props.collapsedPaths}
                     onCollapse={props.onCollapse}
                     onExpand={props.onExpand}
                     focusTokens={props.focusTokens}
@@ -647,7 +625,6 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
                   onRemoveSelect={removeSelect}
                   onIsSelected={isSelected}
                   onGetSelectionCount={getSelectionCount}
-                  collapsedPaths={props.collapsedPaths}
                   onCollapse={props.onCollapse}
                   onExpand={props.onExpand}
                   focusTokens={props.focusTokens}
