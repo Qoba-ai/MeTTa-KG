@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::env;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use diesel::RunQueryDsl;
@@ -17,6 +19,7 @@ use tracing::{error, info, instrument, warn};
 use crate::config::Config;
 use crate::lock::LockManager;
 use crate::log::setup_logging;
+use crate::sync::Docs;
 
 mod commands;
 mod config;
@@ -27,6 +30,7 @@ mod log;
 mod model;
 mod routes;
 mod schema;
+mod sync;
 
 pub struct Shutdown(pub broadcast::Sender<()>);
 
@@ -129,12 +133,16 @@ fn rocket() -> Rocket<Build> {
         op_mutex: Mutex::new(()),
     };
 
+    let docs: Docs = Arc::new(Mutex::new(HashMap::new()));
+
     rocket::build()
         .manage(events::EventBus::new())
+        .manage(events::PresenceStore::new())
         .manage(Shutdown(shutdown_tx))
         .manage(lock_manager)
         .manage(cors.clone())
         .manage(config.clone())
+        .manage(docs)
         .mount(
             "/",
             routes![
@@ -175,8 +183,18 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::import_url_n3,
                 routes::spaces::copy,
                 routes::spaces::subtract,
+                routes::spaces::editor_diff_root,
+                routes::spaces::editor_diff,
+                routes::spaces::editor_commit_root,
+                routes::spaces::editor_commit,
+                routes::spaces::editor_presence_root,
+                routes::spaces::editor_presence,
+                routes::spaces::editor_cursor_root,
+                routes::spaces::editor_cursor,
                 routes::events::ws_ping,
                 routes::events::ws_events,
+                routes::events::ws_editor_root,
+                routes::events::ws_editor,
                 routes::events::ws_status_root,
                 routes::events::ws_status,
                 routes::health::health,

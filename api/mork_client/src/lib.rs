@@ -421,12 +421,16 @@ impl MorkClient {
         Ok(())
     }
 
-    pub async fn copy(&self, src: &Path, dst: &Path) -> Result<(), MorkError> {
+    pub async fn copy(&self, path: &Path, pattern: &str, template: &str) -> Result<(), MorkError> {
+        let path_sexpr = path_to_sexpr(path);
+        let full_pattern = path_sexpr.replace("$", pattern);
+        let full_template = path_sexpr.replace("$", template);
+
         let url = format!(
             "{}/copy/{}/{}",
             self.base(),
-            encode(&path_to_sexpr(src)),
-            encode(&path_to_sexpr(dst)),
+            encode(&full_pattern),
+            encode(&full_template),
         );
         self.log_get(&url).await;
         let resp = self.client.get(&url).send().await?;

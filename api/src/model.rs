@@ -1,4 +1,4 @@
-use crate::schema::{op_log, op_log_clear, op_log_copy, op_log_import, op_log_transform, tokens};
+use crate::schema::{op_log, op_log_clear, op_log_copy, op_log_edit, op_log_import, op_log_transform, tokens};
 use chrono::NaiveDateTime;
 use diesel::{Insertable, Queryable, QueryableByName, Selectable};
 use rocket::serde::{Deserialize, Serialize};
@@ -121,6 +121,27 @@ pub struct OpLogCopy {
     pub operation_id: Option<String>,
 }
 
+// ─── Op Log Edit ─────────────────────────────────────────────────────────────
+
+#[derive(Insertable)]
+#[diesel(table_name = op_log_edit)]
+pub struct OpLogEditInsert {
+    pub op_log_id: i32,
+    pub path: String,
+    pub added: serde_json::Value,
+    pub removed: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Queryable, Selectable, Clone, Debug)]
+#[diesel(table_name = op_log_edit)]
+pub struct OpLogEdit {
+    pub id: i32,
+    pub op_log_id: i32,
+    pub path: String,
+    pub added: serde_json::Value,
+    pub removed: serde_json::Value,
+}
+
 // ─── Op Log Transform ────────────────────────────────────────────────────────
 
 #[derive(Insertable)]
@@ -163,4 +184,6 @@ pub struct OpLogEntry {
     pub copy: Option<OpLogCopy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transform: Option<OpLogTransform>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edit: Option<OpLogEdit>,
 }

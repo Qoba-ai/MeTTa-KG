@@ -14,8 +14,9 @@ const LANE_X: Record<string, number> = {
     Transform: 360,
     Clear:     560,
     Copy:      750,
+    Edit:      950,
 }
-const FALLBACK_X     =  950
+const FALLBACK_X     = 1150
 const NODE_GAP       =   14    // vertical gap between nodes in a lane
 const ROW_OFFSET     =   80    // y of the top edge of the first node
 const NODE_WIDTH_SM  =  148    // Import, Clear
@@ -54,6 +55,7 @@ const OP_COLORS: Record<string, { bg: string; border: string }> = {
     Transform: { bg: '--iris',   border: '--iris' },
     Clear:     { bg: '--love',   border: '--love' },
     Copy:      { bg: '--gold',   border: '--gold' },
+    Edit:      { bg: '--pine',   border: '--pine' },
 }
 const DEFAULT_COLOR = { bg: '--subtle', border: '--muted' }
 
@@ -73,6 +75,7 @@ function getWriteSpaces(entry: OpLogEntry): string[] {
     if (entry.import) return [entry.import.path]
     if (entry.clear)  return [entry.clear.path]
     if (entry.copy)   return [entry.copy.dst]
+    if (entry.edit)   return [entry.edit.path]
     if (entry.transform) {
         const outs = entry.transform.output_spaces as TransformSpace[]
         return outs.map(s => s.path)
@@ -181,6 +184,10 @@ function buildNodeSvg(entry: OpLogEntry, tokenName: string | null): { uri: strin
     } else if (entry.copy) {
         pathLines.push('← ' + trunc(displayPath(entry.copy.src), 16))
         pathLines.push('→ ' + trunc(displayPath(entry.copy.dst), 16))
+    } else if (entry.edit) {
+        pathLines.push(trunc(displayPath(entry.edit.path), 16))
+        const a = entry.edit.added.length, r = entry.edit.removed.length
+        if (a > 0 || r > 0) pathLines.push(`+${a} −${r}`)
     } else if (entry.transform) {
         const ins  = entry.transform.input_spaces  as TransformSpace[]
         const outs = entry.transform.output_spaces as TransformSpace[]
@@ -404,6 +411,7 @@ const LEGEND_ITEMS = [
     { label: 'Transform', color: '--iris' },
     { label: 'Clear',     color: '--love' },
     { label: 'Copy',      color: '--gold' },
+    { label: 'Edit',      color: '--pine' },
 ] as const
 
 const History: Component = () => {

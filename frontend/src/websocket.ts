@@ -1,6 +1,14 @@
 import { BACKEND_URL } from './urls'
 import type { OpLogEntry } from './types'
 
+// Node in a diff prefix trie.  Keys in `c` are whitespace-split atom tokens.
+// A leaf is marked `a` (added) and/or `r` (removed).
+export type DiffTrieNode = {
+    c?: Record<string, DiffTrieNode>
+    a?: 1
+    r?: 1
+}
+
 export type SpaceEvent =
     | { type: 'locked'; path: string }
     | { type: 'unlocked'; path: string }
@@ -10,6 +18,9 @@ export type SpaceEvent =
     | { type: 'clearError'; path: string; message: string }
     | { type: 'transformComplete'; path: string }
     | { type: 'transformError'; path: string; message: string }
+    | { type: 'editorDiff'; path: string; ts: number; trie: DiffTrieNode }
+    | { type: 'editorPresence'; path: string; session_id: string; display_name: string; joined: boolean }
+    | { type: 'editorCursor'; path: string; session_id: string; display_name: string; line: number; col: number }
 
 export type OpLogChangedEvent = {
     type: 'opLogChanged'
@@ -31,7 +42,7 @@ type OnlineListener = (online: boolean) => void
 type SpaceEventListener = (event: SpaceEvent) => void
 type OpLogChangedListener = (event: OpLogChangedEvent) => void
 
-const WS_BASE = BACKEND_URL.replace(/^https?/, (m: string) => (m === 'https' ? 'wss' : 'ws'))
+export const WS_BASE = BACKEND_URL.replace(/^https?/, (m: string) => (m === 'https' ? 'wss' : 'ws'))
 
 class WebSocketService {
     private pingSocket: WebSocket | null = null

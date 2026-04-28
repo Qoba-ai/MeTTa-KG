@@ -91,6 +91,14 @@ interface OpLogTransform {
     operation_id?: string
 }
 
+interface OpLogEdit {
+    id: number
+    op_log_id: number
+    path: string
+    added: string[]
+    removed: string[]
+}
+
 interface OpLogEntry {
     id: number
     op_type: string
@@ -102,6 +110,7 @@ interface OpLogEntry {
     clear?: OpLogClear
     copy?: OpLogCopy
     transform?: OpLogTransform
+    edit?: OpLogEdit
 }
 
 export {
@@ -120,4 +129,5 @@ export {
     type OpLogClear,
     type OpLogCopy,
     type OpLogTransform,
+    type OpLogEdit,
 }

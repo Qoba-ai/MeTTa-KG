@@ -15,10 +15,10 @@ use crate::{
     db::establish_connection,
     events::{EventBus, SpaceEvent},
     model::{
-        OpLog, OpLogClearInsert, OpLogCopyInsert, OpLogImportInsert, OpLogInsert,
+        OpLog, OpLogClearInsert, OpLogCopyInsert, OpLogEditInsert, OpLogImportInsert, OpLogInsert,
         OpLogTransformInsert, Token,
     },
-    schema::{op_log, op_log_clear, op_log_copy, op_log_import, op_log_transform},
+    schema::{op_log, op_log_clear, op_log_copy, op_log_edit, op_log_import, op_log_transform},
 };
 use diesel::sql_types::Integer;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
@@ -1317,4 +1317,262 @@ pub async fn import_url_n3(
     )
     .await?;
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
+}
+
+// ─── Editor diff ─────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize)]
+pub struct EditorDiffPayload {
+    pub ts: i64,
+    pub trie: serde_json::Value,
+}
+
+/// Recursively traverse the diff prefix trie and collect added/removed atom strings.
+/// Each path from root to a leaf (marked `a` or `r`) is joined with spaces to
+/// reconstruct the original atom string.
+fn collect_diff_atoms(
+    node: &serde_json::Value,
+    tokens: &mut Vec<String>,
+    added: &mut Vec<String>,
+    removed: &mut Vec<String>,
+) {
+    if node.get("a").is_some() {
+        added.push(tokens.join(" "));
+    }
+    if node.get("r").is_some() {
+        removed.push(tokens.join(" "));
+    }
+    if let Some(children) = node.get("c").and_then(|v| v.as_object()) {
+        for (token, child) in children {
+            tokens.push(token.clone());
+            collect_diff_atoms(child, tokens, added, removed);
+            tokens.pop();
+        }
+    }
+}
+
+#[post("/editor/diff", data = "<payload>")]
+pub async fn editor_diff_root(
+    token: Token,
+    payload: Json<EditorDiffPayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    editor_diff_inner(token, PathBuf::new(), payload, bus).await
+}
+
+#[post("/editor/diff/<path..>", data = "<payload>")]
+pub async fn editor_diff(
+    token: Token,
+    path: PathBuf,
+    payload: Json<EditorDiffPayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    editor_diff_inner(token, path, payload, bus).await
+}
+
+async fn editor_diff_inner(
+    token: Token,
+    path: PathBuf,
+    payload: Json<EditorDiffPayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.require_write().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path).map_err(permission_error_to_status)?;
+
+    let event_path = path_to_event_path(&path);
+    debug!(path = %path.display(), token_id = token.id, "Editor diff received");
+
+    // Collect added/removed atoms from the trie before moving payload into the task
+    let mut added: Vec<String> = Vec::new();
+    let mut removed: Vec<String> = Vec::new();
+    collect_diff_atoms(&payload.trie, &mut Vec::new(), &mut added, &mut removed);
+
+    // Broadcast the diff event to all listening clients
+    let _ = bus.0.send(SpaceEvent::EditorDiff {
+        path: event_path,
+        ts: payload.ts,
+        trie: payload.trie.clone(),
+    });
+
+    // Apply the diff to the MORK space in a background task
+    if !added.is_empty() || !removed.is_empty() {
+        let root = PathBuf::from("space");
+        let target_path = if path.as_os_str().is_empty() { root } else { root.join(&path) };
+
+        let cmd = crate::commands::edit::Params {
+            target_path,
+            added,
+            removed,
+            operation_id: payload.ts.to_string(),
+        };
+        tokio::spawn(async move {
+            if let Err(e) = crate::commands::edit::execute(&cmd).await {
+                error!(path = %cmd.target_path.display(), status = %e, "Editor diff apply failed");
+            }
+        });
+    }
+
+    Ok(())
+}
+
+// ─── Editor commit (op log only, no MORK) ─────────────────────────────────────
+
+#[derive(Serialize, Deserialize)]
+pub struct EditorCommitPayload {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+#[post("/editor/commit", data = "<payload>")]
+pub async fn editor_commit_root(
+    token: Token,
+    payload: Json<EditorCommitPayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    editor_commit_inner(token, PathBuf::new(), payload, bus).await
+}
+
+#[post("/editor/commit/<path..>", data = "<payload>")]
+pub async fn editor_commit(
+    token: Token,
+    path: PathBuf,
+    payload: Json<EditorCommitPayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    editor_commit_inner(token, path, payload, bus).await
+}
+
+async fn editor_commit_inner(
+    token: Token,
+    path: PathBuf,
+    payload: Json<EditorCommitPayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    let perm = permission_from_token(&token);
+    perm.require_write().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path).map_err(permission_error_to_status)?;
+
+    if payload.added.is_empty() && payload.removed.is_empty() {
+        return Ok(());
+    }
+
+    let path_str = if path.as_os_str().is_empty() {
+        String::new()
+    } else {
+        format!("{}/", path.to_string_lossy())
+    };
+
+    if let Some(log_id) = insert_op_log("Edit", token.id) {
+        let _ = diesel::insert_into(op_log_edit::table)
+            .values(&OpLogEditInsert {
+                op_log_id: log_id,
+                path: path_str,
+                added: serde_json::to_value(&payload.added).unwrap_or_default(),
+                removed: serde_json::to_value(&payload.removed).unwrap_or_default(),
+            })
+            .execute(&mut establish_connection());
+        emit_new_op(&bus.0, log_id, token.id);
+    }
+
+    Ok(())
+}
+
+// ─── Editor presence ──────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct EditorPresencePayload {
+    pub joined: bool,
+    pub display_name: String,
+    pub session_id: String,
+}
+
+#[post("/editor/presence", data = "<payload>")]
+pub async fn editor_presence_root(
+    token: Token,
+    payload: Json<EditorPresencePayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    editor_presence_inner(token, PathBuf::new(), payload, bus).await
+}
+
+#[post("/editor/presence/<path..>", data = "<payload>")]
+pub async fn editor_presence(
+    token: Token,
+    path: PathBuf,
+    payload: Json<EditorPresencePayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    editor_presence_inner(token, path, payload, bus).await
+}
+
+async fn editor_presence_inner(
+    token: Token,
+    path: PathBuf,
+    payload: Json<EditorPresencePayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path).map_err(permission_error_to_status)?;
+
+    let event_path = path_to_event_path(&path);
+    let _ = bus.0.send(SpaceEvent::EditorPresence {
+        path: event_path,
+        session_id: payload.session_id.clone(),
+        display_name: payload.display_name.clone(),
+        joined: payload.joined,
+    });
+    Ok(())
+}
+
+// ─── Editor cursor ────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct EditorCursorPayload {
+    pub line: i32,
+    pub col: i32,
+    pub display_name: String,
+    pub session_id: String,
+}
+
+#[post("/editor/cursor", data = "<payload>")]
+pub async fn editor_cursor_root(
+    token: Token,
+    payload: Json<EditorCursorPayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    editor_cursor_inner(token, PathBuf::new(), payload, bus).await
+}
+
+#[post("/editor/cursor/<path..>", data = "<payload>")]
+pub async fn editor_cursor(
+    token: Token,
+    path: PathBuf,
+    payload: Json<EditorCursorPayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    editor_cursor_inner(token, path, payload, bus).await
+}
+
+async fn editor_cursor_inner(
+    token: Token,
+    path: PathBuf,
+    payload: Json<EditorCursorPayload>,
+    bus: &State<EventBus>,
+) -> Result<(), Status> {
+    let perm = permission_from_token(&token);
+    perm.require_read().map_err(permission_error_to_status)?;
+    perm.check_namespace(&path).map_err(permission_error_to_status)?;
+
+    let event_path = path_to_event_path(&path);
+    let _ = bus.0.send(SpaceEvent::EditorCursor {
+        path: event_path,
+        session_id: payload.session_id.clone(),
+        display_name: payload.display_name.clone(),
+        line: payload.line,
+        col: payload.col,
+    });
+    Ok(())
 }

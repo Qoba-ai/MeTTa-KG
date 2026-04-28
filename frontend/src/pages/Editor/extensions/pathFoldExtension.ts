@@ -1,4 +1,4 @@
-import { RangeSetBuilder } from '@codemirror/state'
+import { Prec, RangeSetBuilder } from '@codemirror/state'
 import {
     EditorView,
     ViewPlugin,
@@ -6,6 +6,7 @@ import {
     Decoration,
     DecorationSet,
     WidgetType,
+    keymap,
 } from '@codemirror/view'
 
 // ---------------------------------------------------------------------------
@@ -134,6 +135,29 @@ const pathFoldPlugin = ViewPlugin.fromClass(
 )
 
 // ---------------------------------------------------------------------------
+// Helpers — find fringe marker positions in the document
+// ---------------------------------------------------------------------------
+
+function findFringeRanges(view: EditorView): Array<{ from: number; to: number; path: string }> {
+    const doc = view.state.doc
+    const ranges: Array<{ from: number; to: number; path: string }> = []
+    for (let i = 1; i <= doc.lines; i++) {
+        const line = doc.line(i)
+        const text = line.text
+        if (text.trim() === '') continue
+        const fringeMatch = /\|\$\|\)/.exec(text)
+        if (fringeMatch) {
+            const markerPos = line.from + text.indexOf('|$|')
+            const pathTokens = extractLinePathTokens(text)
+            if (pathTokens.length > 0) {
+                ranges.push({ from: markerPos, to: markerPos + 3, path: pathTokens.join('/') })
+            }
+        }
+    }
+    return ranges
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -144,8 +168,50 @@ const pathFoldPlugin = ViewPlugin.fromClass(
 export function createPathFoldExtension(
     onFringeClick?: (path: string) => void,
 ) {
+    // High-priority keymap: intercept Delete/Backspace adjacent to a fringe marker
+    // and expand it instead of deleting.
+    const fringeKeymap = Prec.high(keymap.of([
+        {
+            key: 'Backspace',
+            run(view) {
+                const sel = view.state.selection.main
+                if (!sel.empty) return false
+                for (const r of findFringeRanges(view)) {
+                    if (sel.head === r.to) {
+                        onFringeClick?.(r.path)
+                        return true
+                    }
+                }
+                return false
+            },
+        },
+        {
+            key: 'Delete',
+            run(view) {
+                const sel = view.state.selection.main
+                if (!sel.empty) return false
+                for (const r of findFringeRanges(view)) {
+                    if (sel.head === r.from) {
+                        onFringeClick?.(r.path)
+                        return true
+                    }
+                }
+                return false
+            },
+        },
+    ]))
+
     return [
         pathFoldPlugin,
+        // Treat the |$| text as an atomic unit so cursor jumps over it as one glyph.
+        EditorView.atomicRanges.of(view => {
+            const builder = new RangeSetBuilder<Decoration>()
+            for (const r of findFringeRanges(view)) {
+                builder.add(r.from, r.to, Decoration.mark({}))
+            }
+            return builder.finish()
+        }),
+        fringeKeymap,
         // Handle clicks on fringe $ widgets
         EditorView.domEventHandlers({
             click(event, _) {

@@ -17,8 +17,8 @@ use crate::{
     db::establish_connection,
     events::{EventBus, SpaceEvent},
     lock::LockManager,
-    model::{OpLog, OpLogClear, OpLogCopy, OpLogEntry, OpLogImport, OpLogTransform, Token},
-    schema::{op_log, op_log_clear, op_log_copy, op_log_import, op_log_transform},
+    model::{OpLog, OpLogClear, OpLogCopy, OpLogEdit, OpLogEntry, OpLogImport, OpLogTransform, Token},
+    schema::{op_log, op_log_clear, op_log_copy, op_log_edit, op_log_import, op_log_transform},
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -79,6 +79,16 @@ fn fetch_details(conn: &mut PgConnection, log: OpLog) -> OpLogEntry {
         None
     };
 
+    let edit = if log.op_type == "Edit" {
+        op_log_edit::table
+            .select(OpLogEdit::as_select())
+            .filter(op_log_edit::op_log_id.eq(log.id))
+            .first(conn)
+            .ok()
+    } else {
+        None
+    };
+
     OpLogEntry {
         id: log.id,
         op_type: log.op_type,
@@ -90,6 +100,7 @@ fn fetch_details(conn: &mut PgConnection, log: OpLog) -> OpLogEntry {
         clear,
         copy,
         transform,
+        edit,
     }
 }
 
@@ -147,6 +158,20 @@ async fn undo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
                     })
                     .await;
                 }
+            }
+            Ok(())
+        }
+        "Edit" => {
+            if let Some(edit) = &entry.edit {
+                let added: Vec<String> = serde_json::from_value(edit.added.clone()).unwrap_or_default();
+                let removed: Vec<String> = serde_json::from_value(edit.removed.clone()).unwrap_or_default();
+                return crate::commands::edit::undo(&crate::commands::edit::Params {
+                    target_path: augmented_path(&edit.path),
+                    added,
+                    removed,
+                    operation_id: String::new(),
+                })
+                .await;
             }
             Ok(())
         }
@@ -209,6 +234,20 @@ async fn redo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
             }
             Ok(())
         }
+        "Edit" => {
+            if let Some(edit) = &entry.edit {
+                let added: Vec<String> = serde_json::from_value(edit.added.clone()).unwrap_or_default();
+                let removed: Vec<String> = serde_json::from_value(edit.removed.clone()).unwrap_or_default();
+                return crate::commands::edit::redo(&crate::commands::edit::Params {
+                    target_path: augmented_path(&edit.path),
+                    added,
+                    removed,
+                    operation_id: String::new(),
+                })
+                .await;
+            }
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -259,6 +298,8 @@ fn collect_lock_paths(entries: &[OpLogEntry]) -> Vec<PathBuf> {
             vec![clr.path.clone()]
         } else if let Some(cpy) = &entry.copy {
             vec![cpy.src.clone(), cpy.dst.clone()]
+        } else if let Some(ed) = &entry.edit {
+            vec![ed.path.clone()]
         } else if let Some(tr) = &entry.transform {
             let mut tp = Vec::new();
             if let Ok(ins) =
@@ -461,6 +502,9 @@ fn get_write_spaces(entry: &OpLogEntry) -> Vec<String> {
     }
     if let Some(cpy) = &entry.copy {
         return vec![cpy.dst.clone()];
+    }
+    if let Some(ed) = &entry.edit {
+        return vec![ed.path.clone()];
     }
     if let Some(tr) = &entry.transform {
         if let Ok(outs) = serde_json::from_value::<Vec<serde_json::Value>>(tr.output_spaces.clone())

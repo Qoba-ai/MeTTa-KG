@@ -31,7 +31,7 @@ import { Toaster } from 'solid-toast'
 import { notify } from '../../notify'
 import { useTheme } from '../../ThemeContext'
 import { BACKEND_URL, TOKEN } from '../../urls'
-import { wsService, StatusEvent } from '../../websocket'
+import { wsService, WS_BASE, StatusEvent } from '../../websocket'
 import hljs from 'highlight.js/lib/core'
 import 'highlight.js/styles/panda-syntax-dark.css'
 
@@ -103,8 +103,10 @@ import {
     bracketMatching,
     syntaxHighlighting,
 } from '@codemirror/language'
-import { Annotation, EditorState } from '@codemirror/state'
+import { Annotation, EditorState, type Range, StateEffect, StateField } from '@codemirror/state'
 import {
+    Decoration,
+    type DecorationSet,
     drawSelection,
     dropCursor,
     EditorView,
@@ -112,6 +114,7 @@ import {
     highlightActiveLineGutter,
     keymap,
     ViewPlugin,
+    WidgetType,
 } from '@codemirror/view'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import {
@@ -163,6 +166,146 @@ import { ClearModal } from './components/modals/ClearModal/ClearModal'
 import { CopyModal } from './components/modals/CopyModal/CopyModal'
 import { ShareTokenModal } from './components/modals/ShareTokenModal/ShareTokenModal'
 import { DslConsole } from './components/DslConsole/DslConsole'
+
+// ─── Diff prefix trie helpers ──────────────────────────────────────────────
+
+interface DiffTrieNode {
+    c?: Record<string, DiffTrieNode>
+    a?: 1   // leaf: atom added
+    r?: 1   // leaf: atom removed
+}
+
+function insertIntoDiffTrie(root: DiffTrieNode, tokens: string[], marker: 'a' | 'r') {
+    let node = root
+    for (const tok of tokens) {
+        if (!node.c) node.c = {}
+        if (!node.c[tok]) node.c[tok] = {}
+        node = node.c[tok]!
+    }
+    node[marker] = 1
+}
+
+function buildDiffPrefixTrie(added: string[], removed: string[]): DiffTrieNode {
+    const root: DiffTrieNode = {}
+    for (const atom of added) {
+        const tokens = atom.split(/\s+/).filter(Boolean)
+        if (tokens.length > 0) insertIntoDiffTrie(root, tokens, 'a')
+    }
+    for (const atom of removed) {
+        const tokens = atom.split(/\s+/).filter(Boolean)
+        if (tokens.length > 0) insertIntoDiffTrie(root, tokens, 'r')
+    }
+    return root
+}
+
+function collectTrieAtoms(node: DiffTrieNode, tokens: string[], added: string[], removed: string[]): void {
+    if (node.a) added.push(tokens.join(' '))
+    if (node.r) removed.push(tokens.join(' '))
+    if (node.c) {
+        for (const [tok, child] of Object.entries(node.c)) {
+            tokens.push(tok)
+            collectTrieAtoms(child, tokens, added, removed)
+            tokens.pop()
+        }
+    }
+}
+
+function isBalanced(text: string): boolean {
+    let depth = 0
+    let inString = false
+    for (const ch of text) {
+        if (ch === '"') { inString = !inString; continue }
+        if (inString) continue
+        if (ch === '(') depth++
+        else if (ch === ')') { if (--depth < 0) return false }
+    }
+    return depth === 0
+}
+
+function computeAtomDiff(current: string, original: string): { added: string[]; removed: string[] } {
+    const currLines = current.split('\n').map(l => l.trim()).filter(Boolean)
+    const origLines = original.split('\n').map(l => l.trim()).filter(Boolean)
+
+    const origCounts = new Map<string, number>()
+    for (const line of origLines) origCounts.set(line, (origCounts.get(line) ?? 0) + 1)
+
+    const currCounts = new Map<string, number>()
+    for (const line of currLines) currCounts.set(line, (currCounts.get(line) ?? 0) + 1)
+
+    const added: string[] = []
+    const removed: string[] = []
+
+    for (const [line, count] of currCounts) {
+        const extra = count - (origCounts.get(line) ?? 0)
+        for (let i = 0; i < extra; i++) added.push(line)
+    }
+    for (const [line, count] of origCounts) {
+        const extra = count - (currCounts.get(line) ?? 0)
+        for (let i = 0; i < extra; i++) removed.push(line)
+    }
+
+    return { added, removed }
+}
+
+// ─── Remote presence & cursor helpers ─────────────────────────────────────────
+
+// Unique ID for this browser tab — used to filter out own echoed events.
+// Two tabs with the same token will still see each other because they have different SESSION_IDs.
+const SESSION_ID = crypto.randomUUID()
+
+const REMOTE_COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#e91e63']
+const _hashStr = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h }
+const colorForSession = (sessionId: string) => REMOTE_COLORS[_hashStr(sessionId) % REMOTE_COLORS.length]
+
+interface RemoteCursorInfo { sessionId: string; displayName: string; line: number; col: number }
+
+const setRemoteCursorsEffect = StateEffect.define<RemoteCursorInfo[]>()
+
+class RemoteCursorWidget extends WidgetType {
+    constructor(private color: string, private name: string) { super() }
+    toDOM(): HTMLElement {
+        const wrap = document.createElement('span')
+        wrap.style.cssText = 'position:relative;display:inline-block;width:0;overflow:visible;pointer-events:none;vertical-align:text-top;'
+        const caret = document.createElement('span')
+        caret.style.cssText = `position:absolute;top:0;left:-1px;height:1.2em;width:2px;background:${this.color};`
+        const label = document.createElement('span')
+        label.textContent = this.name
+        label.style.cssText = `position:absolute;bottom:100%;left:0;background:${this.color};color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;white-space:nowrap;line-height:1.4;`
+        wrap.appendChild(caret)
+        wrap.appendChild(label)
+        return wrap
+    }
+    eq(other: RemoteCursorWidget) { return this.color === other.color && this.name === other.name }
+    ignoreEvent() { return true }
+}
+
+const remoteCursorsField = StateField.define<DecorationSet>({
+    create: () => Decoration.none,
+    update(decos, tr) {
+        decos = decos.map(tr.changes)
+        for (const effect of tr.effects) {
+            if (effect.is(setRemoteCursorsEffect)) {
+                const widgets: Range<Decoration>[] = []
+                for (const cursor of effect.value) {
+                    try {
+                        const line = tr.state.doc.line(cursor.line)
+                        const pos = Math.min(line.from + cursor.col, line.to)
+                        widgets.push(Decoration.widget({
+                            widget: new RemoteCursorWidget(colorForSession(cursor.sessionId), cursor.displayName),
+                            side: 1,
+                        }).range(pos))
+                    } catch { /* line out of range */ }
+                }
+                widgets.sort((a, b) => a.from - b.from)
+                decos = Decoration.set(widgets)
+            }
+        }
+        return decos
+    },
+    provide: f => EditorView.decorations.from(f),
+})
+
+// ───────────────────────────────────────────────────────────────────────────
 
 const extensionToImportFormat = (file: File): ImportFormat | undefined => {
     const extension = file.name.split('.').pop()?.toLowerCase()
@@ -294,6 +437,33 @@ const App: Component = () => {
 
     // Annotation to skip AST re-parse in updateListener for programmatic edits
     const programmaticEdit = Annotation.define<boolean>()
+
+    // Per-view tracking of what content was last diffed and sent, so that
+    // incremental edits (type then delete) produce correct deltas.
+    const viewLastSent = new WeakMap<EditorView, string>()
+
+    // LWW-Element-Set CRDT state: namespace path → atom string → {addTs, removeTs}
+    type LwwEntry = { addTs: number; removeTs: number }
+    const lwwState = new Map<string, Map<string, LwwEntry>>()
+    const getLwwNs = (ns: string): Map<string, LwwEntry> => {
+        let m = lwwState.get(ns)
+        if (!m) { m = new Map(); lwwState.set(ns, m) }
+        return m
+    }
+
+    // Remote editor presence: token_id → { displayName, path, line?, col?, lastSeen }
+    interface RemoteEditor { displayName: string; path: string; line?: number; col?: number; lastSeen: number }
+    const [remoteEditors, setRemoteEditors] = createSignal<Map<string, RemoteEditor>>(new Map())
+    // Remove editors not seen in 60 seconds
+    const _presenceCleanupInterval = setInterval(() => {
+        const now = Date.now()
+        setRemoteEditors(prev => {
+            const next = new Map(prev)
+            for (const [id, e] of next) if (now - e.lastSeen > 60_000) next.delete(id)
+            return next.size !== prev.size ? next : prev
+        })
+    }, 10_000)
+    onCleanup(() => clearInterval(_presenceCleanupInterval))
 
     // Panels State
     const [panels, setPanels] = createSignal<EditorPanel[]>([])
@@ -474,11 +644,47 @@ const App: Component = () => {
     const [editorLoadingPaths, setEditorLoadingPaths] = createSignal<Set<string>>(new Set());
     const [editorLastLoadedTokens, setEditorLastLoadedTokens] = createSignal<Map<string, string>>(new Map());
 
+    const myDisplayName = () => {
+        const t = token()
+        return t?.name ?? t?.description ?? `User ${t?.id ?? ''}`
+    }
+
+    // Per-panel presence WebSocket connections, keyed by panel ID.
+    // The server emits EditorPresence{joined:true} on connect and joined:false
+    // on any disconnect — including browser tab/window close.
+    const presenceSockets = new Map<string, WebSocket>()
+
+    const connectPresence = (panelId: string, namespace: string) => {
+        const tok = token()
+        if (!tok) return
+        // Close any existing socket for this panel first
+        presenceSockets.get(panelId)?.close()
+        const seg = namespace.replace(/^\/|\/$/g, '')
+        const url = seg
+            ? `${WS_BASE}/ws/editor/${seg}?token_code=${encodeURIComponent(tok.code)}&session_id=${encodeURIComponent(SESSION_ID)}&display_name=${encodeURIComponent(myDisplayName())}`
+            : `${WS_BASE}/ws/editor?token_code=${encodeURIComponent(tok.code)}&session_id=${encodeURIComponent(SESSION_ID)}&display_name=${encodeURIComponent(myDisplayName())}`
+        const ws = new WebSocket(url)
+        presenceSockets.set(panelId, ws)
+        ws.onclose = () => presenceSockets.delete(panelId)
+    }
+
+    const disconnectPresence = (panelId: string) => {
+        presenceSockets.get(panelId)?.close()
+        presenceSockets.delete(panelId)
+    }
+
+    const sendCursor = (panelId: string, line: number, col: number) => {
+        const ws = presenceSockets.get(panelId)
+        if (!ws || ws.readyState !== WebSocket.OPEN) return
+        ws.send(JSON.stringify({ line, col }))
+    }
+
     const createEditorState = (initialDoc: string, astState: EditorASTState) => {
         return EditorState.create({
             doc: initialDoc,
             extensions: [
                 themeCompartment.of(getEditorTheme(currentTheme() === 'dark')),
+                remoteCursorsField,
                 languageSupport,
                 diffExtension,
                 highlightActiveLineGutter(),
@@ -519,15 +725,138 @@ const App: Component = () => {
                     ...completionKeymap,
                     ...lintKeymap,
                 ]),
-                EditorView.updateListener.of((update) => {
-                    if (update.docChanged && !update.transactions.some(t => t.annotation(programmaticEdit))) {
-                        const content = update.state.doc.toString()
-                        const newAST = parseMeTTaString(content, 'manual')
-                        untrack(() => {
-                            setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, astState: { ...p.astState, ast: newAST } } : p))
-                        })
+                EditorView.updateListener.of((() => {
+                    let diffDebounceTimer: number | undefined
+                    let sessionCommitTimer: number | undefined
+                    let sessionStartContent: string | null = null
+
+                    return (update) => {
+                        const isProgrammatic = update.transactions.some(t => t.annotation(programmaticEdit))
+
+                        if (isProgrammatic) {
+                            // Reset session when content changes programmatically (e.g. remote diff)
+                            sessionStartContent = null
+                            clearTimeout(sessionCommitTimer)
+                            sessionCommitTimer = undefined
+                        }
+
+                        if (update.docChanged && !isProgrammatic) {
+                            // Capture the content before this edit session started
+                            if (sessionStartContent === null) {
+                                sessionStartContent = update.startState.doc.toString()
+                            }
+
+                            const content = update.state.doc.toString()
+                            const newAST = parseMeTTaString(content, 'manual')
+                            untrack(() => {
+                                setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, astState: { ...p.astState, ast: newAST } } : p))
+                            })
+
+                            // Build and broadcast a diff prefix trie to the backend
+                            clearTimeout(diffDebounceTimer)
+                            const view = update.view
+                            diffDebounceTimer = window.setTimeout(() => {
+                                const p = untrack(() => panels().find(panel => panel.id === activePanelId()))
+                                const tok = untrack(() => token())
+                                if (!p || !tok) return
+
+                                // Use viewLastSent as baseline so incremental edits
+                                // (type then delete) and remote-received diffs are
+                                // accounted for in subsequent sends.
+                                const baseContent = viewLastSent.get(view) ?? getOriginalContent(p.astState)
+                                const { added, removed } = computeAtomDiff(content, baseContent)
+                                if (added.length === 0 && removed.length === 0) return
+
+                                const ts = Date.now()
+
+                                // Update LWW state so our own diff is not re-applied
+                                // when the server echoes it back.
+                                const nsLww = getLwwNs(p.namespace)
+                                for (const atom of added) {
+                                    const prev = nsLww.get(atom) ?? { addTs: -Infinity, removeTs: -Infinity }
+                                    nsLww.set(atom, { ...prev, addTs: ts })
+                                }
+                                for (const atom of removed) {
+                                    const prev = nsLww.get(atom) ?? { addTs: -Infinity, removeTs: -Infinity }
+                                    nsLww.set(atom, { ...prev, removeTs: ts })
+                                }
+
+                                viewLastSent.set(view, content)
+
+                                const trie = buildDiffPrefixTrie(added, removed)
+                                const namespaceSeg = p.namespace.replace(/^\/|\/$/g, '')
+                                const endpoint = namespaceSeg
+                                    ? `/editor/diff/${namespaceSeg}`
+                                    : `/editor/diff`
+
+                                fetch(`${BACKEND_URL}${endpoint}`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        Authorization: tok.code,
+                                    },
+                                    body: JSON.stringify({ ts, trie }),
+                                }).catch(() => { })
+                            }, 300)
+
+                            // Schedule session commit after 1 second of inactivity.
+                            // If parens are unbalanced when the timer fires, reschedule.
+                            clearTimeout(sessionCommitTimer)
+                            const scheduleCommit = (view: EditorView) => {
+                                sessionCommitTimer = window.setTimeout(() => {
+                                    const currentContent = view.state.doc.toString()
+                                    if (!isBalanced(currentContent)) {
+                                        scheduleCommit(view)
+                                        return
+                                    }
+                                    const startContent = sessionStartContent
+                                    sessionStartContent = null
+                                    sessionCommitTimer = undefined
+                                    if (startContent === null) return
+
+                                    const p = untrack(() => panels().find(panel => panel.id === activePanelId()))
+                                    const tok = untrack(() => token())
+                                    if (!p || !tok) return
+
+                                    const { added, removed } = computeAtomDiff(currentContent, startContent)
+                                    if (added.length === 0 && removed.length === 0) return
+
+                                    const namespaceSeg = p.namespace.replace(/^\/|\/$/g, '')
+                                    const endpoint = namespaceSeg
+                                        ? `/editor/commit/${namespaceSeg}`
+                                        : `/editor/commit`
+
+                                    fetch(`${BACKEND_URL}${endpoint}`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            Authorization: tok.code,
+                                        },
+                                        body: JSON.stringify({ added, removed }),
+                                    }).catch(() => { })
+                                }, 1000)
+                            }
+                            scheduleCommit(view)
+                        }
                     }
-                }),
+                })()),
+                // Broadcast cursor position to other clients on selection change
+                EditorView.updateListener.of((() => {
+                    let cursorTimer: number | undefined
+                    return (update) => {
+                        if (update.selectionSet && !update.transactions.some(t => t.annotation(programmaticEdit))) {
+                            clearTimeout(cursorTimer)
+                            const view = update.view
+                            cursorTimer = window.setTimeout(() => {
+                                const p = untrack(() => panels().find(panel => panel.view === view))
+                                if (!p) return
+                                const pos = view.state.selection.main.head
+                                const lineInfo = view.state.doc.lineAt(pos)
+                                sendCursor(p.id, lineInfo.number, pos - lineInfo.from)
+                            }, 150)
+                        }
+                    }
+                })()),
                 // Attach directly to scrollDOM so scroll events are never missed.
                 ViewPlugin.define((view) => {
                     let scrollCheckTimeout: number | undefined;
@@ -638,6 +967,7 @@ const App: Component = () => {
         wsService.connectEvents(t.code)
         const unsub = wsService.onSpaceEvent((event) => {
             setLockedPaths((prev: Set<string>) => {
+                if (event.type !== 'locked' && event.type !== 'unlocked') return prev
                 const next = new Set<string>(prev)
                 if (event.type === 'locked') next.add(event.path)
                 else next.delete(event.path)
@@ -657,8 +987,163 @@ const App: Component = () => {
                 invalidateNamespaceTree()
                 read()
             }
+            if (event.type === 'editorDiff') {
+                // Extract atoms from the received trie
+                const receivedAdded: string[] = []
+                const receivedRemoved: string[] = []
+                collectTrieAtoms(event.trie, [], receivedAdded, receivedRemoved)
+
+                // Apply LWW-Element-Set merge: only act on atoms whose timestamp
+                // is strictly newer than what we've already recorded.
+                const nsLww = getLwwNs(event.path)
+                const toInsert: string[] = []
+                const toRemove: string[] = []
+
+                for (const atom of receivedAdded) {
+                    const prev = nsLww.get(atom) ?? { addTs: -Infinity, removeTs: -Infinity }
+                    if (event.ts > prev.addTs) {
+                        nsLww.set(atom, { ...prev, addTs: event.ts })
+                        if (event.ts > prev.removeTs) toInsert.push(atom)
+                    }
+                }
+                for (const atom of receivedRemoved) {
+                    const prev = nsLww.get(atom) ?? { addTs: -Infinity, removeTs: -Infinity }
+                    if (event.ts > prev.removeTs) {
+                        nsLww.set(atom, { ...prev, removeTs: event.ts })
+                        if (event.ts >= prev.addTs) toRemove.push(atom)
+                    }
+                }
+
+                if (toInsert.length === 0 && toRemove.length === 0) return
+
+                // Apply to all panels whose namespace matches the diff path
+                for (const panel of panels()) {
+                    if (panel.namespace !== event.path || !panel.view) continue
+                    const view = panel.view
+                    const doc = view.state.doc
+                    const changes: Array<{ from: number; to: number; insert?: string }> = []
+
+                    // Collect removal positions in document order.
+                    const removalPositions: Array<{ lineIndex: number; from: number; to: number }> = []
+                    for (const atom of toRemove) {
+                        for (let i = 1; i <= doc.lines; i++) {
+                            const line = doc.line(i)
+                            if (line.text.trim() === atom) {
+                                removalPositions.push({ lineIndex: i, from: line.from, to: line.to })
+                                break
+                            }
+                        }
+                    }
+                    removalPositions.sort((a, b) => a.from - b.from)
+
+                    if (toInsert.length > 0 && removalPositions.length > 0) {
+                        // Replace the first removed atom in-place with the new content.
+                        // This keeps edits at their original document position rather
+                        // than appending to the end.
+                        const first = removalPositions[0]
+                        changes.push({ from: first.from, to: first.to, insert: toInsert.join('\n') })
+                        // Delete any additional removed atoms.
+                        for (const { lineIndex, from, to } of removalPositions.slice(1)) {
+                            changes.push(lineIndex < doc.lines
+                                ? { from, to: to + 1 }
+                                : { from: from - 1, to })
+                        }
+                    } else {
+                        // Pure removals.
+                        for (const { lineIndex, from, to } of removalPositions) {
+                            if (lineIndex < doc.lines) {
+                                changes.push({ from, to: to + 1 })
+                            } else if (doc.lines > 1) {
+                                changes.push({ from: from - 1, to })
+                            } else {
+                                changes.push({ from, to })
+                            }
+                        }
+                        // Pure insertions: append at end.
+                        if (toInsert.length > 0) {
+                            const hasContent = doc.toString().trim().length > 0
+                            changes.push({
+                                from: doc.length,
+                                to: doc.length,
+                                insert: (hasContent ? '\n' : '') + toInsert.join('\n'),
+                            })
+                        }
+                    }
+
+                    // Changes must be sorted by position for CodeMirror.
+                    changes.sort((a, b) => a.from - b.from)
+
+                    if (changes.length > 0) {
+                        view.dispatch({ changes, annotations: programmaticEdit.of(true) })
+                        // Update the send baseline to include remote changes so the
+                        // next local edit produces a correct incremental diff.
+                        viewLastSent.set(view, view.state.doc.toString())
+                    }
+                }
+            }
+            if (event.type === 'editorPresence') {
+                if (event.session_id === SESSION_ID) return
+                if (event.joined) {
+                    setRemoteEditors(prev => {
+                        const next = new Map(prev)
+                        const existing = next.get(event.session_id)
+                        next.set(event.session_id, {
+                            displayName: event.display_name,
+                            path: event.path,
+                            line: existing?.line,
+                            col: existing?.col,
+                            lastSeen: Date.now(),
+                        })
+                        return next
+                    })
+                } else {
+                    setRemoteEditors(prev => {
+                        const next = new Map(prev)
+                        next.delete(event.session_id)
+                        return next
+                    })
+                    // Clear this user's cursor from matching panels
+                    for (const panel of panels()) {
+                        if (panel.namespace !== event.path || !panel.view) continue
+                        const cursors: RemoteCursorInfo[] = []
+                        for (const [sessionId, editor] of remoteEditors()) {
+                            if (editor.path !== event.path || editor.line === undefined || editor.col === undefined) continue
+                            cursors.push({ sessionId, displayName: editor.displayName, line: editor.line, col: editor.col })
+                        }
+                        panel.view.dispatch({ effects: setRemoteCursorsEffect.of(cursors) })
+                    }
+                }
+            }
+            if (event.type === 'editorCursor') {
+                if (event.session_id === SESSION_ID) return
+                setRemoteEditors(prev => {
+                    const next = new Map(prev)
+                    const existing = next.get(event.session_id)
+                    next.set(event.session_id, {
+                        displayName: event.display_name,
+                        path: event.path,
+                        line: event.line,
+                        col: event.col,
+                        lastSeen: Date.now(),
+                    })
+                    return next.size !== prev.size || existing?.line !== event.line || existing?.col !== event.col ? next : prev
+                })
+                // Update cursor decorations in matching panel views
+                for (const panel of panels()) {
+                    if (panel.namespace !== event.path || !panel.view) continue
+                    const cursors: RemoteCursorInfo[] = []
+                    for (const [sessionId, editor] of remoteEditors()) {
+                        const line = sessionId === event.session_id ? event.line : editor.line
+                        const col = sessionId === event.session_id ? event.col : editor.col
+                        if (editor.path !== event.path || line === undefined || col === undefined) continue
+                        cursors.push({ sessionId, displayName: sessionId === event.session_id ? event.display_name : editor.displayName, line, col })
+                    }
+                    panel.view.dispatch({ effects: setRemoteCursorsEffect.of(cursors) })
+                }
+            }
         })
         onCleanup(() => {
+            for (const p of untrack(panels)) disconnectPresence(p.id)
             unsub()
             wsService.disconnectEvents()
         })
@@ -666,6 +1151,23 @@ const App: Component = () => {
 
     // Subscribe to MORK status stream for the active panel's namespace
     const activePanelNamespace = createMemo(() => activePanel()?.namespace)
+
+    // Remote editors in the active panel's namespace or any of its subspaces (excluding self).
+    const activeRemoteEditors = createMemo(() => {
+        const ns = activePanelNamespace()
+        if (!ns) return []
+        // SESSION_ID is already excluded at event-receive time, so all entries here are remote
+        return [...remoteEditors().entries()]
+            .filter(([, e]) => e.path === ns || e.path.startsWith(ns))
+            .map(([id, e]) => {
+                // Relative subpath within the active namespace, e.g. "b/c" for "/a/b/c/" when ns="/a/".
+                // For exact same-namespace users fall back to the namespace's own last segment so
+                // there is always a visible label next to the avatar.
+                const sub = e.path === ns ? '' : e.path.slice(ns.length).replace(/\/$/, '')
+                const relativePath = sub || e.path.replace(/^\/|\/$/g, '').split('/').filter(Boolean).pop() || ''
+                return { id, relativePath, ...e }
+            })
+    })
     createEffect(() => {
         const t = token()
         const ns = activePanelNamespace()
@@ -1333,6 +1835,8 @@ const App: Component = () => {
                 setEditorMode(EditorMode.EDIT)
             })
 
+            connectPresence(id, ns)
+
             // Pre-fetch the second page in the background
             prefetchNextPage(ns)
 
@@ -1346,6 +1850,7 @@ const App: Component = () => {
         e.stopPropagation()
         if (panels().length <= 1) return
         const panelToClose = panels().find(p => p.id === id)
+        if (panelToClose) disconnectPresence(panelToClose.id)
         if (panelToClose?.view) {
             panelToClose.view.destroy()
         }
@@ -1460,7 +1965,7 @@ const App: Component = () => {
                 for (const ep of inlineExpandedPaths) astState.expandedPaths.add(ep)
                 const displayContent = getDisplayContentWithPaginationIndicator(astState, path)
                 setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
-                p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: displayContent } }))
+                p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: displayContent }, annotations: [programmaticEdit.of(true)] }))
                 // Pre-fetch the second page in the background
                 prefetchNextPage(path)
             } else {
@@ -1731,6 +2236,7 @@ const App: Component = () => {
     }
 
     const handleLogout = () => {
+        for (const p of panels()) disconnectPresence(p.id)
         setRootTokenCode(null)
         setToken(undefined)
         localStorage.removeItem('rootToken')
@@ -1933,6 +2439,28 @@ const App: Component = () => {
                                     </div>
                                 </div>
 
+                                {/* Presence bar: avatars of other users editing this space or subspaces */}
+                                <Show when={activeRemoteEditors().length > 0}>
+                                    <div class={styles.PresenceBar}>
+                                        <For each={activeRemoteEditors()}>
+                                            {(editor) => (
+                                                <div
+                                                    class={styles.PresenceEntry}
+                                                    title={editor.relativePath ? `${editor.displayName} — ${editor.relativePath}` : editor.displayName}
+                                                >
+                                                    <div
+                                                        class={styles.PresenceAvatar}
+                                                        style={{ background: colorForSession(editor.id) }}
+                                                    >
+                                                        {editor.displayName.slice(0, 2).toUpperCase()}
+                                                    </div>
+                                                    {editor.relativePath ? <span class={styles.PresencePath}>{editor.relativePath}</span> : null}
+                                                </div>
+                                            )}
+                                        </For>
+                                    </div>
+                                </Show>
+
                                 {/* Main editor - takes remaining space */}
                                 <div class={styles.MettaInput} ref={(ref) => { mettaInput = ref; }}></div>
 
@@ -1990,9 +2518,12 @@ const App: Component = () => {
                                         </Show>
                                         <For each={ownHistory.state.entries.filter(l => l.token_id === token()?.id)}>
                                             {(log) => {
-                                                const detail = log.import?.path ?? log.clear?.path
+                                                const detail = log.import?.path ?? log.clear?.path ?? log.edit?.path
                                                     ?? (log.transform ? (log.transform.output_spaces as any[])[0]?.path : null)
                                                     ?? null
+                                                const editSummary = log.edit
+                                                    ? `+${log.edit.added.length} −${log.edit.removed.length}`
+                                                    : null
                                                 const isUndoTarget = log.id === myUndoTargetId()
                                                 const isRedoTarget = log.id === myRedoTargetId()
                                                 const isRolledBack = !!log.rolled_back_at
@@ -2027,6 +2558,9 @@ const App: Component = () => {
                                                         </div>
                                                         <Show when={detail}>
                                                             <span class={styles.LogEntryDetail}>{detail}</span>
+                                                        </Show>
+                                                        <Show when={editSummary}>
+                                                            <span class={styles.LogEntryDetail}>{editSummary}</span>
                                                         </Show>
                                                     </div>
                                                 )
