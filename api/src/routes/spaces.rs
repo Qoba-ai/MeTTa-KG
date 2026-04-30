@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-use std::{env, vec};
+use std::vec;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -132,7 +132,7 @@ fn mork_error_to_status(e: MorkError) -> Status {
 }
 
 fn get_mork_client() -> MorkClient {
-    MorkClient::new(env::var("METTA_KG_MORK_URL").unwrap())
+    MorkClient::new(crate::config::config().mork_url.clone())
 }
 
 fn path_to_event_path(path: &PathBuf) -> String {
@@ -506,7 +506,7 @@ pub async fn do_import(
     })?;
     drop(file);
 
-    let origin = env::var("METTA_KG_ORIGIN_URL").unwrap();
+    let origin = &crate::config::config().origin_url;
     let uri = format!("{}/public/{}.metta", origin, file_id);
 
     let operation_id = Uuid::new_v4();

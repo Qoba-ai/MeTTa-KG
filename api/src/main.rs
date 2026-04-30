@@ -1,4 +1,3 @@
-use std::env;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -14,7 +13,7 @@ use rocket_cors::{catch_all_options_routes, AllowedOrigins};
 use tokio::sync::{broadcast, Mutex};
 use tracing::{error, info, instrument, warn};
 
-use crate::config::Config;
+use crate::config::{config, Config};
 use crate::lock::LockManager;
 use crate::log::setup_logging;
 
@@ -43,14 +42,14 @@ impl Fairing for DevModeFairing {
 
     #[instrument(skip(self, _rocket))]
     async fn on_liftoff(&self, _rocket: &Rocket<rocket::Orbit>) {
-        if std::env::var("METTA_KG_ENV").unwrap_or_default() == "dev" {
+        if config().env == "dev" {
             let conn = &mut db::establish_connection();
             match diesel::delete(schema::op_log::table).execute(conn) {
                 Ok(n) => info!(rows_deleted = n, "Cleared op_log table"),
                 Err(e) => warn!(error = %e, "Failed to clear op_log on startup"),
             }
 
-            let mork_url = env::var("METTA_KG_MORK_URL").unwrap_or_default();
+            let mork_url = &config().mork_url;
             let client = MorkClient::new(mork_url.clone());
 
             if let Err(e) = client.clear(&PathBuf::from("/"), "$").await {
@@ -84,11 +83,7 @@ impl Fairing for ShutdownFairing {
 #[instrument]
 
 fn rocket() -> Rocket<Build> {
-    let config = Config::new()
-        .map_err(|e| {
-            error!(error = ?e, "MORK startup failed: Missing environment variable(s)");
-        })
-        .unwrap();
+    let config = Config::load();
 
     mork_client::MorkLogger::init("logs");
 
@@ -96,9 +91,7 @@ fn rocket() -> Rocket<Build> {
 
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
-    let origins_str =
-        std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "http://localhost:3000".into());
-    let origins_list: Vec<&str> = origins_str.split(',').collect();
+    let origins_list: Vec<&str> = config.allowed_origins.split(',').collect();
 
     let allowed_origins = AllowedOrigins::some_exact(&origins_list);
 

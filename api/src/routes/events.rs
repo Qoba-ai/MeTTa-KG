@@ -523,8 +523,7 @@ pub async fn ws_status(
     let expr = path_to_metta_sexpr(&path);
     let encoded = urlencoding::encode(&expr).into_owned();
 
-    let mork_base =
-        std::env::var("METTA_KG_MORK_URL").unwrap_or_else(|_| "http://localhost:8001".to_string());
+    let mork_base = crate::config::config().mork_url.clone();
     let mork_base = mork_base.trim_end_matches('/').to_string();
     let status_url = format!("{}/status/{}", mork_base, encoded);
     let stream_url = format!("{}/status_stream/{}", mork_base, encoded);

@@ -4,7 +4,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 pub fn setup_logging() -> Option<WorkerGuard> {
     std::env::set_var("ROCKET_CLI_COLORS", "0");
 
-    let is_prod = std::env::var("METTA_KG_ENV").unwrap_or_default() == "production";
+    let is_prod = crate::config::config().env == "production";
     let file_appender = tracing_appender::rolling::daily("./logs", "production.log");
 
     let filter = EnvFilter::try_from_default_env()

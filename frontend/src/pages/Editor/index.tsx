@@ -719,6 +719,38 @@ const App: Component = () => {
         }).catch(() => {})
     }
 
+    const discardActivePanel = () => {
+        const p = activePanel()
+        const view = p?.view
+        if (!p || !view) return
+
+        // Revert to the last committed content (or original loaded content if never saved)
+        const revertTo = viewLastCommitted.get(view) ?? getOriginalContent(p.astState)
+        const revertAST = parseMeTTaString(revertTo, 'manual')
+
+        const pidx = panels.findIndex(panel => panel.id === p.id)
+        if (pidx !== -1) {
+            setPanels(pidx, 'astState', 'ast', revertAST)
+            setPanels(pidx, 'astState', 'originalAST', revertAST)
+        }
+        view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: revertTo },
+            annotations: [programmaticEdit.of(true)],
+            effects: setOriginalContentEffect.of(revertTo),
+        })
+        viewLastCommitted.set(view, revertTo)
+        setPanelsWithUnsavedChanges(prev => { const next = new Set(prev); next.delete(p.id); return next })
+    }
+
+    let unsavedChangesModal: HTMLDialogElement
+    const [pendingAction, setPendingAction] = createSignal<(() => void) | null>(null)
+
+    const guardUnsavedChanges = (action: () => void) => {
+        if (!hasUnsavedChanges()) { action(); return }
+        setPendingAction(() => action)
+        unsavedChangesModal.showModal()
+    }
+
     const createEditorState = (initialDoc: string, astState: EditorASTState) => {
         return EditorState.create({
             doc: initialDoc,
@@ -1136,6 +1168,7 @@ const App: Component = () => {
         setupModalBackdrop(clearModal)
         setupModalBackdrop(copyModal)
         setupModalBackdrop(shareTokenModal)
+        setupModalBackdrop(unsavedChangesModal)
 
         const effectiveToken = TOKEN || localStorage.getItem('rootToken');
         console.log("Token check:", { VITE_TOKEN: TOKEN, localStorage: localStorage.getItem('rootToken') });
@@ -1313,7 +1346,7 @@ const App: Component = () => {
             }
 
             // Append new expressions to the AST
-            const astState = unwrap(p.astState) as EditorASTState
+            const currentAST = unwrap(p.astState.ast) as EditorASTState['ast']
             const strippedTokens = stripNamespacePrefix(newTokens, activeNs)
 
             // Build new nodes from tokens
@@ -1326,18 +1359,22 @@ const App: Component = () => {
                 : null
 
             // Insert into AST after the last node with the same root key, or at end
-            let astInsertIdx = astState.ast.length
+            let astInsertIdx = currentAST.length
             if (firstKey) {
-                for (let i = astState.ast.length - 1; i >= 0; i--) {
-                    const n = astState.ast[i]
+                for (let i = currentAST.length - 1; i >= 0; i--) {
+                    const n = currentAST[i]
                     if (n.type === 'expr' && (n as ExprNode).key === firstKey) {
                         astInsertIdx = i + 1
                         break
                     }
                 }
             }
-            astState.ast.splice(astInsertIdx, 0, ...newNodes)
-            astState.originalAST.splice(astInsertIdx, 0, ...newNodes)
+
+            // Build new arrays (new references trigger SolidJS reactivity)
+            const newAST = [...currentAST]
+            newAST.splice(astInsertIdx, 0, ...newNodes)
+            const newOriginalAST = [...(unwrap(p.astState.originalAST) as EditorASTState['ast'])]
+            newOriginalAST.splice(astInsertIdx, 0, ...newNodes)
 
             // Find insertion point in editor: after the last line that belongs to this key
             const doc = p.view.state.doc
@@ -1355,12 +1392,24 @@ const App: Component = () => {
             }
 
             const pidxLm = panels.findIndex(item => item.id === p.id)
-            if (pidxLm !== -1) setPanels(pidxLm, 'astState', astState as any)
+            if (pidxLm !== -1) {
+                setPanels(pidxLm, 'astState', 'ast', newAST)
+                setPanels(pidxLm, 'astState', 'originalAST', newOriginalAST)
+            }
+
             const insertText = insertPos > 0 ? '\n' + newText : newText
+            const docStr = doc.toString()
+            const newContent = docStr.slice(0, insertPos) + insertText + docStr.slice(insertPos)
+
             p.view.dispatch(p.view.state.update({
                 changes: { from: insertPos, insert: insertText },
                 annotations: [programmaticEdit.of(true)],
+                // Update the diff baseline so newly loaded atoms aren't shown as additions
+                effects: setOriginalContentEffect.of(newContent),
             }))
+
+            // Advance the commit baseline so newly loaded atoms aren't saved as a diff
+            viewLastCommitted.set(p.view, newContent)
 
             // Kick off background pre-fetch of the next page
             prefetchNextPage(path)
@@ -1879,14 +1928,27 @@ const App: Component = () => {
     const read = async (ns?: string) => {
         const p = activePanel()
         const path = ns || p?.namespace || '/'
-        // Clear any stale prefetch cache for this path on a fresh load
+        // Clear all stale pagination state for this path and its descendants on a fresh load
         const pathWithSlash = path.endsWith('/') ? path : path + '/'
-        setPrefetchCache(prev => { const m = new Map(prev); m.delete(pathWithSlash); return m })
+        setFocusTokens(prev => {
+            const m = new Map(prev)
+            for (const key of m.keys()) {
+                if (key === pathWithSlash || key.startsWith(pathWithSlash)) m.delete(key)
+            }
+            return m
+        })
+        setPrefetchCache(prev => {
+            const m = new Map(prev)
+            for (const key of m.keys()) {
+                if (key === pathWithSlash || key.startsWith(pathWithSlash)) m.delete(key)
+            }
+            return m
+        })
         try {
             // First fetch namespace info to get focus tokens
             const namespaceInfo = await fetchNamespaceInfo(path)
 
-            // Store focus tokens for subnamespaces
+            // Store focus tokens for subnamespaces (start from the now-cleaned map)
             const newTokens = new Map(focusTokens())
             for (const sub of namespaceInfo.subnamespaces) {
                 if (sub.token) {
@@ -2241,19 +2303,19 @@ const App: Component = () => {
                             <aside class={`${styles.Sidebar} ${sidebarCollapsed() ? styles.SidebarCollapsed : ''}`}>
                                 <div class={styles.MettaEditorActions}>
                                     <div class={styles.ButtonGroup}>
-                                        <button onClick={() => openImportModal()}>
+                                        <button onClick={() => guardUnsavedChanges(() => openImportModal())}>
                                             <VsCloudUpload size={16} />
                                             <span>Import</span>
                                         </button>
-                                        <button onclick={() => openClearModal()}>
+                                        <button onclick={() => guardUnsavedChanges(() => openClearModal())}>
                                             <VsClearAll size={16} />
                                             <span>Clear</span>
                                         </button>
-                                        <button onclick={() => openCopyModal()}>
+                                        <button onclick={() => guardUnsavedChanges(() => openCopyModal())}>
                                             <VsCopy size={16} />
                                             <span>Copy</span>
                                         </button>
-                                        <button onclick={() => {
+                                        <button onclick={() => guardUnsavedChanges(() => {
                                             if (transformConfigs().length === 0) {
                                                 const ns = activePanel()?.namespace || '/'
                                                 setTransformConfigs([
@@ -2262,7 +2324,7 @@ const App: Component = () => {
                                                 ]);
                                             }
                                             transformModal.showModal();
-                                        }}>
+                                        })}>
                                             <VsReplace size={16} />
                                             <span>Transform</span>
                                         </button>
@@ -2436,12 +2498,14 @@ const App: Component = () => {
                                         onOpenSubspace={(path) => addPanel(path)}
                                         onShare={openShareModal}
                                         onConfigureTransform={(paths) => {
-                                            setTransformConfigs(paths.map((p, i) => ({
-                                                path: p,
-                                                type: i === 0 ? 'input' : 'output',
-                                                patternOrTemplate: ''
-                                            })));
-                                            transformModal.showModal();
+                                            guardUnsavedChanges(() => {
+                                                setTransformConfigs(paths.map((p, i) => ({
+                                                    path: p,
+                                                    type: i === 0 ? 'input' : 'output',
+                                                    patternOrTemplate: ''
+                                                })));
+                                                transformModal.showModal();
+                                            })
                                         }}
                                         onCollapse={handleTrieCollapse}
                                         onExpand={handleTrieExpand}
@@ -2603,6 +2667,41 @@ const App: Component = () => {
                 onConfirm={confirmData().onConfirm}
                 onCancel={() => confirmModal.close()}
             />
+
+            <dialog ref={unsavedChangesModal!}>
+                <form onsubmit={(e) => e.preventDefault()}>
+                    <h2>Unsaved Changes</h2>
+                    <p>You have unsaved changes. Save or discard them before continuing.</p>
+                    <div class={commonStyles.ModalButtonBar}>
+                        <button
+                            type="button"
+                            class={commonStyles.TextButton}
+                            onclick={() => unsavedChangesModal.close()}
+                        >Cancel</button>
+                        <div class={commonStyles.Spacer} />
+                        <button
+                            type="button"
+                            class={commonStyles.TextButton}
+                            onclick={() => {
+                                unsavedChangesModal.close()
+                                discardActivePanel()
+                                pendingAction()?.()
+                                setPendingAction(null)
+                            }}
+                        >Discard</button>
+                        <button
+                            type="button"
+                            class={commonStyles.Button}
+                            onclick={() => {
+                                unsavedChangesModal.close()
+                                saveActivePanel()
+                                pendingAction()?.()
+                                setPendingAction(null)
+                            }}
+                        >Save</button>
+                    </div>
+                </form>
+            </dialog>
 
             <ClearModal
                 ref={clearModal!}

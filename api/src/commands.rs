@@ -1,5 +1,3 @@
-use std::env;
-
 use mork_client::MorkClient;
 use rocket::http::Status;
 use tracing::error;
@@ -7,7 +5,7 @@ use tracing::error;
 const TRANSFORM_WAIT_MS: u64 = 300_000;
 
 fn get_mork_client() -> MorkClient {
-    MorkClient::new(env::var("METTA_KG_MORK_URL").unwrap())
+    MorkClient::new(crate::config::config().mork_url.clone())
 }
 
 fn mork_err(e: mork_client::MorkError) -> Status {
