@@ -102,14 +102,6 @@ impl PresenceStore {
         PresenceStore(Arc::new(Mutex::new(HashMap::new())))
     }
 
-    pub fn insert(&self, entry: PresenceEntry) {
-        self.0.lock().unwrap().insert(entry.session_id.clone(), entry);
-    }
-
-    pub fn remove(&self, session_id: &str) {
-        self.0.lock().unwrap().remove(session_id);
-    }
-
     pub fn snapshot(&self) -> Vec<PresenceEntry> {
         self.0.lock().unwrap().values().cloned().collect()
     }

@@ -466,7 +466,7 @@ export function unexpandFringe(
     const n = ast[i]
     if (n.type === 'expr') {
       const ep = (n as ExprNode).expandedFrom
-      if (!ep || (ep && (ep === fringePath || ep.startsWith(fringePath + '/')))) {
+      if (ep && (ep === fringePath || ep.startsWith(fringePath + '/'))) {
         toRemove.push(i)
       }
     }

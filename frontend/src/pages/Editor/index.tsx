@@ -23,6 +23,7 @@ import {
     VsCopy,
 } from 'solid-icons/vs'
 import { createMemo, createSignal, onMount, onCleanup, Show, For, createEffect, batch, on, untrack } from 'solid-js'
+import { createStore, reconcile, unwrap } from 'solid-js/store'
 import { createOwnHistoryStore } from './stores/ownHistoryStore'
 import styles from './Editor.module.scss'
 import commonStyles from '../../styles/Common.module.scss'
@@ -285,19 +286,9 @@ const remoteCursorsField = StateField.define<DecorationSet>({
         decos = decos.map(tr.changes)
         for (const effect of tr.effects) {
             if (effect.is(setRemoteCursorsEffect)) {
-                const widgets: Range<Decoration>[] = []
-                for (const cursor of effect.value) {
-                    try {
-                        const line = tr.state.doc.line(cursor.line)
-                        const pos = Math.min(line.from + cursor.col, line.to)
-                        widgets.push(Decoration.widget({
-                            widget: new RemoteCursorWidget(colorForSession(cursor.sessionId), cursor.displayName),
-                            side: 1,
-                        }).range(pos))
-                    } catch { /* line out of range */ }
-                }
-                widgets.sort((a, b) => a.from - b.from)
-                decos = Decoration.set(widgets)
+                // Cursor presence display is disabled; keep the field/effect
+                // plumbing intact so the feature can be re-enabled easily.
+                decos = Decoration.none
             }
         }
         return decos
@@ -442,13 +433,22 @@ const App: Component = () => {
     // incremental edits (type then delete) produce correct deltas.
     const viewLastSent = new WeakMap<EditorView, string>()
 
-    // LWW-Element-Set CRDT state: namespace path → atom string → {addTs, removeTs}
-    type LwwEntry = { addTs: number; removeTs: number }
-    const lwwState = new Map<string, Map<string, LwwEntry>>()
-    const getLwwNs = (ns: string): Map<string, LwwEntry> => {
-        let m = lwwState.get(ns)
-        if (!m) { m = new Map(); lwwState.set(ns, m) }
-        return m
+    // Per-view tracking of what content was last committed (saved), used as
+    // the baseline when computing diffs to send on Save.
+    const viewLastCommitted = new WeakMap<EditorView, string>()
+
+    // Per-namespace set of expressions currently subscribed via ws/watch
+    const watchedExprs = new Map<string, Set<string>>()
+    const syncWatchSubscriptions = (namespace: string, content: string) => {
+        const newExprs = new Set(content.split('\n').map(l => l.trim()).filter(Boolean))
+        const prevExprs = watchedExprs.get(namespace) ?? new Set<string>()
+        for (const expr of newExprs) {
+            if (!prevExprs.has(expr)) wsService.subscribeExpr(namespace, expr)
+        }
+        for (const expr of prevExprs) {
+            if (!newExprs.has(expr)) wsService.unsubscribeExpr(namespace, expr)
+        }
+        watchedExprs.set(namespace, newExprs)
     }
 
     // Remote editor presence: token_id → { displayName, path, line?, col?, lastSeen }
@@ -466,10 +466,12 @@ const App: Component = () => {
     onCleanup(() => clearInterval(_presenceCleanupInterval))
 
     // Panels State
-    const [panels, setPanels] = createSignal<EditorPanel[]>([])
+    const [panels, setPanels] = createStore<EditorPanel[]>([])
     const [activePanelId, setActivePanelId] = createSignal<string>('')
+    const [panelsWithUnsavedChanges, setPanelsWithUnsavedChanges] = createSignal<Set<string>>(new Set())
+    const hasUnsavedChanges = () => panelsWithUnsavedChanges().has(activePanelId())
 
-    const activePanel = () => panels().find(p => p.id === activePanelId())
+    const activePanel = () => panels.find(p => p.id === activePanelId())
 
     // Transient namespace value while the user is typing in the toolbar selector.
     // Kept separate from panels so that mid-input keystrokes don't trigger effects
@@ -660,9 +662,7 @@ const App: Component = () => {
         // Close any existing socket for this panel first
         presenceSockets.get(panelId)?.close()
         const seg = namespace.replace(/^\/|\/$/g, '')
-        const url = seg
-            ? `${WS_BASE}/ws/editor/${seg}?token_code=${encodeURIComponent(tok.code)}&session_id=${encodeURIComponent(SESSION_ID)}&display_name=${encodeURIComponent(myDisplayName())}`
-            : `${WS_BASE}/ws/editor?token_code=${encodeURIComponent(tok.code)}&session_id=${encodeURIComponent(SESSION_ID)}&display_name=${encodeURIComponent(myDisplayName())}`
+        const url = `${WS_BASE}/ws/editor/${seg}?token_code=${encodeURIComponent(tok.code)}&session_id=${encodeURIComponent(SESSION_ID)}&display_name=${encodeURIComponent(myDisplayName())}`
         const ws = new WebSocket(url)
         presenceSockets.set(panelId, ws)
         ws.onclose = () => presenceSockets.delete(panelId)
@@ -677,6 +677,46 @@ const App: Component = () => {
         const ws = presenceSockets.get(panelId)
         if (!ws || ws.readyState !== WebSocket.OPEN) return
         ws.send(JSON.stringify({ line, col }))
+    }
+
+    const saveActivePanel = () => {
+        const p = activePanel()
+        const view = p?.view
+        const tok = token()
+        if (!p || !view || !tok) return
+
+        const content = view.state.doc.toString()
+        const baseline = viewLastCommitted.get(view) ?? getOriginalContent(p.astState)
+        const { added, removed } = computeAtomDiff(content, baseline)
+
+        setPanelsWithUnsavedChanges(prev => { const next = new Set(prev); next.delete(p.id); return next })
+        if (added.length === 0 && removed.length === 0) return
+
+        viewLastCommitted.set(view, content)
+
+        // Update the diff baseline so the editor gutter and trie explorer
+        // no longer show the saved changes as additions/removals.
+        const pidx = panels.findIndex(panel => panel.id === p.id)
+        if (pidx !== -1) {
+            setPanels(pidx, 'astState', 'originalAST', p.astState.ast)
+            setPanels(pidx, 'astState', 'originalNodeMap', p.astState.nodeMap)
+        }
+        view.dispatch({ effects: setOriginalContentEffect.of(content) })
+
+        const namespaceSeg = p.namespace.replace(/^\/|\/$/g, '')
+
+        const trie = buildDiffPrefixTrie(added, removed)
+        fetch(`${BACKEND_URL}/editor/diff/${namespaceSeg}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: tok.code },
+            body: JSON.stringify({ ts: Date.now(), trie }),
+        }).catch(() => {})
+
+        fetch(`${BACKEND_URL}/editor/commit/${namespaceSeg}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: tok.code },
+            body: JSON.stringify({ added, removed }),
+        }).catch(() => {})
     }
 
     const createEditorState = (initialDoc: string, astState: EditorASTState) => {
@@ -725,121 +765,17 @@ const App: Component = () => {
                     ...completionKeymap,
                     ...lintKeymap,
                 ]),
-                EditorView.updateListener.of((() => {
-                    let diffDebounceTimer: number | undefined
-                    let sessionCommitTimer: number | undefined
-                    let sessionStartContent: string | null = null
-
-                    return (update) => {
-                        const isProgrammatic = update.transactions.some(t => t.annotation(programmaticEdit))
-
-                        if (isProgrammatic) {
-                            // Reset session when content changes programmatically (e.g. remote diff)
-                            sessionStartContent = null
-                            clearTimeout(sessionCommitTimer)
-                            sessionCommitTimer = undefined
-                        }
-
-                        if (update.docChanged && !isProgrammatic) {
-                            // Capture the content before this edit session started
-                            if (sessionStartContent === null) {
-                                sessionStartContent = update.startState.doc.toString()
-                            }
-
-                            const content = update.state.doc.toString()
-                            const newAST = parseMeTTaString(content, 'manual')
-                            untrack(() => {
-                                setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, astState: { ...p.astState, ast: newAST } } : p))
-                            })
-
-                            // Build and broadcast a diff prefix trie to the backend
-                            clearTimeout(diffDebounceTimer)
-                            const view = update.view
-                            diffDebounceTimer = window.setTimeout(() => {
-                                const p = untrack(() => panels().find(panel => panel.id === activePanelId()))
-                                const tok = untrack(() => token())
-                                if (!p || !tok) return
-
-                                // Use viewLastSent as baseline so incremental edits
-                                // (type then delete) and remote-received diffs are
-                                // accounted for in subsequent sends.
-                                const baseContent = viewLastSent.get(view) ?? getOriginalContent(p.astState)
-                                const { added, removed } = computeAtomDiff(content, baseContent)
-                                if (added.length === 0 && removed.length === 0) return
-
-                                const ts = Date.now()
-
-                                // Update LWW state so our own diff is not re-applied
-                                // when the server echoes it back.
-                                const nsLww = getLwwNs(p.namespace)
-                                for (const atom of added) {
-                                    const prev = nsLww.get(atom) ?? { addTs: -Infinity, removeTs: -Infinity }
-                                    nsLww.set(atom, { ...prev, addTs: ts })
-                                }
-                                for (const atom of removed) {
-                                    const prev = nsLww.get(atom) ?? { addTs: -Infinity, removeTs: -Infinity }
-                                    nsLww.set(atom, { ...prev, removeTs: ts })
-                                }
-
-                                viewLastSent.set(view, content)
-
-                                const trie = buildDiffPrefixTrie(added, removed)
-                                const namespaceSeg = p.namespace.replace(/^\/|\/$/g, '')
-                                const endpoint = namespaceSeg
-                                    ? `/editor/diff/${namespaceSeg}`
-                                    : `/editor/diff`
-
-                                fetch(`${BACKEND_URL}${endpoint}`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        Authorization: tok.code,
-                                    },
-                                    body: JSON.stringify({ ts, trie }),
-                                }).catch(() => { })
-                            }, 300)
-
-                            // Schedule session commit after 1 second of inactivity.
-                            // If parens are unbalanced when the timer fires, reschedule.
-                            clearTimeout(sessionCommitTimer)
-                            const scheduleCommit = (view: EditorView) => {
-                                sessionCommitTimer = window.setTimeout(() => {
-                                    const currentContent = view.state.doc.toString()
-                                    if (!isBalanced(currentContent)) {
-                                        scheduleCommit(view)
-                                        return
-                                    }
-                                    const startContent = sessionStartContent
-                                    sessionStartContent = null
-                                    sessionCommitTimer = undefined
-                                    if (startContent === null) return
-
-                                    const p = untrack(() => panels().find(panel => panel.id === activePanelId()))
-                                    const tok = untrack(() => token())
-                                    if (!p || !tok) return
-
-                                    const { added, removed } = computeAtomDiff(currentContent, startContent)
-                                    if (added.length === 0 && removed.length === 0) return
-
-                                    const namespaceSeg = p.namespace.replace(/^\/|\/$/g, '')
-                                    const endpoint = namespaceSeg
-                                        ? `/editor/commit/${namespaceSeg}`
-                                        : `/editor/commit`
-
-                                    fetch(`${BACKEND_URL}${endpoint}`, {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            Authorization: tok.code,
-                                        },
-                                        body: JSON.stringify({ added, removed }),
-                                    }).catch(() => { })
-                                }, 1000)
-                            }
-                            scheduleCommit(view)
-                        }
+                EditorView.updateListener.of((update) => {
+                    if (update.docChanged && !update.transactions.some(t => t.annotation(programmaticEdit))) {
+                        const content = update.state.doc.toString()
+                        const newAST = parseMeTTaString(content, 'manual')
+                        untrack(() => {
+                            const pidx = panels.findIndex(p => p.id === activePanelId())
+                            if (pidx !== -1) setPanels(pidx, 'astState', 'ast', newAST)
+                        })
+                        setPanelsWithUnsavedChanges(prev => new Set(prev).add(activePanelId()))
                     }
-                })()),
+                }),
                 // Broadcast cursor position to other clients on selection change
                 EditorView.updateListener.of((() => {
                     let cursorTimer: number | undefined
@@ -848,7 +784,7 @@ const App: Component = () => {
                             clearTimeout(cursorTimer)
                             const view = update.view
                             cursorTimer = window.setTimeout(() => {
-                                const p = untrack(() => panels().find(panel => panel.view === view))
+                                const p = untrack(() => panels.find(panel => panel.view === view))
                                 if (!p) return
                                 const pos = view.state.selection.main.head
                                 const lineInfo = view.state.doc.lineAt(pos)
@@ -919,9 +855,8 @@ const App: Component = () => {
     }
 
     createEffect(() => {
-        const panelsList = panels()
         const activeId = activePanelId()
-        const p = panelsList.find(item => item.id === activeId)
+        const p = panels.find(item => item.id === activeId)
         if (p && p.view) {
             const originalContent = getOriginalContent(p.astState)
             p.view.dispatch({ effects: setOriginalContentEffect.of(originalContent) })
@@ -930,7 +865,7 @@ const App: Component = () => {
 
     createEffect(on(currentTheme, (theme) => {
         const isDark = theme === 'dark'
-        panels().forEach(p => {
+        panels.forEach(p => {
             if (p.view) {
                 p.view.dispatch({ effects: themeCompartment.reconfigure(getEditorTheme(isDark)) })
             }
@@ -942,7 +877,7 @@ const App: Component = () => {
         if (mettaInput) {
             mettaInput.innerHTML = ''
             if (!id) return;
-            const p = untrack(panels).find(item => item.id === id)
+            const p = untrack(() => panels.find(item => item.id === id))
             if (p) {
                 if (!p.view) {
                     const displayContent = getDisplayContentWithPaginationIndicator(p.astState, p.namespace)
@@ -950,7 +885,8 @@ const App: Component = () => {
                         state: createEditorState(displayContent, p.astState),
                         parent: mettaInput
                     })
-                    setPanels(prev => prev.map(item => item.id === p.id ? { ...item, view } : item))
+                    const pidx = panels.findIndex(item => item.id === p.id)
+                    if (pidx !== -1) setPanels(pidx, 'view', view)
                 } else {
                     mettaInput.appendChild(p.view.dom)
                 }
@@ -965,6 +901,71 @@ const App: Component = () => {
         if (!t) return
         invalidateNamespaceTree()
         wsService.connectEvents(t.code)
+        wsService.connectWatch(t.code)
+
+        const unsubWatch = wsService.onExprChanged((event) => {
+            for (const panel of panels) {
+                if (panel.namespace !== event.namespace || !panel.view) continue
+                const view = panel.view
+                const doc = view.state.doc
+                const changes: Array<{ from: number; to: number; insert?: string }> = []
+                const removalPositions: Array<{ lineIndex: number; from: number; to: number }> = []
+
+                for (let i = 1; i <= doc.lines; i++) {
+                    const line = doc.line(i)
+                    if (line.text.trim() === event.old) {
+                        removalPositions.push({ lineIndex: i, from: line.from, to: line.to })
+                        break
+                    }
+                }
+                removalPositions.sort((a, b) => a.from - b.from)
+
+                if (event.added.length > 0 && removalPositions.length > 0) {
+                    const first = removalPositions[0]
+                    changes.push({ from: first.from, to: first.to, insert: event.added.join('\n') })
+                    for (const { lineIndex, from, to } of removalPositions.slice(1)) {
+                        changes.push(lineIndex < doc.lines ? { from, to: to + 1 } : { from: from - 1, to })
+                    }
+                } else {
+                    for (const { lineIndex, from, to } of removalPositions) {
+                        if (lineIndex < doc.lines) changes.push({ from, to: to + 1 })
+                        else if (doc.lines > 1) changes.push({ from: from - 1, to })
+                        else changes.push({ from, to })
+                    }
+                }
+
+                if (changes.length > 0) {
+                    changes.sort((a, b) => a.from - b.from)
+                    const newContent = view.state.update({ changes }).state.doc.toString()
+                    view.dispatch({
+                        changes,
+                        annotations: programmaticEdit.of(true),
+                        effects: setOriginalContentEffect.of(newContent),
+                    })
+                    viewLastSent.set(view, newContent)
+                    viewLastCommitted.set(view, newContent)
+
+                    // Update AST so the TrieExplorer reflects the change
+                    const newAST = parseMeTTaString(newContent, 'manual')
+                    untrack(() => {
+                        const pidx = panels.findIndex(p => p.id === panel.id)
+                        if (pidx !== -1) {
+                            setPanels(pidx, 'astState', 'ast', newAST)
+                            setPanels(pidx, 'astState', 'originalAST', [...newAST])
+                        }
+                    })
+                }
+
+                // Mirror the server's subscription state so syncWatchSubscriptions
+                // doesn't re-send redundant subscribe/unsubscribe messages.
+                const prevWatched = watchedExprs.get(event.namespace)
+                if (prevWatched) {
+                    prevWatched.delete(event.old)
+                    for (const a of event.added) prevWatched.add(a)
+                }
+            }
+        })
+
         const unsub = wsService.onSpaceEvent((event) => {
             setLockedPaths((prev: Set<string>) => {
                 if (event.type !== 'locked' && event.type !== 'unlocked') return prev
@@ -986,100 +987,6 @@ const App: Component = () => {
             if (event.type === 'transformComplete') {
                 invalidateNamespaceTree()
                 read()
-            }
-            if (event.type === 'editorDiff') {
-                // Extract atoms from the received trie
-                const receivedAdded: string[] = []
-                const receivedRemoved: string[] = []
-                collectTrieAtoms(event.trie, [], receivedAdded, receivedRemoved)
-
-                // Apply LWW-Element-Set merge: only act on atoms whose timestamp
-                // is strictly newer than what we've already recorded.
-                const nsLww = getLwwNs(event.path)
-                const toInsert: string[] = []
-                const toRemove: string[] = []
-
-                for (const atom of receivedAdded) {
-                    const prev = nsLww.get(atom) ?? { addTs: -Infinity, removeTs: -Infinity }
-                    if (event.ts > prev.addTs) {
-                        nsLww.set(atom, { ...prev, addTs: event.ts })
-                        if (event.ts > prev.removeTs) toInsert.push(atom)
-                    }
-                }
-                for (const atom of receivedRemoved) {
-                    const prev = nsLww.get(atom) ?? { addTs: -Infinity, removeTs: -Infinity }
-                    if (event.ts > prev.removeTs) {
-                        nsLww.set(atom, { ...prev, removeTs: event.ts })
-                        if (event.ts >= prev.addTs) toRemove.push(atom)
-                    }
-                }
-
-                if (toInsert.length === 0 && toRemove.length === 0) return
-
-                // Apply to all panels whose namespace matches the diff path
-                for (const panel of panels()) {
-                    if (panel.namespace !== event.path || !panel.view) continue
-                    const view = panel.view
-                    const doc = view.state.doc
-                    const changes: Array<{ from: number; to: number; insert?: string }> = []
-
-                    // Collect removal positions in document order.
-                    const removalPositions: Array<{ lineIndex: number; from: number; to: number }> = []
-                    for (const atom of toRemove) {
-                        for (let i = 1; i <= doc.lines; i++) {
-                            const line = doc.line(i)
-                            if (line.text.trim() === atom) {
-                                removalPositions.push({ lineIndex: i, from: line.from, to: line.to })
-                                break
-                            }
-                        }
-                    }
-                    removalPositions.sort((a, b) => a.from - b.from)
-
-                    if (toInsert.length > 0 && removalPositions.length > 0) {
-                        // Replace the first removed atom in-place with the new content.
-                        // This keeps edits at their original document position rather
-                        // than appending to the end.
-                        const first = removalPositions[0]
-                        changes.push({ from: first.from, to: first.to, insert: toInsert.join('\n') })
-                        // Delete any additional removed atoms.
-                        for (const { lineIndex, from, to } of removalPositions.slice(1)) {
-                            changes.push(lineIndex < doc.lines
-                                ? { from, to: to + 1 }
-                                : { from: from - 1, to })
-                        }
-                    } else {
-                        // Pure removals.
-                        for (const { lineIndex, from, to } of removalPositions) {
-                            if (lineIndex < doc.lines) {
-                                changes.push({ from, to: to + 1 })
-                            } else if (doc.lines > 1) {
-                                changes.push({ from: from - 1, to })
-                            } else {
-                                changes.push({ from, to })
-                            }
-                        }
-                        // Pure insertions: append at end.
-                        if (toInsert.length > 0) {
-                            const hasContent = doc.toString().trim().length > 0
-                            changes.push({
-                                from: doc.length,
-                                to: doc.length,
-                                insert: (hasContent ? '\n' : '') + toInsert.join('\n'),
-                            })
-                        }
-                    }
-
-                    // Changes must be sorted by position for CodeMirror.
-                    changes.sort((a, b) => a.from - b.from)
-
-                    if (changes.length > 0) {
-                        view.dispatch({ changes, annotations: programmaticEdit.of(true) })
-                        // Update the send baseline to include remote changes so the
-                        // next local edit produces a correct incremental diff.
-                        viewLastSent.set(view, view.state.doc.toString())
-                    }
-                }
             }
             if (event.type === 'editorPresence') {
                 if (event.session_id === SESSION_ID) return
@@ -1103,7 +1010,7 @@ const App: Component = () => {
                         return next
                     })
                     // Clear this user's cursor from matching panels
-                    for (const panel of panels()) {
+                    for (const panel of panels) {
                         if (panel.namespace !== event.path || !panel.view) continue
                         const cursors: RemoteCursorInfo[] = []
                         for (const [sessionId, editor] of remoteEditors()) {
@@ -1129,7 +1036,7 @@ const App: Component = () => {
                     return next.size !== prev.size || existing?.line !== event.line || existing?.col !== event.col ? next : prev
                 })
                 // Update cursor decorations in matching panel views
-                for (const panel of panels()) {
+                for (const panel of panels) {
                     if (panel.namespace !== event.path || !panel.view) continue
                     const cursors: RemoteCursorInfo[] = []
                     for (const [sessionId, editor] of remoteEditors()) {
@@ -1143,10 +1050,20 @@ const App: Component = () => {
             }
         })
         onCleanup(() => {
-            for (const p of untrack(panels)) disconnectPresence(p.id)
+            for (const p of panels) disconnectPresence(p.id)
             unsub()
+            unsubWatch()
             wsService.disconnectEvents()
+            wsService.disconnectWatch()
         })
+    })
+
+    // Auto-sync watch subscriptions whenever any panel's display content changes
+    createEffect(() => {
+        for (const p of panels) {
+            const content = getDisplayContent(p.astState)
+            syncWatchSubscriptions(p.namespace, content)
+        }
     })
 
     // Subscribe to MORK status stream for the active panel's namespace
@@ -1189,8 +1106,18 @@ const App: Component = () => {
 
         wsService.connectPing()
         const unsubOnline = wsService.onOnlineChange(setOnline)
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault()
+                saveActivePanel()
+            }
+        }
+        document.addEventListener('keydown', handleKeyDown)
+
         onCleanup(() => {
             unsubOnline()
+            document.removeEventListener('keydown', handleKeyDown)
         })
 
         const setupModalBackdrop = (modal: HTMLDialogElement) => {
@@ -1246,7 +1173,7 @@ const App: Component = () => {
         if (!path.startsWith(activeNs)) return
         const relPath = path.slice(activeNs.length).replace(/\/$/, '')
 
-        const astState = p.astState
+        const astState = unwrap(p.astState) as EditorASTState
 
         // If this path was expanded (fringe expand), unexpand it instead of folding
         if (astState.expandedPaths.has(relPath)) {
@@ -1259,10 +1186,16 @@ const App: Component = () => {
 
             // Re-render
             const displayContent = getDisplayContentWithPaginationIndicator(astState, p.namespace)
-            setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+            const originalContent = getOriginalContent(astState)
+            const pidx = panels.findIndex(item => item.id === p.id)
+            if (pidx !== -1) {
+                setPanels(pidx, 'astState', 'ast', [...astState.ast])
+                setPanels(pidx, 'astState', 'originalAST', [...astState.originalAST])
+            }
             p.view.dispatch(p.view.state.update({
                 changes: { from: 0, to: p.view.state.doc.length, insert: displayContent },
                 annotations: [programmaticEdit.of(true)],
+                effects: setOriginalContentEffect.of(originalContent),
             }))
 
             // Reset pagination so re-expanding starts from page 1
@@ -1322,7 +1255,7 @@ const App: Component = () => {
             const tokens = allTokens
 
             // Merge tokens into AST
-            const astState = p.astState
+            const astState = unwrap(p.astState) as EditorASTState
             const pathKey = relPath.split('/').filter(Boolean).join('/')
 
             // Strip namespace prefix from tokens before merging
@@ -1338,10 +1271,16 @@ const App: Component = () => {
 
             // Re-render
             const displayContent = getDisplayContentWithPaginationIndicator(astState, p.namespace)
-            setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+            const originalContent = getOriginalContent(astState)
+            const pidx = panels.findIndex(item => item.id === p.id)
+            if (pidx !== -1) {
+                setPanels(pidx, 'astState', 'ast', [...astState.ast])
+                setPanels(pidx, 'astState', 'originalAST', [...astState.originalAST])
+            }
             p.view.dispatch(p.view.state.update({
                 changes: { from: 0, to: p.view.state.doc.length, insert: displayContent },
                 annotations: [programmaticEdit.of(true)],
+                effects: setOriginalContentEffect.of(originalContent),
             }))
 
         } catch (e) {
@@ -1374,7 +1313,7 @@ const App: Component = () => {
             }
 
             // Append new expressions to the AST
-            const astState = p.astState
+            const astState = unwrap(p.astState) as EditorASTState
             const strippedTokens = stripNamespacePrefix(newTokens, activeNs)
 
             // Build new nodes from tokens
@@ -1415,7 +1354,8 @@ const App: Component = () => {
                 }
             }
 
-            setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+            const pidxLm = panels.findIndex(item => item.id === p.id)
+            if (pidxLm !== -1) setPanels(pidxLm, 'astState', astState as any)
             const insertText = insertPos > 0 ? '\n' + newText : newText
             p.view.dispatch(p.view.state.update({
                 changes: { from: insertPos, insert: insertText },
@@ -1498,7 +1438,7 @@ const App: Component = () => {
 
         // Capture all modal state before closing
         const targetNs = importNamespace()
-        const encodedPath = targetNs.split('/').map(encodeURIComponent).join('/')
+        const encodedPath = targetNs.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
         const src = importSource()
         const file = activeImportFile()
         const url = importUrl().trim()
@@ -1525,7 +1465,7 @@ const App: Component = () => {
 
                 if (format === ImportFormat.METTA) {
                     const fileText = await file.text()
-                    const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
+                    const resp = await fetch(`${BACKEND_URL}/spaces/${encodedPath}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
                         body: fileText,
@@ -1533,7 +1473,7 @@ const App: Component = () => {
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 } else {
                     const parameters = new URLSearchParams(parserParams as any)
-                    const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}${encodedPath}?${parameters.toString()}`, {
+                    const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}/${encodedPath}?${parameters.toString()}`, {
                         method: 'POST',
                         headers: { Authorization: token()?.code ?? '' },
                         body: file,
@@ -1545,13 +1485,15 @@ const App: Component = () => {
                 if (!url) throw new Error('No URL provided')
 
                 if (format === ImportFormat.METTA) {
-                    const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta${encodedPath}?url=${encodeURIComponent(url)}`, {
+                    const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta/${encodedPath}?url=${encodeURIComponent(url)}`, {
+                        method: 'POST',
                         headers: { Authorization: token()?.code ?? '' },
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 } else {
                     const parameters = new URLSearchParams({ ...parserParams as any, url })
-                    const resp = await fetch(`${BACKEND_URL}/spaces/import/url/${format}${encodedPath}?${parameters.toString()}`, {
+                    const resp = await fetch(`${BACKEND_URL}/spaces/import/url/${format}/${encodedPath}?${parameters.toString()}`, {
+                        method: 'POST',
                         headers: { Authorization: token()?.code ?? '' },
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
@@ -1561,7 +1503,7 @@ const App: Component = () => {
                 if (!text) throw new Error('No text provided')
 
                 if (format === ImportFormat.METTA) {
-                    const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
+                    const resp = await fetch(`${BACKEND_URL}/spaces/${encodedPath}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
                         body: text,
@@ -1569,7 +1511,7 @@ const App: Component = () => {
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 } else {
                     const parameters = new URLSearchParams(parserParams as any)
-                    const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}${encodedPath}?${parameters.toString()}`, {
+                    const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}/${encodedPath}?${parameters.toString()}`, {
                         method: 'POST',
                         headers: { Authorization: token()?.code ?? '' },
                         body: text,
@@ -1579,7 +1521,8 @@ const App: Component = () => {
             } else if (src === ImportSource.EXAMPLES) {
                 if (!exPath) throw new Error('No example selected')
                 const rawUrl = `https://raw.githubusercontent.com/trueagi-io/metta-examples/main/${exPath}`
-                const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta${encodedPath}?url=${encodeURIComponent(rawUrl)}`, {
+                const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta/${encodedPath}?url=${encodeURIComponent(rawUrl)}`, {
+                    method: 'POST',
                     headers: { Authorization: token()?.code ?? '' },
                 })
                 if (!resp.ok) throw new Error(`Status ${resp.status}`)
@@ -1626,7 +1569,7 @@ const App: Component = () => {
 
     const loadSpace = async (tokenStr: string, silent: boolean = false): Promise<void> => {
         try {
-            const resp = await fetch(`${BACKEND_URL}/token`, {
+            const resp = await fetch(`${BACKEND_URL}/tokens/me`, {
                 headers: { 'Content-Type': 'application/json', Authorization: tokenStr },
             })
             const self: Token = await resp.json()
@@ -1794,7 +1737,7 @@ const App: Component = () => {
     }
 
     const addPanel = async (ns: string) => {
-        const existing = panels().find(p => p.namespace === ns)
+        const existing = panels.find(p => p.namespace === ns)
         if (existing) {
             setActivePanelId(existing.id)
             return
@@ -1830,7 +1773,7 @@ const App: Component = () => {
             }
 
             batch(() => {
-                setPanels(prev => [...prev, newPanel])
+                setPanels(panels.length, newPanel)
                 setActivePanelId(id)
                 setEditorMode(EditorMode.EDIT)
             })
@@ -1848,15 +1791,15 @@ const App: Component = () => {
 
     const closePanel = (id: string, e: MouseEvent) => {
         e.stopPropagation()
-        if (panels().length <= 1) return
-        const panelToClose = panels().find(p => p.id === id)
+        if (panels.length <= 1) return
+        const panelToClose = panels.find(p => p.id === id)
         if (panelToClose) disconnectPresence(panelToClose.id)
         if (panelToClose?.view) {
             panelToClose.view.destroy()
         }
 
-        const remaining = panels().filter(p => p.id !== id)
-        setPanels(remaining)
+        const remaining = panels.filter(p => p.id !== id)
+        setPanels(reconcile(remaining))
 
         if (activePanelId() === id) {
             if (remaining.length > 0) {
@@ -1872,7 +1815,7 @@ const App: Component = () => {
         const p = activePanel()
         if (!p) return
         const path = p.namespace
-        const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+        const encodedPath = path.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
 
         // Filter AST to only manually entered nodes
         const manualNodes: typeof p.astState.ast = []
@@ -1901,7 +1844,7 @@ const App: Component = () => {
             message: `Are you sure you want to save ${lineCount} new line(s) to space '${path}'?`,
             onConfirm: async () => {
                 try {
-                    const resp = await fetch(`${BACKEND_URL}/spaces${encodedPath}`, {
+                    const resp = await fetch(`${BACKEND_URL}/spaces/${encodedPath}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
                         body: diffContent,
@@ -1920,9 +1863,8 @@ const App: Component = () => {
                             }
                         }
                         markLoaded(updatedAST)
-                        setPanels(prev => prev.map(item => item.id === p.id
-                            ? { ...item, astState: { ...item.astState, originalAST: updatedAST } }
-                            : item))
+                        const pidxW = panels.findIndex(item => item.id === p.id)
+                        if (pidxW !== -1) setPanels(pidxW, 'astState', 'originalAST', updatedAST)
                     } else notify.error(`Failed to save to space '${path}' (Status: ${resp.status})`)
                 } catch (e) {
                     console.error(e)
@@ -1964,7 +1906,8 @@ const App: Component = () => {
                 const astState = createASTStateFromTokens(tokens, path)
                 for (const ep of inlineExpandedPaths) astState.expandedPaths.add(ep)
                 const displayContent = getDisplayContentWithPaginationIndicator(astState, path)
-                setPanels(prev => prev.map(item => item.id === p.id ? { ...item, astState } : item))
+                const pidxR = panels.findIndex(item => item.id === p.id)
+                if (pidxR !== -1) setPanels(pidxR, 'astState', astState as any)
                 p.view?.dispatch(p.view.state.update({ changes: { from: 0, to: p.view.state.doc.length, insert: displayContent }, annotations: [programmaticEdit.of(true)] }))
                 // Pre-fetch the second page in the background
                 prefetchNextPage(path)
@@ -2086,12 +2029,12 @@ const App: Component = () => {
         const p = activePanel()
         if (!p) return
         const path = p.namespace
-        const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+        const encodedPath = path.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
 
         try {
             const url = pattern
-                ? `${BACKEND_URL}/spaces${encodedPath}?pattern=${encodeURIComponent(pattern)}`
-                : `${BACKEND_URL}/spaces${encodedPath}`;
+                ? `${BACKEND_URL}/spaces/${encodedPath}?pattern=${encodeURIComponent(pattern)}`
+                : `${BACKEND_URL}/spaces/${encodedPath}`;
 
             const resp = await fetch(url, {
                 method: 'DELETE',
@@ -2157,19 +2100,14 @@ const App: Component = () => {
     }
 
     const deleteSubspace = async (path: string) => {
-        // Rocket's <path..> doesn't match trailing slashes well, and path.split('/') with trailing slash 
-        // results in an empty last segment. We should filter empty segments.
-        const segments = path.split('/').filter(p => p.length > 0)
-        const encodedPath = segments.map(encodeURIComponent).join('/')
+        const encodedPath = path.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
 
         setConfirmData({
             title: 'Delete Subspace',
             message: `Are you sure you want to delete the subspace '${path}'? This will remove all atoms matching this prefix.`,
             onConfirm: async () => {
                 try {
-                    const url = segments.length > 0
-                        ? `${BACKEND_URL}/spaces/${encodedPath}`
-                        : `${BACKEND_URL}/spaces`;
+                    const url = `${BACKEND_URL}/spaces/${encodedPath}`;
 
                     const resp = await fetch(url, {
                         method: 'DELETE',
@@ -2236,12 +2174,12 @@ const App: Component = () => {
     }
 
     const handleLogout = () => {
-        for (const p of panels()) disconnectPresence(p.id)
+        for (const p of panels) disconnectPresence(p.id)
         setRootTokenCode(null)
         setToken(undefined)
         localStorage.removeItem('rootToken')
         setEditorMode(EditorMode.DEFAULT)
-        setPanels([])
+        setPanels(reconcile([]))
         notify.success('Logged out successfully')
     }
 
@@ -2263,9 +2201,9 @@ const App: Component = () => {
                 }}
             >
                 {/* Tabs - full width at top */}
-                <Show when={panels().length > 0 || editorMode() !== EditorMode.DEFAULT}>
+                <Show when={panels.length > 0 || editorMode() !== EditorMode.DEFAULT}>
                     <div class={styles.EditorTabs}>
-                        <For each={panels()}>
+                        <For each={panels}>
                             {(p) => (
                                 <div
                                     class={`${styles.EditorTab} ${p.id === activePanelId() ? styles.ActiveTab : ''}`}
@@ -2297,7 +2235,7 @@ const App: Component = () => {
                 {/* Content wrapper with margin */}
                 <div class={styles.ContentWrapper}>
                     {/* Content row: Sidebar | Editor | Trie */}
-                    <Show when={panels().length > 0 || editorMode() !== EditorMode.DEFAULT}>
+                    <Show when={panels.length > 0 || editorMode() !== EditorMode.DEFAULT}>
                         <div class={styles.ContentRow}>
                             {/* Sidebar */}
                             <aside class={`${styles.Sidebar} ${sidebarCollapsed() ? styles.SidebarCollapsed : ''}`}>
@@ -2392,6 +2330,14 @@ const App: Component = () => {
                                                 <span class={styles.Spinner} />
                                             </Show>
                                         </button>
+                                        <button
+                                            class={styles.UndoRedoButton}
+                                            title="Save changes (Ctrl+S)"
+                                            disabled={!hasUnsavedChanges()}
+                                            onClick={saveActivePanel}
+                                        >
+                                            <VsSave size={15} />
+                                        </button>
                                     </div>
                                     <NamespaceSelector
                                         value={displayedNamespace()}
@@ -2399,7 +2345,8 @@ const App: Component = () => {
                                         onCommit={() => {
                                             const ns = draftNamespace()
                                             if (ns !== null) {
-                                                setPanels(prev => prev.map(p => p.id === activePanelId() ? { ...p, namespace: ns } : p))
+                                                const pidxNs = panels.findIndex(p => p.id === activePanelId())
+                                                if (pidxNs !== -1) setPanels(pidxNs, 'namespace', ns)
                                                 setDraftNamespace(null)
                                             }
                                             read()
@@ -2575,7 +2522,7 @@ const App: Component = () => {
                         </div>
                     </Show>
 
-                    <Show when={panels().length === 0 && editorMode() === EditorMode.DEFAULT}>
+                    <Show when={panels.length === 0 && editorMode() === EditorMode.DEFAULT}>
                         <div class={styles.NewSessionDiv}>
                             <button onClick={() => loadSpaceModal.showModal()} class={styles.ImportButton}>
                                 <AiFillFolderOpen class={styles.Icon} size={28} />

@@ -38,22 +38,38 @@ export type StatusEvent = {
 type PingMessage = { type: 'ping' }
 type WsMessage = SpaceEvent | OpLogChangedEvent | PingMessage
 
+export type ExprChangedMessage = {
+    type: 'exprChanged'
+    namespace: string
+    old: string
+    added: string[]
+}
+
+type WatchServerMessage =
+    | ExprChangedMessage
+    | { type: 'subscribed' | 'unsubscribed'; namespace: string; expr: string }
+
 type OnlineListener = (online: boolean) => void
 type SpaceEventListener = (event: SpaceEvent) => void
 type OpLogChangedListener = (event: OpLogChangedEvent) => void
+type ExprChangedListener = (event: ExprChangedMessage) => void
 
 export const WS_BASE = BACKEND_URL.replace(/^https?/, (m: string) => (m === 'https' ? 'wss' : 'ws'))
 
 class WebSocketService {
     private pingSocket: WebSocket | null = null
     private eventsSocket: WebSocket | null = null
+    private watchSocket: WebSocket | null = null
     private isOnline = false
     private onlineListeners: OnlineListener[] = []
     private spaceListeners: SpaceEventListener[] = []
     private opLogChangedListeners: OpLogChangedListener[] = []
+    private exprChangedListeners: ExprChangedListener[] = []
     private pingRetryTimer: ReturnType<typeof setTimeout> | null = null
     private eventsRetryTimer: ReturnType<typeof setTimeout> | null = null
+    private watchRetryTimer: ReturnType<typeof setTimeout> | null = null
     private eventsTokenCode: string | null = null
+    private watchTokenCode: string | null = null
 
     // ── Ping / health ──────────────────────────────────────────────────────────
 
@@ -133,6 +149,68 @@ class WebSocketService {
         }, 4000)
     }
 
+    // ── Watch (expression subscriptions) ───────────────────────────────────────
+
+    connectWatch(tokenCode: string) {
+        this.watchTokenCode = tokenCode
+        if (this.watchSocket && this.watchSocket.readyState <= WebSocket.OPEN) return
+        const socket = new WebSocket(
+            `${WS_BASE}/ws/watch?token_code=${encodeURIComponent(tokenCode)}`
+        )
+        this.watchSocket = socket
+
+        socket.onmessage = (e) => {
+            try {
+                const msg: WatchServerMessage = JSON.parse(e.data)
+                if (msg.type === 'exprChanged') {
+                    this.exprChangedListeners.forEach((l) => l(msg))
+                }
+            } catch {
+                // ignore malformed messages
+            }
+        }
+
+        socket.onclose = () => {
+            this.watchSocket = null
+            if (this.watchTokenCode) this.scheduleWatchRetry(this.watchTokenCode)
+        }
+    }
+
+    disconnectWatch() {
+        this.watchTokenCode = null
+        if (this.watchRetryTimer !== null) {
+            clearTimeout(this.watchRetryTimer)
+            this.watchRetryTimer = null
+        }
+        this.watchSocket?.close()
+        this.watchSocket = null
+    }
+
+    private scheduleWatchRetry(tokenCode: string) {
+        if (this.watchRetryTimer !== null) return
+        this.watchRetryTimer = setTimeout(() => {
+            this.watchRetryTimer = null
+            this.connectWatch(tokenCode)
+        }, 4000)
+    }
+
+    subscribeExpr(namespace: string, expr: string) {
+        if (!this.watchSocket || this.watchSocket.readyState !== WebSocket.OPEN) return
+        this.watchSocket.send(JSON.stringify({ type: 'subscribe', namespace, expr }))
+    }
+
+    unsubscribeExpr(namespace: string, expr: string) {
+        if (!this.watchSocket || this.watchSocket.readyState !== WebSocket.OPEN) return
+        this.watchSocket.send(JSON.stringify({ type: 'unsubscribe', namespace, expr }))
+    }
+
+    onExprChanged(listener: ExprChangedListener): () => void {
+        this.exprChangedListeners.push(listener)
+        return () => {
+            this.exprChangedListeners = this.exprChangedListeners.filter((l) => l !== listener)
+        }
+    }
+
     // ── Status stream ──────────────────────────────────────────────────────────
 
     /**
@@ -147,9 +225,7 @@ class WebSocketService {
     ): () => void {
         // Strip leading/trailing slashes to build the URL path segment
         const seg = namespacePath.replace(/^\/|\/$/g, '')
-        const url = seg
-            ? `${WS_BASE}/ws/status/${seg}?token_code=${encodeURIComponent(tokenCode)}`
-            : `${WS_BASE}/ws/status?token_code=${encodeURIComponent(tokenCode)}`
+        const url = `${WS_BASE}/ws/status/${seg}?token_code=${encodeURIComponent(tokenCode)}`
 
         const socket = new WebSocket(url)
         let closed = false

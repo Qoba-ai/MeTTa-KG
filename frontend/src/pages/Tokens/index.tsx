@@ -104,7 +104,7 @@ const refreshCodes = async (
 
     const promises = tokens.map((t) =>
         fetch(`${BACKEND_URL}/tokens/${t.id}`, {
-            method: 'POST',
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
                 Authorization: root,

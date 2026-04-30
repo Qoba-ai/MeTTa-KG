@@ -4,7 +4,7 @@ use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use regex::Regex;
 use rocket::http::Status;
 use rocket::serde::json::Json;
-use rocket::{delete, get, post};
+use rocket::{delete, get, post, put};
 use tracing::instrument;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -41,7 +41,7 @@ pub fn get_all(token: Token) -> Result<Json<Vec<Token>>, Status> {
 }
 
 #[instrument]
-#[get("/token")]
+#[get("/tokens/me")]
 pub fn get(token: Token) -> Result<Json<Token>, Status> {
     return Ok(Json(token));
 }
@@ -180,7 +180,7 @@ pub fn delete_batch(token: Token, token_ids: Json<Vec<i32>>) -> Result<Json<i32>
 }
 
 #[instrument]
-#[post("/tokens/<token_id>")]
+#[put("/tokens/<token_id>")]
 pub fn update(token: Token, token_id: i32) -> Result<Json<Token>, Status> {
     use crate::schema::tokens::dsl::*;
     let conn = &mut establish_connection();

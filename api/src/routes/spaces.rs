@@ -466,16 +466,6 @@ pub async fn transform(
 
 // ─── Import ──────────────────────────────────────────────────────────────────
 
-#[post("/spaces", data = "<space>")]
-pub async fn import_root(
-    token: Token,
-    space: String,
-    bus: &State<EventBus>,
-    lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
-    do_import(&token, &PathBuf::new(), &space, &bus.0, &lock_manager).await
-}
-
 #[post("/spaces/<path..>", rank = 5, data = "<space>")]
 pub async fn import(
     token: Token,
@@ -599,16 +589,6 @@ pub async fn do_import(
 }
 
 // ─── Clear ───────────────────────────────────────────────────────────────────
-
-#[rocket::delete("/spaces?<pattern>")]
-pub async fn clear_root(
-    token: Token,
-    pattern: Option<String>,
-    bus: &State<EventBus>,
-    lock_manager: &State<LockManager>,
-) -> Result<Json<bool>, Status> {
-    clear_inner(token, PathBuf::new(), pattern, bus, lock_manager).await
-}
 
 #[rocket::delete("/spaces/<path..>?<pattern>")]
 pub async fn clear(
@@ -829,16 +809,6 @@ pub async fn copy(
 
 // ─── Explore ─────────────────────────────────────────────────────────────────
 
-#[get("/explore?<focus_token>&<depth>&<page_size>")]
-pub async fn explore_root(
-    token: Token,
-    focus_token: String,
-    depth: Option<u32>,
-    page_size: Option<usize>,
-) -> Result<Json<ExploreResult>, Status> {
-    explore(token, PathBuf::new(), focus_token, depth, page_size).await
-}
-
 #[rocket::get("/explore/<path..>?<focus_token>&<depth>&<page_size>")]
 pub async fn explore(
     token: Token,
@@ -1001,11 +971,6 @@ fn merge_namespace_info(a: NamespaceInfo, b: NamespaceInfo) -> NamespaceInfo {
 
 // ─── Count ───────────────────────────────────────────────────────────────────
 
-#[get("/count")]
-pub async fn count_root(token: Token) -> Result<Json<usize>, Status> {
-    count(token, PathBuf::new()).await
-}
-
 #[get("/count/<path..>")]
 pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, Status> {
     let perm = permission_from_token(&token);
@@ -1029,11 +994,6 @@ pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, Status> {
 }
 
 // ─── Status ──────────────────────────────────────────────────────────────────
-
-#[get("/status")]
-pub async fn status_root(token: Token) -> Result<Json<serde_json::Value>, Status> {
-    status(token, PathBuf::new()).await
-}
 
 #[get("/status/<path..>")]
 pub async fn status(token: Token, path: PathBuf) -> Result<Json<serde_json::Value>, Status> {
@@ -1066,7 +1026,7 @@ pub struct SubtractRequest {
     pub templates: Vec<String>,
 }
 
-#[post("/subtract", data = "<req>")]
+#[post("/spaces/subtract", data = "<req>")]
 pub async fn subtract(
     token: Token,
     req: Json<SubtractRequest>,
@@ -1226,7 +1186,7 @@ async fn fetch_url_bytes(url: &str) -> Result<Vec<u8>, Status> {
     })
 }
 
-#[get("/spaces/import/url/metta/<path..>?<url>")]
+#[post("/spaces/import/url/metta/<path..>?<url>")]
 pub async fn import_url_metta(
     token: Token,
     path: PathBuf,
@@ -1243,7 +1203,7 @@ pub async fn import_url_metta(
     do_import(&token, &path, &space, &bus.0, lock_manager).await
 }
 
-#[get("/spaces/import/url/csv/<path..>?<url>&<params..>")]
+#[post("/spaces/import/url/csv/<path..>?<url>&<params..>")]
 pub async fn import_url_csv(
     token: Token,
     path: PathBuf,
@@ -1265,7 +1225,7 @@ pub async fn import_url_csv(
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
-#[get("/spaces/import/url/nt/<path..>?<url>")]
+#[post("/spaces/import/url/nt/<path..>?<url>")]
 pub async fn import_url_nt(
     token: Token,
     path: PathBuf,
@@ -1283,7 +1243,7 @@ pub async fn import_url_nt(
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
-#[get("/spaces/import/url/jsonld/<path..>?<url>")]
+#[post("/spaces/import/url/jsonld/<path..>?<url>")]
 pub async fn import_url_jsonld(
     token: Token,
     path: PathBuf,
@@ -1301,7 +1261,7 @@ pub async fn import_url_jsonld(
     do_import(&token, &path, &space, &bus.0, &lock_manager).await
 }
 
-#[get("/spaces/import/url/n3/<path..>?<url>")]
+#[post("/spaces/import/url/n3/<path..>?<url>")]
 pub async fn import_url_n3(
     token: Token,
     path: PathBuf,
@@ -1330,7 +1290,7 @@ pub struct EditorDiffPayload {
 /// Recursively traverse the diff prefix trie and collect added/removed atom strings.
 /// Each path from root to a leaf (marked `a` or `r`) is joined with spaces to
 /// reconstruct the original atom string.
-fn collect_diff_atoms(
+pub(crate) fn collect_diff_atoms(
     node: &serde_json::Value,
     tokens: &mut Vec<String>,
     added: &mut Vec<String>,
@@ -1351,26 +1311,8 @@ fn collect_diff_atoms(
     }
 }
 
-#[post("/editor/diff", data = "<payload>")]
-pub async fn editor_diff_root(
-    token: Token,
-    payload: Json<EditorDiffPayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    editor_diff_inner(token, PathBuf::new(), payload, bus).await
-}
-
 #[post("/editor/diff/<path..>", data = "<payload>")]
 pub async fn editor_diff(
-    token: Token,
-    path: PathBuf,
-    payload: Json<EditorDiffPayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    editor_diff_inner(token, path, payload, bus).await
-}
-
-async fn editor_diff_inner(
     token: Token,
     path: PathBuf,
     payload: Json<EditorDiffPayload>,
@@ -1384,19 +1326,21 @@ async fn editor_diff_inner(
     let event_path = path_to_event_path(&path);
     debug!(path = %path.display(), token_id = token.id, "Editor diff received");
 
-    // Collect added/removed atoms from the trie before moving payload into the task
     let mut added: Vec<String> = Vec::new();
     let mut removed: Vec<String> = Vec::new();
     collect_diff_atoms(&payload.trie, &mut Vec::new(), &mut added, &mut removed);
+    added.retain(|a| {
+        let ok = mork_client::is_balanced(a);
+        if !ok { warn!(atom = %a, "Dropping malformed addition with unbalanced parentheses"); }
+        ok
+    });
 
-    // Broadcast the diff event to all listening clients
     let _ = bus.0.send(SpaceEvent::EditorDiff {
         path: event_path,
         ts: payload.ts,
         trie: payload.trie.clone(),
     });
 
-    // Apply the diff to the MORK space in a background task
     if !added.is_empty() || !removed.is_empty() {
         let root = PathBuf::from("space");
         let target_path = if path.as_os_str().is_empty() { root } else { root.join(&path) };
@@ -1425,26 +1369,8 @@ pub struct EditorCommitPayload {
     pub removed: Vec<String>,
 }
 
-#[post("/editor/commit", data = "<payload>")]
-pub async fn editor_commit_root(
-    token: Token,
-    payload: Json<EditorCommitPayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    editor_commit_inner(token, PathBuf::new(), payload, bus).await
-}
-
 #[post("/editor/commit/<path..>", data = "<payload>")]
 pub async fn editor_commit(
-    token: Token,
-    path: PathBuf,
-    payload: Json<EditorCommitPayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    editor_commit_inner(token, path, payload, bus).await
-}
-
-async fn editor_commit_inner(
     token: Token,
     path: PathBuf,
     payload: Json<EditorCommitPayload>,
@@ -1479,100 +1405,3 @@ async fn editor_commit_inner(
     Ok(())
 }
 
-// ─── Editor presence ──────────────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-pub struct EditorPresencePayload {
-    pub joined: bool,
-    pub display_name: String,
-    pub session_id: String,
-}
-
-#[post("/editor/presence", data = "<payload>")]
-pub async fn editor_presence_root(
-    token: Token,
-    payload: Json<EditorPresencePayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    editor_presence_inner(token, PathBuf::new(), payload, bus).await
-}
-
-#[post("/editor/presence/<path..>", data = "<payload>")]
-pub async fn editor_presence(
-    token: Token,
-    path: PathBuf,
-    payload: Json<EditorPresencePayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    editor_presence_inner(token, path, payload, bus).await
-}
-
-async fn editor_presence_inner(
-    token: Token,
-    path: PathBuf,
-    payload: Json<EditorPresencePayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path).map_err(permission_error_to_status)?;
-
-    let event_path = path_to_event_path(&path);
-    let _ = bus.0.send(SpaceEvent::EditorPresence {
-        path: event_path,
-        session_id: payload.session_id.clone(),
-        display_name: payload.display_name.clone(),
-        joined: payload.joined,
-    });
-    Ok(())
-}
-
-// ─── Editor cursor ────────────────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-pub struct EditorCursorPayload {
-    pub line: i32,
-    pub col: i32,
-    pub display_name: String,
-    pub session_id: String,
-}
-
-#[post("/editor/cursor", data = "<payload>")]
-pub async fn editor_cursor_root(
-    token: Token,
-    payload: Json<EditorCursorPayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    editor_cursor_inner(token, PathBuf::new(), payload, bus).await
-}
-
-#[post("/editor/cursor/<path..>", data = "<payload>")]
-pub async fn editor_cursor(
-    token: Token,
-    path: PathBuf,
-    payload: Json<EditorCursorPayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    editor_cursor_inner(token, path, payload, bus).await
-}
-
-async fn editor_cursor_inner(
-    token: Token,
-    path: PathBuf,
-    payload: Json<EditorCursorPayload>,
-    bus: &State<EventBus>,
-) -> Result<(), Status> {
-    let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path).map_err(permission_error_to_status)?;
-
-    let event_path = path_to_event_path(&path);
-    let _ = bus.0.send(SpaceEvent::EditorCursor {
-        path: event_path,
-        session_id: payload.session_id.clone(),
-        display_name: payload.display_name.clone(),
-        line: payload.line,
-        col: payload.col,
-    });
-    Ok(())
-}

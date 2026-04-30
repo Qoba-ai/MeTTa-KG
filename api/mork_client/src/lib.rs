@@ -331,9 +331,6 @@ impl MorkClient {
         template: &str,
         uri: &str,
     ) -> Result<(), MorkError> {
-        // let path_pattern = path_to_sexpr(path);
-        // let pattern = path_pattern.replace("$", pattern);
-
         let path_template = path_to_sexpr(path);
         let template = path_template.replace("$", template);
 
@@ -853,20 +850,9 @@ impl MorkClient {
                     }
                 }
 
-                if responses.len() > 0 {
-                    // println!("\n\n\n");
-                }
-
                 for response in &responses {
                     if let Some(relative_expr) = strip_prefix(&response.expr, path) {
                         if let Some((lhs, _rhs)) = parse_binary_sexp(&relative_expr) {
-                            /*
-                            println!(
-                                "cnt={} relative={} token={:?} lhs={} parent_lhs={}",
-                                &response.cnt, relative_expr, &response.token, lhs, &parent_lhs
-                            );
-                             */
-
                             subnamespace_symbols.insert(lhs.to_string());
 
                             let encoded_token =

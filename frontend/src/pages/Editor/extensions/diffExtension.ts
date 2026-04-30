@@ -30,14 +30,16 @@ const diffPlugin = ViewPlugin.fromClass(class {
     let original = view.state.field(originalContentField)
     let current = view.state.doc.toString()
 
-    if (!original || original.trim() === "") return Decoration.none
-
     // Build a multiset of original lines for content-based (position-independent) matching
     const origCounts = new Map<string, number>()
-    for (const line of original.split("\n")) {
-      const t = line.trim()
-      if (t) origCounts.set(t, (origCounts.get(t) ?? 0) + 1)
+    if (original) {
+      for (const line of original.split("\n")) {
+        const t = line.trim()
+        if (t) origCounts.set(t, (origCounts.get(t) ?? 0) + 1)
+      }
     }
+
+    if (origCounts.size === 0 && current.trim() === "") return Decoration.none
 
     const currLines = current.split("\n")
     let currentPos = 0

@@ -18,7 +18,7 @@ const fetchToken = async (tokenCode: string | null): Promise<Token | null> => {
     if (!tokenCode) return null;
 
     try {
-        const resp = await fetch(`${BACKEND_URL}/token`, {
+        const resp = await fetch(`${BACKEND_URL}/tokens/me`, {
             headers: { 'Content-Type': 'application/json', Authorization: tokenCode },
         });
         return await resp.json();

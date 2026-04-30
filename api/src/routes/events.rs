@@ -6,13 +6,10 @@ use futures::{SinkExt, StreamExt};
 use rocket::http::Status;
 use rocket::State;
 use rocket_ws as ws;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
-use yrs::updates::encoder::Encode;
-use yrs::ReadTxn;
-use yrs::{updates::decoder::Decode, Doc, Transact, Update};
 
 fn validate_token_code(token_code: &str) -> Option<crate::model::Token> {
     use crate::schema::tokens::dsl::*;
@@ -25,15 +22,20 @@ fn validate_token_code(token_code: &str) -> Option<crate::model::Token> {
 }
 
 fn event_in_namespace(event: &SpaceEvent, namespace: &str) -> bool {
-    if namespace == "/" || namespace.is_empty() {
-        return true;
+    let path = event.path();
+
+    if !path.starts_with("/")
+        || !path.ends_with("/")
+        || !namespace.starts_with("/")
+        || !namespace.ends_with("/")
+    {
+        error!(path = %path, namespace = %namespace, "Namespace not enclosed in '/'-characters");
+        return false;
     }
+
     event.path().starts_with(namespace)
 }
 
-/// Presence and cursor events are bidirectional: a client on /a/ should see
-/// presence from /a/b/, and a client on /a/b/ should also see presence from
-/// /a/.  Two paths are "related" if one is a prefix of the other.
 fn presence_paths_related(event_path: &str, namespace: &str) -> bool {
     if namespace == "/" || namespace.is_empty() {
         return true;
@@ -145,6 +147,8 @@ pub fn ws_events(
                                     crate::events::SpaceEvent::OpLogChanged { token_id: tid, .. } => {
                                         *tid == token_id
                                     }
+                                    // EditorDiff is now handled exclusively via ws_watch subscriptions
+                                    crate::events::SpaceEvent::EditorDiff { .. } => false,
                                     crate::events::SpaceEvent::EditorPresence { path, .. }
                                     | crate::events::SpaceEvent::EditorCursor { path, .. } => {
                                         presence_paths_related(path, &namespace)
@@ -194,7 +198,8 @@ pub fn ws_events(
 // disconnect (including tab/window close).
 // ---------------------------------------------------------------------------
 
-async fn ws_editor_inner(
+#[rocket::get("/ws/editor/<path..>?<token_code>&<session_id>&<display_name>")]
+pub async fn ws_editor(
     ws: ws::WebSocket,
     path: PathBuf,
     token_code: String,
@@ -216,7 +221,6 @@ async fn ws_editor_inner(
         return Err(Status::Unauthorized);
     }
 
-    // Verify the requested path falls within the token's namespace.
     let token_ns = token
         .namespace
         .strip_prefix('/')
@@ -251,7 +255,6 @@ async fn ws_editor_inner(
         Box::pin(async move {
             let (mut sink, mut source) = stream.split();
 
-            // Register in the presence store and announce join.
             presence_arc.lock().unwrap().insert(session_id.clone(), PresenceEntry {
                 path: event_path.clone(),
                 session_id: session_id.clone(),
@@ -269,7 +272,6 @@ async fn ws_editor_inner(
                     msg = source.next() => {
                         match msg {
                             Some(Ok(ws::Message::Text(text))) => {
-                                // Cursor position update: {"line":<i32>,"col":<i32>}
                                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                                     if let (Some(line), Some(col)) = (
                                         v["line"].as_i64(),
@@ -297,7 +299,6 @@ async fn ws_editor_inner(
                 }
             }
 
-            // Deregister from the presence store and announce leave.
             presence_arc.lock().unwrap().remove(&session_id);
             let _ = bus_tx.send(SpaceEvent::EditorPresence {
                 path: event_path.clone(),
@@ -312,38 +313,184 @@ async fn ws_editor_inner(
     }))
 }
 
-#[rocket::get("/ws/editor?<token_code>&<session_id>&<display_name>")]
-pub async fn ws_editor_root(
-    ws: ws::WebSocket,
-    token_code: String,
-    session_id: String,
-    display_name: String,
-    bus: &State<EventBus>,
-    presence: &State<PresenceStore>,
-    shutdown: &State<crate::Shutdown>,
-) -> Result<ws::Channel<'static>, Status> {
-    ws_editor_inner(ws, PathBuf::new(), token_code, session_id, display_name, bus, presence, shutdown).await
-}
+// ---------------------------------------------------------------------------
+// Expression-watch WebSocket — clients subscribe to specific MeTTa expressions
+// and receive notifications when those expressions are edited.
+//
+// Client → Server messages (JSON):
+//   {"type":"subscribe",   "namespace":"/path/", "expr":"(ab c)"}
+//   {"type":"unsubscribe", "namespace":"/path/", "expr":"(ab c)"}
+//
+// Server → Client messages (JSON):
+//   {"type":"subscribed",   "namespace":"/path/", "expr":"(ab c)"}
+//   {"type":"unsubscribed", "namespace":"/path/", "expr":"(ab c)"}
+//   {"type":"exprChanged",  "namespace":"/path/", "old":"(ab c)", "added":["(ab d)"]}
+//     — the server automatically removes the old subscription and subscribes
+//       to every expression in the `added` list.
+// ---------------------------------------------------------------------------
 
-#[rocket::get("/ws/editor/<path..>?<token_code>&<session_id>&<display_name>")]
-pub async fn ws_editor(
+#[rocket::get("/ws/watch?<token_code>")]
+pub async fn ws_watch(
     ws: ws::WebSocket,
-    path: PathBuf,
     token_code: String,
-    session_id: String,
-    display_name: String,
     bus: &State<EventBus>,
-    presence: &State<PresenceStore>,
     shutdown: &State<crate::Shutdown>,
 ) -> Result<ws::Channel<'static>, Status> {
-    ws_editor_inner(ws, path, token_code, session_id, display_name, bus, presence, shutdown).await
+    let token = validate_token_code(&token_code).ok_or_else(|| {
+        warn!("WebSocket watch connection rejected: invalid token");
+        Status::Unauthorized
+    })?;
+
+    if !token.permission_read {
+        warn!(
+            token_id = token.id,
+            "WebSocket watch connection rejected: no read permission"
+        );
+        return Err(Status::Unauthorized);
+    }
+
+    let token_namespace = token.namespace.clone();
+    let token_id = token.id;
+    let mut rx = bus.inner().0.subscribe();
+    let mut shutdown_rx = shutdown.inner().0.subscribe();
+
+    info!(token_id, namespace = %token_namespace, "WebSocket watch client connected");
+
+    Ok(ws.channel(move |stream| {
+        Box::pin(async move {
+            let (mut sink, mut source) = stream.split();
+            // namespace → set of watched expressions
+            let mut subscriptions: HashMap<String, HashSet<String>> = HashMap::new();
+
+            loop {
+                tokio::select! {
+                    event_result = rx.recv() => {
+                        match event_result {
+                            Ok(SpaceEvent::EditorDiff { path, trie, .. }) => {
+                                if let Some(watched) = subscriptions.get_mut(&path) {
+                                    let mut added: Vec<String> = Vec::new();
+                                    let mut removed: Vec<String> = Vec::new();
+                                    crate::routes::spaces::collect_diff_atoms(
+                                        &trie, &mut Vec::new(), &mut added, &mut removed,
+                                    );
+                                    added.retain(|a| mork_client::is_balanced(a));
+
+                                    // Collect matching expressions before mutating `watched`
+                                    let hits: Vec<String> = removed
+                                        .iter()
+                                        .filter(|e| watched.contains(*e))
+                                        .cloned()
+                                        .collect();
+
+                                    for old_expr in hits {
+                                        watched.remove(&old_expr);
+                                        for new_expr in &added {
+                                            watched.insert(new_expr.clone());
+                                        }
+                                        let msg = serde_json::json!({
+                                            "type": "exprChanged",
+                                            "namespace": path,
+                                            "old": old_expr,
+                                            "added": added,
+                                        });
+                                        if sink.send(ws::Message::Text(msg.to_string())).await.is_err() {
+                                            return Ok(());
+                                        }
+                                    }
+                                }
+                            }
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(token_id, skipped = n, "WebSocket watch client lagged; events dropped");
+                                continue;
+                            }
+                            Err(broadcast::error::RecvError::Closed) => break,
+                            Ok(_) => {}
+                        }
+                    }
+                    msg = source.next() => {
+                        match msg {
+                            Some(Ok(ws::Message::Text(text))) => {
+                                let v = match serde_json::from_str::<serde_json::Value>(&text) {
+                                    Ok(v) => v,
+                                    Err(_) => continue,
+                                };
+                                let msg_type  = v["type"].as_str().unwrap_or("").to_string();
+                                let namespace = v["namespace"].as_str().unwrap_or("").to_string();
+                                let expr      = v["expr"].as_str().unwrap_or("").to_string();
+
+                                if namespace.is_empty() || expr.is_empty() {
+                                    continue;
+                                }
+
+                                // Reject subscriptions outside the token's allowed namespace
+                                let allowed = token_namespace == "/"
+                                    || namespace.starts_with(&token_namespace);
+                                if !allowed {
+                                    warn!(
+                                        token_id,
+                                        namespace = %namespace,
+                                        "Watch subscription rejected: outside token namespace"
+                                    );
+                                    continue;
+                                }
+
+                                match msg_type.as_str() {
+                                    "subscribe" => {
+                                        subscriptions
+                                            .entry(namespace.clone())
+                                            .or_default()
+                                            .insert(expr.clone());
+                                        let ack = serde_json::json!({
+                                            "type": "subscribed",
+                                            "namespace": namespace,
+                                            "expr": expr,
+                                        });
+                                        let _ = sink.send(ws::Message::Text(ack.to_string())).await;
+                                    }
+                                    "unsubscribe" => {
+                                        if let Some(set) = subscriptions.get_mut(&namespace) {
+                                            set.remove(&expr);
+                                            if set.is_empty() {
+                                                subscriptions.remove(&namespace);
+                                            }
+                                        }
+                                        let ack = serde_json::json!({
+                                            "type": "unsubscribed",
+                                            "namespace": namespace,
+                                            "expr": expr,
+                                        });
+                                        let _ = sink.send(ws::Message::Text(ack.to_string())).await;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            Some(Ok(ws::Message::Close(_))) | None => {
+                                debug!(token_id, "WebSocket watch client closed connection");
+                                break;
+                            }
+                            Some(Err(_)) => break,
+                            _ => {}
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        let _ = sink.send(ws::Message::Close(None)).await;
+                        break;
+                    }
+                }
+            }
+
+            debug!(token_id, "WebSocket watch client disconnected");
+            Ok(())
+        })
+    }))
 }
 
 // ---------------------------------------------------------------------------
 // Status-stream WebSocket — proxies MORK SSE to the client
 // ---------------------------------------------------------------------------
 
-async fn ws_status_inner(
+#[rocket::get("/ws/status/<path..>?<token_code>")]
+pub async fn ws_status(
     ws: ws::WebSocket,
     path: PathBuf,
     token_code: String,
@@ -361,7 +508,6 @@ async fn ws_status_inner(
         return Err(Status::Unauthorized);
     }
 
-    // Check the requested path is within the token's namespace
     let token_ns = token
         .namespace
         .strip_prefix('/')
@@ -390,14 +536,12 @@ async fn ws_status_inner(
             let (mut sink, mut source) = stream.split();
             let client = reqwest::Client::new();
 
-            // Send the current status immediately so the client has an initial value
             if let Ok(resp) = client.get(&status_url).send().await {
                 if let Ok(text) = resp.text().await {
                     let _ = sink.send(ws::Message::Text(text)).await;
                 }
             }
 
-            // Connect to MORK SSE stream and forward events
             let sse_resp = match client.get(&stream_url).send().await {
                 Ok(r)  => r,
                 Err(e) => {
@@ -414,7 +558,6 @@ async fn ws_status_inner(
                         match chunk {
                             Some(Ok(bytes)) => {
                                 buf.push_str(&String::from_utf8_lossy(&bytes));
-                                // SSE events are delimited by a blank line (\n\n)
                                 while let Some(pos) = buf.find("\n\n") {
                                     let event = buf[..pos].to_string();
                                     buf = buf[pos + 2..].to_string();
@@ -446,25 +589,4 @@ async fn ws_status_inner(
             Ok(())
         })
     }))
-}
-
-/// Status-stream WebSocket for the root namespace.
-#[rocket::get("/ws/status?<token_code>")]
-pub async fn ws_status_root(
-    ws: ws::WebSocket,
-    token_code: String,
-    shutdown: &State<crate::Shutdown>,
-) -> Result<ws::Channel<'static>, Status> {
-    ws_status_inner(ws, PathBuf::new(), token_code, shutdown).await
-}
-
-/// Status-stream WebSocket for a specific namespace path.
-#[rocket::get("/ws/status/<path..>?<token_code>")]
-pub async fn ws_status(
-    ws: ws::WebSocket,
-    path: PathBuf,
-    token_code: String,
-    shutdown: &State<crate::Shutdown>,
-) -> Result<ws::Channel<'static>, Status> {
-    ws_status_inner(ws, path, token_code, shutdown).await
 }

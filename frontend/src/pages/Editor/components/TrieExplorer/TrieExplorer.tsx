@@ -1,4 +1,4 @@
-import { Component, createSignal, createMemo, For, Show, onMount, onCleanup } from "solid-js";
+import { Component, createSignal, createMemo, createEffect, For, Show, onMount, onCleanup } from "solid-js";
 import styles from "./TrieExplorer.module.scss";
 import { VsChevronRight, VsChevronDown, VsSymbolEnum, VsTrash, VsFolderOpened, VsReplace, VsKey } from "solid-icons/vs";
 
@@ -164,6 +164,12 @@ const TrieBranch: Component<{
     Object.keys(props.node.children).length > 0 || props.node.terminals.length > 0
   );
   const [isHovering, setIsHovering] = createSignal(false);
+
+  // Auto-open when the node gains children after a fringe expansion
+  createEffect(() => {
+    const hasContent = Object.keys(props.node.children).length > 0 || props.node.terminals.length > 0;
+    if (hasContent) setLocalOpen(true);
+  });
   const isOpen = () => {
     // If it's a fringe node with no actual children (unexplored), it should appear closed
     if (props.node.isFringe && Object.keys(props.node.children).length === 0 && props.node.terminals.length === 0) {
@@ -427,6 +433,7 @@ const TrieBranch: Component<{
                   style={{ cursor: "pointer", flex: 1 }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    setLocalOpen(true);
                     if (props.onExpand) props.onExpand(props.path);
                   }}
                   data-testid="trie-fringe"

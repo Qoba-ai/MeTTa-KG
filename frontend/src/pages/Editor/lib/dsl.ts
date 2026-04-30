@@ -145,10 +145,10 @@ async function runImport(args: SExpr[], ctx: CommandContext): Promise<CommandRes
 
     const atoms = args.slice(1)
     const content = atoms.map(serialize).join('\n')
-    const encodedPath = space.split('/').map(encodeURIComponent).join('/')
+    const encodedPath = space.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
 
     try {
-        const resp = await fetch(`${ctx.backendUrl}/spaces${encodedPath}`, {
+        const resp = await fetch(`${ctx.backendUrl}/spaces/${encodedPath}`, {
             method: 'POST',
             headers: { Authorization: ctx.tokenCode },
             body: content,
@@ -214,11 +214,8 @@ async function runClear(args: SExpr[], ctx: CommandContext): Promise<CommandResu
 
     const pattern: string | null = args.length >= 2 ? serialize(args[1]) : null
 
-    const segments = space.split('/').filter((s: string) => s.length > 0)
-    const encodedPath = segments.map(encodeURIComponent).join('/')
-    const basePath = segments.length > 0
-        ? `${ctx.backendUrl}/spaces/${encodedPath}`
-        : `${ctx.backendUrl}/spaces`
+    const encodedPath = space.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
+    const basePath = `${ctx.backendUrl}/spaces/${encodedPath}`
     const url = pattern !== null
         ? `${basePath}?pattern=${encodeURIComponent(pattern)}`
         : basePath
@@ -244,14 +241,9 @@ async function runExplore(args: SExpr[], ctx: CommandContext): Promise<CommandRe
     try { space = resolveSpace(args[0], ctx.activeNamespace) }
     catch (e) { return { ok: false, output: `; ${e}` } }
 
-    let ns = space
-    if (ns.startsWith('/')) ns = ns.substring(1)
-    if (ns.endsWith('/')) ns = ns.slice(0, -1)
-    const encodedNs = ns.split('/').filter((s: string) => s.length > 0).map(encodeURIComponent).join('/')
+    const encodedNs = space.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
 
-    const url = encodedNs.length > 0
-        ? `${ctx.backendUrl}/explore/${encodedNs}?focus_token=`
-        : `${ctx.backendUrl}/explore?focus_token=`
+    const url = `${ctx.backendUrl}/explore/${encodedNs}?focus_token=`
 
     try {
         const resp = await fetch(url, { headers: { Authorization: ctx.tokenCode } })
@@ -283,13 +275,8 @@ async function runExplore(args: SExpr[], ctx: CommandContext): Promise<CommandRe
 
 /** Fetch the atom count for a space. Returns the number or throws a string. */
 async function fetchCount(space: string, ctx: CommandContext): Promise<number> {
-    let ns = space
-    if (ns.startsWith('/')) ns = ns.substring(1)
-    if (ns.endsWith('/')) ns = ns.slice(0, -1)
-    const encodedNs = ns.split('/').filter((s: string) => s.length > 0).map(encodeURIComponent).join('/')
-    const url = encodedNs.length > 0
-        ? `${ctx.backendUrl}/count/${encodedNs}`
-        : `${ctx.backendUrl}/count`
+    const encodedNs = space.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
+    const url = `${ctx.backendUrl}/count/${encodedNs}`
     const resp = await fetch(url, { headers: { Authorization: ctx.tokenCode } })
     if (!resp.ok) throw `count failed (HTTP ${resp.status})`
     return resp.json()
@@ -402,7 +389,7 @@ async function runSubtract(args: SExpr[], ctx: CommandContext): Promise<CommandR
     const templates     = outClauses.map(c => c.tmpl)
 
     try {
-        const resp = await fetch(`${ctx.backendUrl}/subtract`, {
+        const resp = await fetch(`${ctx.backendUrl}/spaces/subtract`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: ctx.tokenCode },
             body: JSON.stringify({ input_spaces, output_spaces, patterns, templates }),
@@ -428,18 +415,12 @@ function normalizeWs(s: string): string {
  * Returns normalised atom strings, or throws a string error message.
  */
 async function fetchAllAtoms(space: string, ctx: CommandContext): Promise<string[]> {
-    let ns = space
-    if (ns.startsWith('/')) ns = ns.substring(1)
-    if (ns.endsWith('/')) ns = ns.slice(0, -1)
-    const encodedNs = ns.split('/').filter((s: string) => s.length > 0).map(encodeURIComponent).join('/')
+    const encodedNs = space.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
 
     const atoms: string[] = []
     let focusToken = ''
     do {
-        const base = encodedNs.length > 0
-            ? `${ctx.backendUrl}/explore/${encodedNs}`
-            : `${ctx.backendUrl}/explore`
-        const resp = await fetch(`${base}?focus_token=${encodeURIComponent(focusToken)}`, {
+        const resp = await fetch(`${ctx.backendUrl}/explore/${encodedNs}?focus_token=${encodeURIComponent(focusToken)}`, {
             headers: { Authorization: ctx.tokenCode },
         })
         if (!resp.ok) throw `explore failed (HTTP ${resp.status})`
