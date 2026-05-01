@@ -27,7 +27,7 @@ import { createStore, reconcile, unwrap } from 'solid-js/store'
 import { createOwnHistoryStore } from './stores/ownHistoryStore'
 import styles from './Editor.module.scss'
 import commonStyles from '../../styles/Common.module.scss'
-import { A } from '@solidjs/router'
+import { A, useSearchParams } from '@solidjs/router'
 import { Toaster } from 'solid-toast'
 import { notify } from '../../notify'
 import { useTheme } from '../../ThemeContext'
@@ -104,7 +104,7 @@ import {
     bracketMatching,
     syntaxHighlighting,
 } from '@codemirror/language'
-import { Annotation, EditorState, type Range, StateEffect, StateField } from '@codemirror/state'
+import { Annotation, Compartment, EditorState, type Range, StateEffect, StateField } from '@codemirror/state'
 import {
     Decoration,
     type DecorationSet,
@@ -419,12 +419,24 @@ const App: Component = () => {
     let copyModal: HTMLDialogElement
     let shareTokenModal: HTMLDialogElement
 
+    const [searchParams, setSearchParams] = useSearchParams()
+
     // Space State
     const [token, setToken] = createSignal<Token>()
     const [rootTokenCode, setRootTokenCode] = createSignal<string | null>(
         TOKEN || localStorage.getItem('rootToken')
     )
     const [namespaces, setNamespaces] = createSignal<string[]>([])
+    const canWrite = () => token()?.permission_write ?? false
+    let lastReadOnlyToast = 0
+    const notifyReadOnly = () => {
+        const now = Date.now()
+        if (now - lastReadOnlyToast > 3000) {
+            lastReadOnlyToast = now
+            notify.error('This space is read-only')
+        }
+    }
+    const readOnlyCompartment = new Compartment()
 
     // Annotation to skip AST re-parse in updateListener for programmatic edits
     const programmaticEdit = Annotation.define<boolean>()
@@ -561,6 +573,7 @@ const App: Component = () => {
     const fetchSpaceLogs = () => ownHistory.fetch()
 
     const rollbackLog = async (id: number) => {
+        if (!canWrite()) { notifyReadOnly(); return }
         try {
             await ownHistory.rollback(id, read)
         } catch {
@@ -569,6 +582,7 @@ const App: Component = () => {
     }
 
     const redoLog = async (id: number, force = false) => {
+        if (!canWrite()) { notifyReadOnly(); return }
         try {
             const result = await ownHistory.redo(id, read, force)
             if (result.conflict) {
@@ -755,6 +769,17 @@ const App: Component = () => {
         return EditorState.create({
             doc: initialDoc,
             extensions: [
+                readOnlyCompartment.of(EditorState.readOnly.of(!canWrite())),
+                EditorView.domEventHandlers({
+                    keydown(e, view) {
+                        if (view.state.readOnly && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
+                            notifyReadOnly()
+                        }
+                    },
+                    paste(e, view) {
+                        if (view.state.readOnly) notifyReadOnly()
+                    },
+                }),
                 themeCompartment.of(getEditorTheme(currentTheme() === 'dark')),
                 remoteCursorsField,
                 languageSupport,
@@ -900,6 +925,14 @@ const App: Component = () => {
         panels.forEach(p => {
             if (p.view) {
                 p.view.dispatch({ effects: themeCompartment.reconfigure(getEditorTheme(isDark)) })
+            }
+        })
+    }, { defer: true }))
+
+    createEffect(on(canWrite, (writable) => {
+        panels.forEach(p => {
+            if (p.view) {
+                p.view.dispatch({ effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(!writable)) })
             }
         })
     }, { defer: true }))
@@ -1142,7 +1175,8 @@ const App: Component = () => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault()
-                saveActivePanel()
+                if (canWrite()) saveActivePanel()
+                else notifyReadOnly()
             }
         }
         document.addEventListener('keydown', handleKeyDown)
@@ -1175,7 +1209,13 @@ const App: Component = () => {
 
         if (effectiveToken) {
             setEditorMode(EditorMode.EDIT);
-            loadSpace(effectiveToken, true);
+            loadSpace(effectiveToken, true).then(() => {
+                const nsParam = searchParams.ns
+                if (nsParam) {
+                    addPanel(nsParam)
+                    setSearchParams({ ns: undefined })
+                }
+            });
         }
 
         importFileModal.addEventListener('close', () => {
@@ -2256,7 +2296,7 @@ const App: Component = () => {
                 onDrop={(e) => {
                     e.preventDefault(); e.stopPropagation()
                     const draggedFile = e.dataTransfer?.files?.item(0)
-                    if (draggedFile) {
+                    if (draggedFile && canWrite()) {
                         setImportSource(ImportSource.FILE)
                         setActiveImportFile(draggedFile); setManualImportFormat(undefined); openImportModal();
                     }
@@ -2303,19 +2343,19 @@ const App: Component = () => {
                             <aside class={`${styles.Sidebar} ${sidebarCollapsed() ? styles.SidebarCollapsed : ''}`}>
                                 <div class={styles.MettaEditorActions}>
                                     <div class={styles.ButtonGroup}>
-                                        <button onClick={() => guardUnsavedChanges(() => openImportModal())}>
+                                        <button onClick={() => canWrite() ? guardUnsavedChanges(() => openImportModal()) : notifyReadOnly()}>
                                             <VsCloudUpload size={16} />
                                             <span>Import</span>
                                         </button>
-                                        <button onclick={() => guardUnsavedChanges(() => openClearModal())}>
+                                        <button onclick={() => canWrite() ? guardUnsavedChanges(() => openClearModal()) : notifyReadOnly()}>
                                             <VsClearAll size={16} />
                                             <span>Clear</span>
                                         </button>
-                                        <button onclick={() => guardUnsavedChanges(() => openCopyModal())}>
+                                        <button onclick={() => canWrite() ? guardUnsavedChanges(() => openCopyModal()) : notifyReadOnly()}>
                                             <VsCopy size={16} />
                                             <span>Copy</span>
                                         </button>
-                                        <button onclick={() => guardUnsavedChanges(() => {
+                                        <button onclick={() => !canWrite() ? notifyReadOnly() : guardUnsavedChanges(() => {
                                             if (transformConfigs().length === 0) {
                                                 const ns = activePanel()?.namespace || '/'
                                                 setTransformConfigs([
@@ -2375,7 +2415,7 @@ const App: Component = () => {
                                         <button
                                             class={styles.UndoRedoButton}
                                             title="Undo last operation"
-                                            disabled={myUndoTargetId() === null || isUndoRedoInProgress()}
+                                            disabled={!canWrite() || myUndoTargetId() === null || isUndoRedoInProgress()}
                                             onClick={() => { const id = myUndoTargetId(); if (id !== null) rollbackLog(id) }}
                                         >
                                             <Show when={isUndoRedoInProgress()} fallback={<VsDiscard size={15} />}>
@@ -2385,7 +2425,7 @@ const App: Component = () => {
                                         <button
                                             class={styles.UndoRedoButton}
                                             title="Redo last undone operation"
-                                            disabled={myRedoTargetId() === null || isUndoRedoInProgress()}
+                                            disabled={!canWrite() || myRedoTargetId() === null || isUndoRedoInProgress()}
                                             onClick={() => { const id = myRedoTargetId(); if (id !== null) redoLog(id) }}
                                         >
                                             <Show when={isUndoRedoInProgress()} fallback={<VsRedo size={15} />}>
@@ -2395,7 +2435,7 @@ const App: Component = () => {
                                         <button
                                             class={styles.UndoRedoButton}
                                             title="Save changes (Ctrl+S)"
-                                            disabled={!hasUnsavedChanges()}
+                                            disabled={!canWrite() || !hasUnsavedChanges()}
                                             onClick={saveActivePanel}
                                         >
                                             <VsSave size={15} />
@@ -2549,16 +2589,16 @@ const App: Component = () => {
                                                                 <Show when={isUndoTarget}>
                                                                     <button
                                                                         class={styles.LogEntryActionBtn}
-                                                                        title="Undo this operation"
-                                                                        disabled={isUndoRedoInProgress()}
+                                                                        title={canWrite() ? "Undo this operation" : "Read-only token"}
+                                                                        disabled={!canWrite() || isUndoRedoInProgress()}
                                                                         onClick={() => rollbackLog(log.id)}
                                                                     >↩</button>
                                                                 </Show>
                                                                 <Show when={isRedoTarget}>
                                                                     <button
                                                                         class={styles.LogEntryActionBtn}
-                                                                        title="Redo this operation"
-                                                                        disabled={isUndoRedoInProgress()}
+                                                                        title={canWrite() ? "Redo this operation" : "Read-only token"}
+                                                                        disabled={!canWrite() || isUndoRedoInProgress()}
                                                                         onClick={() => redoLog(log.id)}
                                                                     >↪</button>
                                                                 </Show>

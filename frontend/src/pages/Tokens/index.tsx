@@ -861,7 +861,12 @@ const Tokens: Component = () => {
                                                     class={styles.NamespaceCell}
                                                     title={token.namespace}
                                                 >
-                                                    {token.namespace}
+                                                    <A
+                                                        href={`/?ns=${encodeURIComponent(token.namespace)}`}
+                                                        class={styles.NamespaceLink}
+                                                    >
+                                                        {token.namespace}
+                                                    </A>
                                                 </td>
                                                 <td title={token.description}>{token.description}</td>
                                                 <td>

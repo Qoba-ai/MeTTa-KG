@@ -640,15 +640,15 @@
     th:nth-child(4),
     td:nth-child(4) {
         // Code
-        width: 200px;
-        min-width: 180px;
+        width: 133px;
+        max-width: 133px;
     }
 
     th:nth-child(5),
     td:nth-child(5) {
         // Namespace
-        width: 150px;
-        max-width: 150px;
+        width: 217px;
+        max-width: 217px;
     }
 
     th:nth-child(6),
@@ -831,12 +831,23 @@
 
     .CodeCellContent {
         display: block;
-        min-width: 140px;
+        min-width: 90px;
         flex: 1;
     }
 
     .NamespaceCell {
-        max-width: 130px;
+        max-width: 200px;
+    }
+
+    .NamespaceLink {
+        color: var(--foam);
+        text-decoration: none;
+        transition: color 0.15s;
+
+        &:hover {
+            color: var(--text);
+            text-decoration: underline;
+        }
     }
 
     .HeaderWithFilter {

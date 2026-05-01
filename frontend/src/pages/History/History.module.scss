@@ -201,7 +201,10 @@
     flex-direction: column;
     gap: 8px;
     z-index: 10;
-    min-width: 160px;
+    min-width: 220px;
+    max-width: 380px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
 }
 
 .ActionPanelTitle {
@@ -236,6 +239,73 @@
         opacity: 0.35;
         cursor: default;
     }
+}
+
+// ── Detail Section ───────────────────────────────────────────────────────────
+
+.DetailSection {
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.DetailRow {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.DetailLabel {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.DetailValue {
+    font-size: 0.78rem;
+    color: var(--text);
+    word-break: break-all;
+    font-family: 'Courier New', monospace;
+}
+
+.DetailList {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+
+    code {
+        font-size: 0.72rem;
+        padding: 2px 6px;
+        border-radius: 3px;
+        background: var(--highlight-low);
+        color: var(--text);
+        word-break: break-all;
+        display: block;
+    }
+}
+
+.DetailListItem {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+
+    span {
+        font-size: 0.78rem;
+        color: var(--text);
+        font-family: 'Courier New', monospace;
+    }
+}
+
+.DetailAdded {
+    border-left: 2px solid var(--foam);
+}
+
+.DetailRemoved {
+    border-left: 2px solid var(--love);
 }
 
 // ── Legend ────────────────────────────────────────────────────────────────────

@@ -777,6 +777,10 @@ pub async fn rollback_log(
     lock_manager: &State<LockManager>,
     bus: &State<EventBus>,
 ) -> Result<Json<Vec<OpLogEntry>>, Status> {
+    if !_token.permission_write {
+        warn!(id, token_id = _token.id, "Rollback denied: token lacks write permission");
+        return Err(Status::Forbidden);
+    }
     info!(id, "Starting rollback");
     let conn = &mut establish_connection();
 
@@ -918,6 +922,13 @@ pub async fn redo_log(
     lock_manager: &State<LockManager>,
     bus: &State<EventBus>,
 ) -> Result<Json<Vec<OpLogEntry>>, Custom<Json<RedoConflict>>> {
+    if !_token.permission_write {
+        warn!(id, token_id = _token.id, "Redo denied: token lacks write permission");
+        return Err(Custom(Status::Forbidden, Json(RedoConflict {
+            conflicting_ops: vec![],
+            message: "Token lacks write permission".into(),
+        })));
+    }
     info!(id, force = ?force, "Starting redo");
     let conn = &mut establish_connection();
 
@@ -1049,6 +1060,10 @@ pub struct CheckpointResponse {
 /// making them read-only and excluded from undo/redo/graph computations.
 #[post("/logs/checkpoint")]
 pub fn create_checkpoint(_token: Token) -> Result<Json<CheckpointResponse>, Status> {
+    if !_token.permission_write {
+        warn!(token_id = _token.id, "Checkpoint denied: token lacks write permission");
+        return Err(Status::Forbidden);
+    }
     info!("Creating checkpoint");
     let conn = &mut establish_connection();
 

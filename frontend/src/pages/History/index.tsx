@@ -428,6 +428,7 @@ const History: Component = () => {
     const [filterNs,   setFilterNs]     = createSignal('')
     const [tokenMap,   setTokenMap]     = createSignal<Map<number, string | null>>(new Map())
     const [filterTokenName, setFilterTokenName] = createSignal('')
+    const [canWrite, setCanWrite] = createSignal(false)
 
     const applyPreview = (ids: Set<number>) => {
         if (!cy) return
@@ -528,6 +529,16 @@ const History: Component = () => {
         }
         try {
             const [{ entries, edges }, tMap] = await Promise.all([fetchGraph(), fetchTokenMap()])
+            // Fetch own token info to check write permission
+            try {
+                const meRes = await fetch(`${BACKEND_URL}/tokens/me`, {
+                    headers: { Authorization: tokenCode! },
+                })
+                if (meRes.ok) {
+                    const me = await meRes.json()
+                    setCanWrite(!!me.permission_write)
+                }
+            } catch { /* ignore — default to read-only */ }
             setTokenMap(tMap)
             setLogs(entries)
             setGraphEdges(edges)
@@ -864,8 +875,8 @@ const History: Component = () => {
                     <button
                         class={styles.ToolbarButton}
                         onClick={handleCheckpoint}
-                        disabled={actionBusy()}
-                        title="Seal older operations (makes them read-only, improves performance)"
+                        disabled={!canWrite() || actionBusy()}
+                        title={canWrite() ? "Seal older operations (makes them read-only, improves performance)" : "Read-only token"}
                     >
                         Checkpoint
                     </button>
@@ -873,36 +884,138 @@ const History: Component = () => {
 
                 {/* Node action panel — shown when a node is selected */}
                 <Show when={selectedEntry()}>
-                    {(entry) => (
+                    {(entry) => {
+                        const e = entry()
+                        const tokenName = e.token_id != null ? (tokenMap().get(e.token_id) ?? `#${e.token_id}`) : null
+                        return (
                         <div class={styles.ActionPanel}>
                             <span class={styles.ActionPanelTitle}>
-                                #{entry().id} {entry().op_type}
+                                #{e.id} {e.op_type}
                             </span>
                             <div class={styles.ActionPanelButtons}>
                                 <button
                                     class={styles.ActionButton}
-                                    disabled={!!entry().rolled_back_at || actionBusy()}
+                                    disabled={!canWrite() || !!e.rolled_back_at || actionBusy()}
                                     onClick={handleUndo}
-                                    onMouseEnter={() => applyPreview(getUndoPreviewIds(entry(), logs(), graphEdges()))}
+                                    onMouseEnter={() => applyPreview(getUndoPreviewIds(e, logs(), graphEdges()))}
                                     onMouseLeave={clearPreview}
-                                    title="Undo this operation (hover to preview affected nodes)"
+                                    title={canWrite() ? "Undo this operation (hover to preview affected nodes)" : "Read-only token"}
                                 >
                                     Undo
                                 </button>
                                 <button
                                     class={styles.ActionButton}
-                                    disabled={!entry().rolled_back_at || actionBusy()}
+                                    disabled={!canWrite() || !e.rolled_back_at || actionBusy()}
                                     onClick={() => handleRedo()}
-                                    onMouseEnter={() => applyPreview(getRedoPreviewIds(entry(), logs(), graphEdges()))}
+                                    onMouseEnter={() => applyPreview(getRedoPreviewIds(e, logs(), graphEdges()))}
                                     onMouseLeave={clearPreview}
-                                    title="Redo this operation (hover to preview affected nodes)"
+                                    title={canWrite() ? "Redo this operation (hover to preview affected nodes)" : "Read-only token"}
                                 >
                                     Redo
                                 </button>
-
+                            </div>
+                            <div class={styles.DetailSection}>
+                                <div class={styles.DetailRow}>
+                                    <span class={styles.DetailLabel}>Created</span>
+                                    <span class={styles.DetailValue}>{new Date(e.created_at).toLocaleString()}</span>
+                                </div>
+                                <Show when={e.rolled_back_at}>
+                                    <div class={styles.DetailRow}>
+                                        <span class={styles.DetailLabel}>Rolled back</span>
+                                        <span class={styles.DetailValue}>{new Date(e.rolled_back_at!).toLocaleString()}</span>
+                                    </div>
+                                </Show>
+                                <Show when={tokenName}>
+                                    <div class={styles.DetailRow}>
+                                        <span class={styles.DetailLabel}>Token</span>
+                                        <span class={styles.DetailValue}>{tokenName}</span>
+                                    </div>
+                                </Show>
+                                <Show when={e.import}>
+                                    <div class={styles.DetailRow}>
+                                        <span class={styles.DetailLabel}>Path</span>
+                                        <span class={styles.DetailValue}>{e.import!.path}</span>
+                                    </div>
+                                    <div class={styles.DetailRow}>
+                                        <span class={styles.DetailLabel}>URI</span>
+                                        <span class={styles.DetailValue}>{e.import!.uri}</span>
+                                    </div>
+                                </Show>
+                                <Show when={e.clear}>
+                                    <div class={styles.DetailRow}>
+                                        <span class={styles.DetailLabel}>Path</span>
+                                        <span class={styles.DetailValue}>{e.clear!.path}</span>
+                                    </div>
+                                </Show>
+                                <Show when={e.copy}>
+                                    <div class={styles.DetailRow}>
+                                        <span class={styles.DetailLabel}>Source</span>
+                                        <span class={styles.DetailValue}>{e.copy!.src}</span>
+                                    </div>
+                                    <div class={styles.DetailRow}>
+                                        <span class={styles.DetailLabel}>Destination</span>
+                                        <span class={styles.DetailValue}>{e.copy!.dst}</span>
+                                    </div>
+                                </Show>
+                                <Show when={e.transform}>
+                                    {(tr) => {
+                                        const inputs = (() => { try { return tr().input_spaces as any[] } catch { return [] } })()
+                                        const outputs = (() => { try { return tr().output_spaces as any[] } catch { return [] } })()
+                                        return <>
+                                            <Show when={inputs.length > 0}>
+                                                <div class={styles.DetailRow}>
+                                                    <span class={styles.DetailLabel}>Inputs</span>
+                                                    <div class={styles.DetailList}>
+                                                        {inputs.map((s: any) => (
+                                                            <div class={styles.DetailListItem}>
+                                                                <span>{s.path}</span>
+                                                                <Show when={s.pattern}><code>{s.pattern}</code></Show>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </Show>
+                                            <Show when={outputs.length > 0}>
+                                                <div class={styles.DetailRow}>
+                                                    <span class={styles.DetailLabel}>Outputs</span>
+                                                    <div class={styles.DetailList}>
+                                                        {outputs.map((s: any) => (
+                                                            <div class={styles.DetailListItem}>
+                                                                <span>{s.path}</span>
+                                                                <Show when={s.template}><code>{s.template}</code></Show>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </Show>
+                                        </>
+                                    }}
+                                </Show>
+                                <Show when={e.edit}>
+                                    <div class={styles.DetailRow}>
+                                        <span class={styles.DetailLabel}>Path</span>
+                                        <span class={styles.DetailValue}>{e.edit!.path}</span>
+                                    </div>
+                                    <Show when={e.edit!.added.length > 0}>
+                                        <div class={styles.DetailRow}>
+                                            <span class={styles.DetailLabel}>Added ({e.edit!.added.length})</span>
+                                            <div class={styles.DetailList}>
+                                                {e.edit!.added.map(a => <code class={styles.DetailAdded}>{a}</code>)}
+                                            </div>
+                                        </div>
+                                    </Show>
+                                    <Show when={e.edit!.removed.length > 0}>
+                                        <div class={styles.DetailRow}>
+                                            <span class={styles.DetailLabel}>Removed ({e.edit!.removed.length})</span>
+                                            <div class={styles.DetailList}>
+                                                {e.edit!.removed.map(r => <code class={styles.DetailRemoved}>{r}</code>)}
+                                            </div>
+                                        </div>
+                                    </Show>
+                                </Show>
                             </div>
                         </div>
-                    )}
+                    )}}
                 </Show>
 
                 {/* Legend */}

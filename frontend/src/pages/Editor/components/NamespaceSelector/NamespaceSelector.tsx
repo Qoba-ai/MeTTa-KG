@@ -107,7 +107,16 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       navigateUp();
-    } else if (e.key === "Tab" || e.key === "ArrowRight") {
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        setExploreFocusIndex((prev) => Math.max(prev - 1, -1));
+      } else {
+        setExploreFocusIndex((prev) =>
+          Math.min(prev + 1, exploreResults().length - 1)
+        );
+      }
+    } else if (e.key === "ArrowRight") {
       e.preventDefault();
       const idx = exploreFocusIndex();
       if (idx >= 0 && idx < exploreResults().length) {
@@ -141,7 +150,7 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
         onKeyDown={handleKeyDown}
         disabled={props.disabled}
       />
-      <Show when={isExploring()}>
+      <Show when={isExploring() && (exploreResults().length > 0 || !props.value.endsWith("/"))}>
         <div class={styles.ExploreDropdown}>
           <For each={exploreResults()}>
             {(res, index) => (
@@ -164,7 +173,7 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
               </div>
             )}
           </For>
-          <Show when={exploreResults().length === 0}>
+          <Show when={exploreResults().length === 0 && !props.value.endsWith("/")}>
             <div class={styles.ExploreItemEmpty}>No sub-spaces found</div>
           </Show>
         </div>

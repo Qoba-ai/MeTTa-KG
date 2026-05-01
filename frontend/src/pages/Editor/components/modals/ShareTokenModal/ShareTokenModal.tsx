@@ -111,9 +111,6 @@ export const ShareTokenModal: Component<ShareTokenModalProps> = (props) => {
                 </button>
               </div>
             </div>
-            <p class={styles.SaveWarning}>
-              Save this token now — it won't be shown again.
-            </p>
             <div class={commonStyles.ModalButtonBar}>
               <div class={commonStyles.Spacer} />
               <button class={commonStyles.Button} type="button" onClick={handleClose}>Done</button>
@@ -135,7 +132,7 @@ export const ShareTokenModal: Component<ShareTokenModalProps> = (props) => {
               required
               minlength={3}
               maxlength={32}
-              placeholder="Token name (3–32 chars)"
+              placeholder="Token name (3-32 chars)"
               value={name()}
               onInput={(e) => setName(e.currentTarget.value)}
             />

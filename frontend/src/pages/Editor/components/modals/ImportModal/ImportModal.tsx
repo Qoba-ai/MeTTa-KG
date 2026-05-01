@@ -279,7 +279,7 @@ const FormatSettings: Component<{
                 onchange={(e) => props.setManualFormat(e.target.value as ImportFormat)}
             >
                 {props.showAutoDetect && <option value="">Auto-detect</option>}
-                <option value={ImportFormat.METTA}>MeTTa (.metta)</option>
+                <option value={ImportFormat.METTA}>MeTTa (.metta, .mm2)</option>
                 <option value={ImportFormat.CSV}>CSV</option>
                 <option value={ImportFormat.NTRIPLES}>N-Triples (.nt)</option>
                 <option value={ImportFormat.N3}>N3</option>
