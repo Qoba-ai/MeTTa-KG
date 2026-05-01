@@ -2550,6 +2550,7 @@ const App: Component = () => {
                                         onCollapse={handleTrieCollapse}
                                         onExpand={handleTrieExpand}
                                         focusTokens={() => focusTokens()}
+                                        prefetchCache={() => prefetchCache()}
                                         onLoadMore={handleLoadMore}
                                         isLoadingMore={() => isLoadingMore()}
                                         onNodeClick={handleTrieNodeClick}

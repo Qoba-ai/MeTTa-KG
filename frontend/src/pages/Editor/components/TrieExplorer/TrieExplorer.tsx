@@ -20,6 +20,7 @@ interface TrieExplorerProps {
   onCollapse?: (path: string) => void;
   onExpand?: (path: string) => void;
   focusTokens?: () => Map<string, string[]>;
+  prefetchCache?: () => Map<string, string[][]>;
   onLoadMore?: (path: string) => void;
   isLoadingMore?: () => boolean;
   onNodeClick?: (expression: string) => void;
@@ -106,7 +107,7 @@ const TerminalsSummary: Component<{
           <div style={{ width: "16px" }} />
           <VsSymbolEnum size={14} class={styles.TrieLeafIcon} />
           <span class={styles.TrieCountText}>
-            {props.count} expression{props.count !== 1 ? 's' : ''}
+            {props.count}{props.hasMore ? '+' : ''} expression{props.count !== 1 ? 's' : ''}
           </span>
           <Show when={props.hasMore}>
             <button
@@ -153,6 +154,7 @@ const TrieBranch: Component<{
   onCollapse?: (path: string) => void;
   onExpand?: (path: string) => void;
   focusTokens?: () => Map<string, string[]>;
+  prefetchCache?: () => Map<string, string[][]>;
   onLoadMore?: (path: string) => void;
   onNodeClick?: (expression: string) => void;
   shiftPressed: () => boolean;
@@ -251,9 +253,10 @@ const TrieBranch: Component<{
   };
 
   const hasMoreToLoad = () => {
+    const pathNormalized = props.path.endsWith('/') ? props.path : props.path + '/';
+    if (props.prefetchCache?.().has(pathNormalized)) return true;
     if (!props.focusTokens) return false;
     const tokens = props.focusTokens();
-    const pathNormalized = props.path.endsWith('/') ? props.path : props.path + '/';
     const tokensForPath = tokens.get(pathNormalized) || [];
     return tokensForPath.length > 0;
   };
@@ -397,6 +400,7 @@ const TrieBranch: Component<{
                     onCollapse={props.onCollapse}
                     onExpand={props.onExpand}
                     focusTokens={props.focusTokens}
+                    prefetchCache={props.prefetchCache}
                     onLoadMore={props.onLoadMore}
                     onNodeClick={props.onNodeClick}
                     shiftPressed={props.shiftPressed}
@@ -635,6 +639,7 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
                   onCollapse={props.onCollapse}
                   onExpand={props.onExpand}
                   focusTokens={props.focusTokens}
+                  prefetchCache={props.prefetchCache}
                   onLoadMore={props.onLoadMore}
                   onNodeClick={props.onNodeClick}
                   shiftPressed={shiftPressed}
@@ -652,9 +657,10 @@ export const TrieExplorer: Component<TrieExplorerProps> = (props) => {
             count={trie().terminals.length}
             path={rootPath()}
             hasMore={(() => {
+              const p = rootPath().endsWith('/') ? rootPath() : rootPath() + '/';
+              if (props.prefetchCache?.().has(p)) return true;
               const tokens = props.focusTokens?.();
               if (!tokens) return false;
-              const p = rootPath().endsWith('/') ? rootPath() : rootPath() + '/';
               return (tokens.get(p) || []).length > 0;
             })()}
             onLoadMore={props.onLoadMore}
