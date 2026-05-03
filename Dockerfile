@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY translations translations
 
-RUN python3 -m pip install --no-deps --no-cache-dir -r translations/requirements.txt
+RUN python3 -m pip install --no-cache-dir -r translations/requirements.txt
 
 COPY --from=rust-builder /usr/src/mettakg/api/target/release/api /usr/local/bin/
 

@@ -67,7 +67,7 @@ export function parseTokensToAST(tokens: string[], source: 'manual' | 'loaded' =
   if (token === '(') {
     // It's an expression: find the matching close paren
     let depth = 1
-    let endIdx = 1
+    let endIdx = 0
     while (endIdx < rest.length && depth > 0) {
       if (rest[endIdx] === '(') depth++
       else if (rest[endIdx] === ')') depth--
@@ -79,10 +79,26 @@ export function parseTokensToAST(tokens: string[], source: 'manual' | 'loaded' =
     const exprTokens = rest.slice(0, endIdx - 1)
     if (exprTokens.length === 0) return null
 
-    const keyToken = exprTokens[0]
-    const bodyTokens = exprTokens.slice(1)
+    // Determine the key: it may be a simple token or a sub-expression
+    let key: string
+    let bodyTokens: string[]
 
-    const key = keyToken.replace(/^"|"$/g, '')
+    if (exprTokens[0] === '(') {
+      // Key is a sub-expression — find its matching close paren
+      let d = 1
+      let ki = 1
+      while (ki < exprTokens.length && d > 0) {
+        if (exprTokens[ki] === '(') d++
+        else if (exprTokens[ki] === ')') d--
+        ki++
+      }
+      const keyNode = parseTokensToAST(exprTokens.slice(0, ki), source)
+      key = keyNode ? nodeToString(keyNode) : exprTokens.slice(0, ki).join(' ')
+      bodyTokens = exprTokens.slice(ki)
+    } else {
+      key = exprTokens[0].replace(/^"|"$/g, '')
+      bodyTokens = exprTokens.slice(1)
+    }
     const children: ASTNode[] = []
 
     // Parse body recursively
