@@ -1518,7 +1518,7 @@ const App: Component = () => {
         if (format === ImportFormat.CSV) {
             return { direction: importCSVDirection(), delimiter: importCSVDelimiter() }
         }
-        return { dummy: '' }
+        return {}
     }
 
     const translateToMetta = async (): Promise<void> => {

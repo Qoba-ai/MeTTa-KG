@@ -49,15 +49,12 @@ interface CSVParserParameters {
 }
 
 interface NTParserParameters {
-    dummy: string
 }
 
 interface N3ParserParameters {
-    dummy: string
 }
 
 interface JSONLDParserParameters {
-    dummy: string
 }
 
 interface OpLogImport {
