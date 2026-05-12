@@ -3,8 +3,6 @@ use std::path::PathBuf;
 
 use chrono::Utc;
 use diesel::{ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
-use rocket::http::Status;
-use rocket::response::status::Custom;
 use rocket::serde::json::{serde_json, Json};
 use rocket::{get, post};
 use tracing::{debug, error, info, warn};
@@ -13,11 +11,14 @@ use rocket::State;
 
 use tokio::sync::broadcast;
 
+use crate::db::{self, DbPool};
+use crate::error::ApiError;
 use crate::{
-    db::establish_connection,
     events::{EventBus, SpaceEvent},
     lock::LockManager,
-    model::{OpLog, OpLogClear, OpLogCopy, OpLogEdit, OpLogEntry, OpLogImport, OpLogTransform, Token},
+    model::{
+        OpLog, OpLogClear, OpLogCopy, OpLogEdit, OpLogEntry, OpLogImport, OpLogTransform, Token,
+    },
     schema::{op_log, op_log_clear, op_log_copy, op_log_edit, op_log_import, op_log_transform},
 };
 
@@ -106,7 +107,7 @@ fn fetch_details(conn: &mut PgConnection, log: OpLog) -> OpLogEntry {
 
 // ─── Undo / redo (delegate to commands module) ───────────────────────────────
 
-async fn undo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<(), Status> {
+async fn undo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<(), ApiError> {
     match entry.op_type.as_str() {
         "Import" => {
             if let Some(imp) = &entry.import {
@@ -163,8 +164,10 @@ async fn undo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
         }
         "Edit" => {
             if let Some(edit) = &entry.edit {
-                let added: Vec<String> = serde_json::from_value(edit.added.clone()).unwrap_or_default();
-                let removed: Vec<String> = serde_json::from_value(edit.removed.clone()).unwrap_or_default();
+                let added: Vec<String> =
+                    serde_json::from_value(edit.added.clone()).unwrap_or_default();
+                let removed: Vec<String> =
+                    serde_json::from_value(edit.removed.clone()).unwrap_or_default();
                 return crate::commands::edit::undo(&crate::commands::edit::Params {
                     target_path: augmented_path(&edit.path),
                     added,
@@ -179,7 +182,7 @@ async fn undo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
     }
 }
 
-async fn redo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<(), Status> {
+async fn redo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<(), ApiError> {
     match entry.op_type.as_str() {
         "Import" => {
             if let Some(imp) = &entry.import {
@@ -236,8 +239,10 @@ async fn redo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
         }
         "Edit" => {
             if let Some(edit) = &entry.edit {
-                let added: Vec<String> = serde_json::from_value(edit.added.clone()).unwrap_or_default();
-                let removed: Vec<String> = serde_json::from_value(edit.removed.clone()).unwrap_or_default();
+                let added: Vec<String> =
+                    serde_json::from_value(edit.added.clone()).unwrap_or_default();
+                let removed: Vec<String> =
+                    serde_json::from_value(edit.removed.clone()).unwrap_or_default();
                 return crate::commands::edit::redo(&crate::commands::edit::Params {
                     target_path: augmented_path(&edit.path),
                     added,
@@ -252,17 +257,14 @@ async fn redo_operation(_conn: &mut PgConnection, entry: &OpLogEntry) -> Result<
     }
 }
 
-/// Parse `input_spaces` / `output_spaces` JSON back into the Vec<(PathBuf, String)>
-/// format expected by `commands::transform::Params`.  Paths are re-prefixed with
-/// `space/` to match the augmented form used at execution time.
 fn parse_transform_spaces(
     tr: &crate::model::OpLogTransform,
-) -> Result<(Vec<(PathBuf, String)>, Vec<(PathBuf, String)>), Status> {
+) -> Result<(Vec<(PathBuf, String)>, Vec<(PathBuf, String)>), ApiError> {
     let prefix = PathBuf::from("space");
 
     let input: Vec<(PathBuf, String)> =
         serde_json::from_value::<Vec<serde_json::Value>>(tr.input_spaces.clone())
-            .map_err(|_| Status::InternalServerError)?
+            .map_err(|e| ApiError::Internal(format!("invalid transform input_spaces: {}", e)))?
             .into_iter()
             .map(|s| {
                 let p = PathBuf::from(s["path"].as_str().unwrap_or(""));
@@ -273,7 +275,7 @@ fn parse_transform_spaces(
 
     let output: Vec<(PathBuf, String)> =
         serde_json::from_value::<Vec<serde_json::Value>>(tr.output_spaces.clone())
-            .map_err(|_| Status::InternalServerError)?
+            .map_err(|e| ApiError::Internal(format!("invalid transform output_spaces: {}", e)))?
             .into_iter()
             .map(|s| {
                 let p = PathBuf::from(s["path"].as_str().unwrap_or(""));
@@ -285,8 +287,6 @@ fn parse_transform_spaces(
     Ok((input, output))
 }
 
-/// Collect all unique raw space paths (without the `space/` prefix) that an
-/// undo or redo operation touches, so they can all be locked at once.
 fn collect_lock_paths(entries: &[OpLogEntry]) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
     let mut paths = Vec::new();
@@ -348,8 +348,6 @@ pub struct GraphResponse {
     pub edges: Vec<GraphEdge>,
 }
 
-/// Compute the transitive reduction of `adj`: for each edge U→V, keep it only
-/// if V is not reachable from U via any other neighbour of U.
 fn build_direct_edges(entries: &[OpLogEntry]) -> Vec<GraphEdge> {
     let adj = build_adj(entries);
 
@@ -364,8 +362,6 @@ fn build_direct_edges(entries: &[OpLogEntry]) -> Vec<GraphEdge> {
         };
 
         for &v in &neighbors {
-            // BFS from u through all neighbours *except* the direct u→v edge.
-            // If v is reached, this edge is transitive and should be suppressed.
             let mut visited = HashSet::new();
             let mut queue = VecDeque::new();
             for &other in &neighbors {
@@ -395,34 +391,32 @@ fn build_direct_edges(entries: &[OpLogEntry]) -> Vec<GraphEdge> {
     edges
 }
 
-/// Returns all op log entries and the direct (non-transitive) dependency edges
-/// between them.  This is the single source of truth for graph topology;
-/// clients should use these edges rather than re-deriving them locally.
-///
-/// Sealed ops are excluded from the graph (they are read-only history).
 #[get("/logs/graph")]
-pub fn get_logs_graph(_token: Token) -> Result<Json<GraphResponse>, Status> {
+pub fn get_logs_graph(
+    _token: Token,
+    pool: &State<DbPool>,
+) -> Result<Json<GraphResponse>, ApiError> {
     debug!("Building op log dependency graph");
-    let conn = &mut establish_connection();
+    let mut conn = db::get_conn(pool.inner())?;
 
     let logs: Vec<OpLog> = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::sealed_at.is_null())
         .order(op_log::id.asc())
-        .load(conn)
-        .map_err(|e| {
-            error!(error = %e, "Failed to load op logs for graph");
-            Status::InternalServerError
-        })?;
+        .load(&mut conn)?;
 
     let entry_count = logs.len();
     let entries: Vec<OpLogEntry> = logs
         .into_iter()
-        .map(|log| fetch_details(conn, log))
+        .map(|log| fetch_details(&mut conn, log))
         .collect();
 
     let edges = build_direct_edges(&entries);
-    debug!(entries = entry_count, edges = edges.len(), "Op log graph built");
+    debug!(
+        entries = entry_count,
+        edges = edges.len(),
+        "Op log graph built"
+    );
 
     Ok(Json(GraphResponse { entries, edges }))
 }
@@ -430,26 +424,20 @@ pub fn get_logs_graph(_token: Token) -> Result<Json<GraphResponse>, Status> {
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 #[get("/logs/<id>")]
-pub fn get_log(_token: Token, id: i32) -> Result<Json<OpLogEntry>, Status> {
+pub fn get_log(_token: Token, id: i32, pool: &State<DbPool>) -> Result<Json<OpLogEntry>, ApiError> {
     debug!(id, "Fetching op log entry");
-    let conn = &mut establish_connection();
+    let mut conn = db::get_conn(pool.inner())?;
 
     let log = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::id.eq(id))
-        .first(conn)
+        .first(&mut conn)
         .map_err(|e| match e {
-            diesel::result::Error::NotFound => {
-                debug!(id, "Op log entry not found");
-                Status::NotFound
-            }
-            e => {
-                error!(id, error = %e, "Failed to fetch op log entry");
-                Status::InternalServerError
-            }
+            diesel::result::Error::NotFound => ApiError::NotFound,
+            e => ApiError::Db(e),
         })?;
 
-    Ok(Json(fetch_details(conn, log)))
+    Ok(Json(fetch_details(&mut conn, log)))
 }
 
 #[get("/logs?<op_type>&<page>&<page_size>")]
@@ -458,8 +446,9 @@ pub fn get_logs(
     op_type: Option<String>,
     page: Option<i64>,
     page_size: Option<i64>,
-) -> Result<Json<Vec<OpLogEntry>>, Status> {
-    let conn = &mut establish_connection();
+    pool: &State<DbPool>,
+) -> Result<Json<Vec<OpLogEntry>>, ApiError> {
+    let mut conn = db::get_conn(pool.inner())?;
 
     let page = page.unwrap_or(0).max(0);
     let page_size = page_size.unwrap_or(20).clamp(1, 100);
@@ -477,16 +466,12 @@ pub fn get_logs(
     let logs: Vec<OpLog> = query
         .limit(page_size)
         .offset(page * page_size)
-        .load(conn)
-        .map_err(|e| {
-            error!(error = %e, "Failed to list op logs");
-            Status::InternalServerError
-        })?;
+        .load(&mut conn)?;
 
     debug!(count = logs.len(), "Op logs fetched");
     let entries = logs
         .into_iter()
-        .map(|log| fetch_details(conn, log))
+        .map(|log| fetch_details(&mut conn, log))
         .collect();
 
     Ok(Json(entries))
@@ -518,7 +503,6 @@ fn get_write_spaces(entry: &OpLogEntry) -> Vec<String> {
     vec![]
 }
 
-/// Input space paths of a transform operation (empty for import / clear).
 fn get_input_spaces(entry: &OpLogEntry) -> Vec<String> {
     if let Some(tr) = &entry.transform {
         if let Ok(ins) = serde_json::from_value::<Vec<serde_json::Value>>(tr.input_spaces.clone()) {
@@ -531,9 +515,6 @@ fn get_input_spaces(entry: &OpLogEntry) -> Vec<String> {
     vec![]
 }
 
-/// True when `child` equals `parent` or is a subspace of it.
-/// Trailing slashes are stripped before comparison so paths stored with or
-/// without a trailing slash compare correctly.
 fn is_subspace(child: &str, parent: &str) -> bool {
     let c = child.trim_end_matches('/');
     let p = parent.trim_end_matches('/');
@@ -543,16 +524,6 @@ fn is_subspace(child: &str, parent: &str) -> bool {
     c == p || c.starts_with(&format!("{}/", p))
 }
 
-/// Build a forward adjacency list (u → dependents) from `entries` using the
-/// same rules as the frontend graph.
-///
-/// RULE1: edge U→V if V came after U and V writes to U's space or a subspace.
-/// RULE2: edge U→V if V is a transform, V came after U, and U writes to one
-///        of V's input spaces or a subspace thereof.
-/// RULE3: edge U→V if V is a transform, V came after U, and an input space of
-///        V is a subspace of U's write space (U wrote to a parent space V reads from).
-/// RULE4: edge U→V if V is a clear, V came after U, and U writes to V's clear
-///        target or any subspace of it (the clear covers U's output path from above).
 fn build_adj(entries: &[OpLogEntry]) -> HashMap<i32, Vec<i32>> {
     let mut adj: HashMap<i32, Vec<i32>> = entries.iter().map(|e| (e.id, vec![])).collect();
 
@@ -584,8 +555,6 @@ fn build_adj(entries: &[OpLogEntry]) -> HashMap<i32, Vec<i32>> {
                 && u_writes
                     .iter()
                     .any(|us| v_inputs.iter().any(|vi| is_subspace(vi, us)));
-            // RULE4: a clear at path P depends on any earlier write to P or any
-            // descendant of P (the clear reaches down into subspaces).
             let rule4 = v.clear.is_some()
                 && u_writes
                     .iter()
@@ -598,7 +567,6 @@ fn build_adj(entries: &[OpLogEntry]) -> HashMap<i32, Vec<i32>> {
     adj
 }
 
-/// BFS from `root` through `adj`; returns all reachable ids (including `root`).
 fn reachable_from(adj: &HashMap<i32, Vec<i32>>, root: i32) -> HashSet<i32> {
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
@@ -618,9 +586,6 @@ fn reachable_from(adj: &HashMap<i32, Vec<i32>>, root: i32) -> HashSet<i32> {
     visited
 }
 
-/// Kahn's topological sort over the subgraph induced by `nodes`.
-/// Returns ids in topological order (u before v when there is an edge u→v).
-/// Ties are broken by ascending id for determinism.
 fn topo_sort(adj: &HashMap<i32, Vec<i32>>, nodes: &HashSet<i32>) -> Vec<i32> {
     let mut in_degree: HashMap<i32, usize> = nodes.iter().map(|&id| (id, 0)).collect();
     for (&u, neighbors) in adj {
@@ -665,17 +630,17 @@ fn topo_sort(adj: &HashMap<i32, Vec<i32>>, nodes: &HashSet<i32>) -> Vec<i32> {
 
 // ─── Undo / redo ordering ────────────────────────────────────────────────────
 
-/// Returns the entries to undo for rolling back `target_id`, in order:
-/// leaves first (reverse topological), target last.
-fn compute_undo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpLogEntry>, Status> {
+fn compute_undo_order(
+    conn: &mut PgConnection,
+    target_id: i32,
+) -> Result<Vec<OpLogEntry>, ApiError> {
     let logs: Vec<OpLog> = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::id.ge(target_id))
         .filter(op_log::rolled_back_at.is_null())
         .filter(op_log::sealed_at.is_null())
         .order(op_log::id.asc())
-        .load(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .load(conn)?;
 
     let entries: Vec<OpLogEntry> = logs
         .into_iter()
@@ -688,7 +653,6 @@ fn compute_undo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpL
 
     let mut by_id: HashMap<i32, OpLogEntry> = entries.into_iter().map(|e| (e.id, e)).collect();
 
-    // Reverse topological order: leaves first, target last.
     Ok(order
         .into_iter()
         .rev()
@@ -696,22 +660,16 @@ fn compute_undo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpL
         .collect())
 }
 
-/// Returns the entries to redo for `target_id`, in order:
-/// rolled-back ancestors first (dependencies), then target last.
-///
-/// Edges go U→V ("V depends on U"), so to redo target we traverse edges
-/// *backwards* from target to find all rolled-back ancestors that must be
-/// re-applied first.  The result is forward-topological order on the original
-/// graph: ancestors before target.
-fn compute_redo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpLogEntry>, Status> {
-    // Load ALL rolled-back, non-sealed entries — ancestors may have lower ids than target.
+fn compute_redo_order(
+    conn: &mut PgConnection,
+    target_id: i32,
+) -> Result<Vec<OpLogEntry>, ApiError> {
     let logs: Vec<OpLog> = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::rolled_back_at.is_not_null())
         .filter(op_log::sealed_at.is_null())
         .order(op_log::id.asc())
-        .load(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .load(conn)?;
 
     let entries: Vec<OpLogEntry> = logs
         .into_iter()
@@ -720,8 +678,6 @@ fn compute_redo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpL
 
     let adj = build_adj(&entries);
 
-    // Build reverse adjacency list so we can walk from target back to its
-    // rolled-back dependencies.
     let mut rev_adj: HashMap<i32, Vec<i32>> = entries.iter().map(|e| (e.id, vec![])).collect();
     for (&u, vs) in &adj {
         for &v in vs {
@@ -729,15 +685,11 @@ fn compute_redo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpL
         }
     }
 
-    // BFS on reversed edges: finds target + all its rolled-back ancestors.
     let subgraph = reachable_from(&rev_adj, target_id);
-
-    // Topo-sort using the *forward* edges so dependencies come before target.
     let order = topo_sort(&adj, &subgraph);
 
     let mut by_id: HashMap<i32, OpLogEntry> = entries.into_iter().map(|e| (e.id, e)).collect();
 
-    // Forward topological order: ancestors first, target last.
     Ok(order
         .into_iter()
         .filter_map(|id| by_id.remove(&id))
@@ -746,10 +698,7 @@ fn compute_redo_order(conn: &mut PgConnection, target_id: i32) -> Result<Vec<OpL
 
 // ─── Event emission ──────────────────────────────────────────────────────────
 
-/// Emit one `OpLogChanged` event per distinct `token_id` found in `entries`.
-/// Entries without a `token_id` (pre-migration) are silently skipped.
 fn emit_op_log_changed(bus: &broadcast::Sender<SpaceEvent>, entries: &[OpLogEntry]) {
-    // Group entries by token_id
     let mut by_token: HashMap<i32, Vec<OpLogEntry>> = HashMap::new();
     for e in entries {
         if let Some(tid) = e.token_id {
@@ -764,92 +713,87 @@ fn emit_op_log_changed(bus: &broadcast::Sender<SpaceEvent>, entries: &[OpLogEntr
     }
 }
 
-/// Rolls back the operation identified by `id` and every operation that
-/// depends on it (its descendants in the dependency DAG), in topological
-/// order so that the most-dependent side-effects are undone first.
-///
-/// Log entries are **not** deleted — `rolled_back_at` is stamped on each one
-/// so that a future `/logs/<id>/redo` endpoint can re-apply them.
 #[post("/logs/<id>/rollback")]
 pub async fn rollback_log(
     _token: Token,
     id: i32,
     lock_manager: &State<LockManager>,
     bus: &State<EventBus>,
-) -> Result<Json<Vec<OpLogEntry>>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<Vec<OpLogEntry>>, ApiError> {
     if !_token.permission_write {
-        warn!(id, token_id = _token.id, "Rollback denied: token lacks write permission");
-        return Err(Status::Forbidden);
+        warn!(
+            id,
+            token_id = _token.id,
+            "Rollback denied: token lacks write permission"
+        );
+        return Err(ApiError::Forbidden);
     }
     info!(id, "Starting rollback");
-    let conn = &mut establish_connection();
+    let mut conn = db::get_conn(pool.inner())?;
 
     // Verify the target entry exists.
     op_log::table
         .select(OpLog::as_select())
         .filter(op_log::id.eq(id))
-        .first(conn)
+        .first(&mut conn)
         .map_err(|e| match e {
             diesel::result::Error::NotFound => {
                 warn!(id, "Rollback target not found");
-                Status::NotFound
+                ApiError::NotFound
             }
-            e => {
-                error!(id, error = %e, "Failed to verify rollback target");
-                Status::InternalServerError
-            }
+            e => ApiError::Db(e),
         })?;
 
-    let entries = compute_undo_order(conn, id)?;
+    let entries = compute_undo_order(&mut conn, id)?;
 
-    info!(id, affected = entries.len(), "Executing rollback for entries");
+    info!(
+        id,
+        affected = entries.len(),
+        "Executing rollback for entries"
+    );
 
     let lock_paths = collect_lock_paths(&entries);
     let path_refs: Vec<&PathBuf> = lock_paths.iter().collect();
 
-    // Lock all affected spaces, then undo in reverse topological order.
+    let pool_ref = pool.inner();
     crate::routes::spaces::with_lock(lock_manager, &path_refs, || {
         let entries = &entries;
+        let pool_ref = pool_ref;
         async move {
-            let mut c = establish_connection();
+            let mut c = db::get_conn(pool_ref)?;
             for entry in entries {
                 undo_operation(&mut c, entry).await?;
             }
-            Ok::<(), Status>(())
+            Ok::<(), ApiError>(())
         }
     })
     .await
     .map_err(|e| {
-        error!(id, status = %e, "Rollback execution failed");
+        error!(id, error = %e, "Rollback execution failed");
         e
     })?;
 
-    // Stamp rolled_back_at so the client and a future redo endpoint can tell
-    // which entries are currently in a rolled-back state.
+    // Re-acquire connection after the lock block (previous one was consumed)
+    let mut conn = db::get_conn(pool.inner())?;
+
+    // Stamp rolled_back_at
     let now = Utc::now().naive_utc();
     let ids: Vec<i32> = entries.iter().map(|e| e.id).collect();
     diesel::update(op_log::table.filter(op_log::id.eq_any(&ids)))
         .set(op_log::rolled_back_at.eq(Some(now)))
-        .execute(conn)
-        .map_err(|e| {
-            error!(id, error = %e, "Failed to stamp rolled_back_at");
-            Status::InternalServerError
-        })?;
+        .execute(&mut conn)?;
 
-    // Re-fetch to return the updated entries (with rolled_back_at populated).
+    // Re-fetch to return the updated entries
     let updated_logs: Vec<OpLog> = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::id.eq_any(&ids))
         .order(op_log::id.desc())
-        .load(conn)
-        .map_err(|e| {
-            error!(id, error = %e, "Failed to re-fetch rolled-back entries");
-            Status::InternalServerError
-        })?;
+        .load(&mut conn)?;
 
     let updated_entries: Vec<OpLogEntry> = updated_logs
         .into_iter()
-        .map(|log| fetch_details(conn, log))
+        .map(|log| fetch_details(&mut conn, log))
         .collect();
 
     info!(id, rolled_back = updated_entries.len(), "Rollback complete");
@@ -858,20 +802,126 @@ pub async fn rollback_log(
     Ok(Json(updated_entries))
 }
 
-// ─── Redo conflict detection ──────────────────────────────────────────────
+// ─── Redo ────────────────────────────────────────────────────────────────────
 
-#[derive(serde::Serialize)]
-pub struct RedoConflict {
-    pub conflicting_ops: Vec<i32>,
-    pub message: String,
+#[post("/logs/<id>/redo?<force>")]
+pub async fn redo_log(
+    _token: Token,
+    id: i32,
+    force: Option<bool>,
+    lock_manager: &State<LockManager>,
+    bus: &State<EventBus>,
+    pool: &State<DbPool>,
+) -> Result<Json<Vec<OpLogEntry>>, ApiError> {
+    if !_token.permission_write {
+        warn!(
+            id,
+            token_id = _token.id,
+            "Redo denied: token lacks write permission"
+        );
+        return Err(ApiError::Forbidden);
+    }
+    info!(id, force = ?force, "Starting redo");
+    let mut conn = db::get_conn(pool.inner())?;
+
+    // Verify the anchor entry exists.
+    let anchor: OpLog = op_log::table
+        .select(OpLog::as_select())
+        .filter(op_log::id.eq(id))
+        .first(&mut conn)
+        .map_err(|e| match e {
+            diesel::result::Error::NotFound => {
+                warn!(id, "Redo target not found");
+                ApiError::NotFound
+            }
+            e => ApiError::Db(e),
+        })?;
+
+    // Check if sealed
+    if anchor.sealed_at.is_some() {
+        warn!(id, "Redo attempted on sealed entry");
+        return Err(ApiError::Unprocessable(
+            "operation is sealed and cannot be redone".into(),
+        ));
+    }
+
+    let anchor_entry = fetch_details(&mut conn, anchor);
+
+    // Conflict guard
+    if !force.unwrap_or(false) {
+        let conflicts = check_redo_conflicts(&mut conn, &anchor_entry)?;
+        if !conflicts.is_empty() {
+            warn!(id, conflicting_ops = ?conflicts, "Redo blocked by conflicting operations");
+            return Err(ApiError::RedoConflict {
+                conflicting_ops: conflicts,
+                message: "Redo conflicts with newer operations on the same space(s)".into(),
+            });
+        }
+    } else if force.unwrap_or(false) {
+        debug!(id, "Redo forced, skipping conflict check");
+    }
+
+    let entries = compute_redo_order(&mut conn, id)?;
+
+    let lock_paths = collect_lock_paths(&entries);
+    let path_refs: Vec<&PathBuf> = lock_paths.iter().collect();
+
+    info!(id, count = entries.len(), "Executing redo for entries");
+
+    let pool_ref = pool.inner();
+    crate::routes::spaces::with_lock(lock_manager, &path_refs, || {
+        let entries = &entries;
+        let pool_ref = pool_ref;
+        async move {
+            let mut c = db::get_conn(pool_ref)?;
+            for entry in entries {
+                redo_operation(&mut c, entry).await?;
+            }
+            Ok::<(), ApiError>(())
+        }
+    })
+    .await
+    .map_err(|e| {
+        error!(id, error = %e, "Redo execution failed");
+        e
+    })?;
+
+    // Re-acquire connection
+    let mut conn = db::get_conn(pool.inner())?;
+
+    // Clear rolled_back_at
+    let ids: Vec<i32> = entries.iter().map(|e| e.id).collect();
+    diesel::update(op_log::table.filter(op_log::id.eq_any(&ids)))
+        .set(op_log::rolled_back_at.eq(None::<chrono::NaiveDateTime>))
+        .execute(&mut conn)?;
+
+    // Re-fetch
+    let updated_logs: Vec<OpLog> = op_log::table
+        .select(OpLog::as_select())
+        .filter(op_log::id.eq_any(&ids))
+        .order(op_log::id.desc())
+        .load(&mut conn)?;
+
+    let updated_entries: Vec<OpLogEntry> = updated_logs
+        .into_iter()
+        .map(|log| fetch_details(&mut conn, log))
+        .collect();
+
+    info!(id, redone = updated_entries.len(), "Redo complete");
+    emit_op_log_changed(&bus.inner().0, &updated_entries);
+
+    Ok(Json(updated_entries))
 }
 
-/// Find live (non-rolled-back, non-sealed) ops that were created after the
-/// target was rolled back and write to any space the target writes to.
-fn check_redo_conflicts(conn: &mut PgConnection, target: &OpLogEntry) -> Result<Vec<i32>, Status> {
+// ─── Redo conflict detection ──────────────────────────────────────────────
+
+fn check_redo_conflicts(
+    conn: &mut PgConnection,
+    target: &OpLogEntry,
+) -> Result<Vec<i32>, ApiError> {
     let rolled_back_at = match target.rolled_back_at {
         Some(ts) => ts,
-        None => return Ok(vec![]), // not rolled back, no conflict possible
+        None => return Ok(vec![]),
     };
 
     let target_writes = get_write_spaces(target);
@@ -879,15 +929,13 @@ fn check_redo_conflicts(conn: &mut PgConnection, target: &OpLogEntry) -> Result<
         return Ok(vec![]);
     }
 
-    // Load live, non-sealed ops created after the rollback timestamp
     let live_ops: Vec<OpLog> = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::rolled_back_at.is_null())
         .filter(op_log::sealed_at.is_null())
         .filter(op_log::created_at.gt(rolled_back_at))
         .order(op_log::id.asc())
-        .load(conn)
-        .map_err(|_| Status::InternalServerError)?;
+        .load(conn)?;
 
     let live_entries: Vec<OpLogEntry> = live_ops
         .into_iter()
@@ -898,7 +946,9 @@ fn check_redo_conflicts(conn: &mut PgConnection, target: &OpLogEntry) -> Result<
     for entry in &live_entries {
         let entry_writes = get_write_spaces(entry);
         let overlaps = target_writes.iter().any(|tw| {
-            entry_writes.iter().any(|ew| is_subspace(ew, tw) || is_subspace(tw, ew))
+            entry_writes
+                .iter()
+                .any(|ew| is_subspace(ew, tw) || is_subspace(tw, ew))
         });
         if overlaps {
             conflicts.push(entry.id);
@@ -908,147 +958,6 @@ fn check_redo_conflicts(conn: &mut PgConnection, target: &OpLogEntry) -> Result<
     Ok(conflicts)
 }
 
-/// Re-applies the operation `id` and every rolled-back descendant in the
-/// dependency graph (RULE1 / RULE2 / RULE3), in topological order so that the target
-/// is re-applied first and its dependents follow.
-///
-/// Returns 409 Conflict with a list of conflicting op IDs if newer live ops
-/// write to the same spaces, unless `force=true` is passed.
-#[post("/logs/<id>/redo?<force>")]
-pub async fn redo_log(
-    _token: Token,
-    id: i32,
-    force: Option<bool>,
-    lock_manager: &State<LockManager>,
-    bus: &State<EventBus>,
-) -> Result<Json<Vec<OpLogEntry>>, Custom<Json<RedoConflict>>> {
-    if !_token.permission_write {
-        warn!(id, token_id = _token.id, "Redo denied: token lacks write permission");
-        return Err(Custom(Status::Forbidden, Json(RedoConflict {
-            conflicting_ops: vec![],
-            message: "Token lacks write permission".into(),
-        })));
-    }
-    info!(id, force = ?force, "Starting redo");
-    let conn = &mut establish_connection();
-
-    // Verify the anchor entry exists.
-    let anchor: OpLog = op_log::table
-        .select(OpLog::as_select())
-        .filter(op_log::id.eq(id))
-        .first(conn)
-        .map_err(|e| {
-            let status = match e {
-                diesel::result::Error::NotFound => {
-                    warn!(id, "Redo target not found");
-                    Status::NotFound
-                }
-                ref e => {
-                    error!(id, error = %e, "Failed to fetch redo target");
-                    Status::InternalServerError
-                }
-            };
-            Custom(status, Json(RedoConflict { conflicting_ops: vec![], message: "Not found".into() }))
-        })?;
-
-    // Check if sealed
-    if anchor.sealed_at.is_some() {
-        warn!(id, "Redo attempted on sealed entry");
-        return Err(Custom(Status::UnprocessableEntity, Json(RedoConflict {
-            conflicting_ops: vec![],
-            message: "Operation is sealed and cannot be redone".into(),
-        })));
-    }
-
-    let anchor_entry = fetch_details(conn, anchor);
-
-    // Conflict guard: check for newer live ops on the same spaces
-    if !force.unwrap_or(false) {
-        let conflicts = check_redo_conflicts(conn, &anchor_entry)
-            .map_err(|s| Custom(s, Json(RedoConflict {
-                conflicting_ops: vec![],
-                message: "Internal error checking conflicts".into(),
-            })))?;
-        if !conflicts.is_empty() {
-            warn!(id, conflicting_ops = ?conflicts, "Redo blocked by conflicting operations");
-            return Err(Custom(Status::Conflict, Json(RedoConflict {
-                conflicting_ops: conflicts,
-                message: "Redo conflicts with newer operations on the same space(s)".into(),
-            })));
-        }
-    } else if force.unwrap_or(false) {
-        debug!(id, "Redo forced, skipping conflict check");
-    }
-
-    let entries = compute_redo_order(conn, id)
-        .map_err(|s| Custom(s, Json(RedoConflict {
-            conflicting_ops: vec![],
-            message: "Failed to compute redo order".into(),
-        })))?;
-
-    let lock_paths = collect_lock_paths(&entries);
-    let path_refs: Vec<&PathBuf> = lock_paths.iter().collect();
-
-    info!(id, count = entries.len(), "Executing redo for entries");
-
-    // Lock all affected spaces, then redo in topological order.
-    crate::routes::spaces::with_lock(lock_manager, &path_refs, || {
-        let entries = &entries;
-        async move {
-            let mut c = establish_connection();
-            for entry in entries {
-                redo_operation(&mut c, entry).await?;
-            }
-            Ok::<(), Status>(())
-        }
-    })
-    .await
-    .map_err(|s| {
-        error!(id, status = %s, "Redo execution failed");
-        Custom(s, Json(RedoConflict {
-            conflicting_ops: vec![],
-            message: "Redo execution failed".into(),
-        }))
-    })?;
-
-    // Clear rolled_back_at to mark these entries as active again.
-    let ids: Vec<i32> = entries.iter().map(|e| e.id).collect();
-    diesel::update(op_log::table.filter(op_log::id.eq_any(&ids)))
-        .set(op_log::rolled_back_at.eq(None::<chrono::NaiveDateTime>))
-        .execute(conn)
-        .map_err(|e| {
-            error!(id, error = %e, "Failed to clear rolled_back_at after redo");
-            Custom(Status::InternalServerError, Json(RedoConflict {
-                conflicting_ops: vec![],
-                message: "Failed to update entries".into(),
-            }))
-        })?;
-
-    // Re-fetch to return the updated entries (with rolled_back_at cleared).
-    let updated_logs: Vec<OpLog> = op_log::table
-        .select(OpLog::as_select())
-        .filter(op_log::id.eq_any(&ids))
-        .order(op_log::id.desc())
-        .load(conn)
-        .map_err(|e| {
-            error!(id, error = %e, "Failed to re-fetch redone entries");
-            Custom(Status::InternalServerError, Json(RedoConflict {
-                conflicting_ops: vec![],
-                message: "Failed to fetch updated entries".into(),
-            }))
-        })?;
-
-    let updated_entries: Vec<OpLogEntry> = updated_logs
-        .into_iter()
-        .map(|log| fetch_details(conn, log))
-        .collect();
-
-    info!(id, redone = updated_entries.len(), "Redo complete");
-    emit_op_log_changed(&bus.inner().0, &updated_entries);
-
-    Ok(Json(updated_entries))
-}
-
 // ─── Checkpoint (seal old ops) ───────────────────────────────────────────
 
 #[derive(serde::Serialize)]
@@ -1056,27 +965,26 @@ pub struct CheckpointResponse {
     pub sealed_count: usize,
 }
 
-/// Seals all live (non-rolled-back) ops except the most recent one,
-/// making them read-only and excluded from undo/redo/graph computations.
 #[post("/logs/checkpoint")]
-pub fn create_checkpoint(_token: Token) -> Result<Json<CheckpointResponse>, Status> {
+pub fn create_checkpoint(
+    _token: Token,
+    pool: &State<DbPool>,
+) -> Result<Json<CheckpointResponse>, ApiError> {
     if !_token.permission_write {
-        warn!(token_id = _token.id, "Checkpoint denied: token lacks write permission");
-        return Err(Status::Forbidden);
+        warn!(
+            token_id = _token.id,
+            "Checkpoint denied: token lacks write permission"
+        );
+        return Err(ApiError::Forbidden);
     }
     info!("Creating checkpoint");
-    let conn = &mut establish_connection();
+    let mut conn = db::get_conn(pool.inner())?;
 
-    // Find the max id among live, non-sealed ops
     let max_id: Option<i32> = op_log::table
         .select(diesel::dsl::max(op_log::id))
         .filter(op_log::rolled_back_at.is_null())
         .filter(op_log::sealed_at.is_null())
-        .first(conn)
-        .map_err(|e| {
-            error!(error = %e, "Failed to find max op log id for checkpoint");
-            Status::InternalServerError
-        })?;
+        .first(&mut conn)?;
 
     let max_id = match max_id {
         Some(id) => id,
@@ -1093,11 +1001,7 @@ pub fn create_checkpoint(_token: Token) -> Result<Json<CheckpointResponse>, Stat
             .filter(op_log::sealed_at.is_null()),
     )
     .set(op_log::sealed_at.eq(Some(now)))
-    .execute(conn)
-    .map_err(|e| {
-        error!(error = %e, "Failed to seal ops during checkpoint");
-        Status::InternalServerError
-    })?;
+    .execute(&mut conn)?;
 
     info!(sealed = sealed_count, "Checkpoint created");
     Ok(Json(CheckpointResponse { sealed_count }))
@@ -1105,11 +1009,10 @@ pub fn create_checkpoint(_token: Token) -> Result<Json<CheckpointResponse>, Stat
 
 // ─── Per-user undo/redo targets ──────────────────────────────────────────
 
-/// Returns the most recent live, non-sealed op created by the requesting token.
 #[get("/logs/my-last-undoable")]
-pub fn my_last_undoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
+pub fn my_last_undoable(token: Token, pool: &State<DbPool>) -> Result<Json<OpLogEntry>, ApiError> {
     debug!(token_id = token.id, "Fetching last undoable op");
-    let conn = &mut establish_connection();
+    let mut conn = db::get_conn(pool.inner())?;
 
     let log: OpLog = op_log::table
         .select(OpLog::as_select())
@@ -1117,27 +1020,19 @@ pub fn my_last_undoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
         .filter(op_log::rolled_back_at.is_null())
         .filter(op_log::sealed_at.is_null())
         .order(op_log::id.desc())
-        .first(conn)
+        .first(&mut conn)
         .map_err(|e| match e {
-            diesel::result::Error::NotFound => {
-                debug!(token_id = token.id, "No undoable ops found for token");
-                Status::NotFound
-            }
-            e => {
-                error!(token_id = token.id, error = %e, "Failed to fetch last undoable op");
-                Status::InternalServerError
-            }
+            diesel::result::Error::NotFound => ApiError::NotFound,
+            e => ApiError::Db(e),
         })?;
 
-    Ok(Json(fetch_details(conn, log)))
+    Ok(Json(fetch_details(&mut conn, log)))
 }
 
-/// Returns the most recently rolled-back, non-sealed op created by the
-/// requesting token — i.e. the next op this user would want to redo.
 #[get("/logs/my-last-redoable")]
-pub fn my_last_redoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
+pub fn my_last_redoable(token: Token, pool: &State<DbPool>) -> Result<Json<OpLogEntry>, ApiError> {
     debug!(token_id = token.id, "Fetching last redoable op");
-    let conn = &mut establish_connection();
+    let mut conn = db::get_conn(pool.inner())?;
 
     let log: OpLog = op_log::table
         .select(OpLog::as_select())
@@ -1145,17 +1040,11 @@ pub fn my_last_redoable(token: Token) -> Result<Json<OpLogEntry>, Status> {
         .filter(op_log::rolled_back_at.is_not_null())
         .filter(op_log::sealed_at.is_null())
         .order(op_log::id.desc())
-        .first(conn)
+        .first(&mut conn)
         .map_err(|e| match e {
-            diesel::result::Error::NotFound => {
-                debug!(token_id = token.id, "No redoable ops found for token");
-                Status::NotFound
-            }
-            e => {
-                error!(token_id = token.id, error = %e, "Failed to fetch last redoable op");
-                Status::InternalServerError
-            }
+            diesel::result::Error::NotFound => ApiError::NotFound,
+            e => ApiError::Db(e),
         })?;
 
-    Ok(Json(fetch_details(conn, log)))
+    Ok(Json(fetch_details(&mut conn, log)))
 }

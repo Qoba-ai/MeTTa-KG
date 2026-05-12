@@ -5,6 +5,7 @@ import Editor from "./pages/Editor";
 import Tokens from "./pages/Tokens";
 import Settings from "./pages/Settings";
 import History from "./pages/History";
+import Logs from "./pages/Logs";
 import { ThemeProvider } from "./ThemeContext";
 
 import './styles/global.scss';
@@ -26,6 +27,7 @@ render(
         <Route path="/" component={Editor} />
         <Route path="/tokens" component={Tokens} />
         <Route path="/history" component={History} />
+        <Route path="/logs" component={Logs} />
         <Route path="/settings" component={Settings} />
       </Router>
     </ThemeProvider>

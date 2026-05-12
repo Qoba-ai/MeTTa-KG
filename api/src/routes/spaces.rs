@@ -1,6 +1,7 @@
+use rocket::data::{Data, ToByteUnit};
 use rocket::serde::json::{serde_json, Json};
 use rocket::State;
-use rocket::{get, http::Status, post, put};
+use rocket::{get, post, put};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::prelude::*;
@@ -10,9 +11,10 @@ use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use crate::db::{self, DbPool};
+use crate::error::ApiError;
 use crate::lock::{LockEntry, LockManager};
 use crate::{
-    db::establish_connection,
     events::{EventBus, SpaceEvent},
     model::{
         OpLog, OpLogClearInsert, OpLogCopyInsert, OpLogEditInsert, OpLogImportInsert, OpLogInsert,
@@ -27,16 +29,18 @@ use mork_client::{ExploreResult, MorkClient, MorkError, NamespaceInfo};
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 
 /// Fetch a freshly created op-log entry and emit `OpLogChanged` to its owner.
-/// Called right after the detail row (import/clear/transform) has been inserted.
-fn emit_new_op(bus: &tokio::sync::broadcast::Sender<SpaceEvent>, log_id: i32, token_id: i32) {
+fn emit_new_op(pool: &DbPool, bus: &broadcast::Sender<SpaceEvent>, log_id: i32, token_id: i32) {
     use crate::routes::op_logs::fetch_details_pub;
-    let conn = &mut establish_connection();
+    let mut conn = match pool.get() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
     if let Ok(log) = op_log::table
         .select(OpLog::as_select())
         .filter(op_log::id.eq(log_id))
-        .first(conn)
+        .first(&mut conn)
     {
-        let entry = fetch_details_pub(conn, log);
+        let entry = fetch_details_pub(&mut conn, log);
         let _ = bus.send(SpaceEvent::OpLogChanged {
             token_id,
             entries: vec![entry],
@@ -44,14 +48,21 @@ fn emit_new_op(bus: &tokio::sync::broadcast::Sender<SpaceEvent>, log_id: i32, to
     }
 }
 
-fn insert_op_log(op_type: &str, token_id: i32) -> Option<i32> {
+fn insert_op_log(pool: &DbPool, op_type: &str, token_id: i32) -> Option<i32> {
+    let mut conn = match pool.get() {
+        Ok(c) => c,
+        Err(e) => {
+            error!(error = %e, "Failed to get connection for op log insert");
+            return None;
+        }
+    };
     diesel::insert_into(op_log::table)
         .values(&OpLogInsert {
             op_type: op_type.to_string(),
             token_id: Some(token_id),
         })
         .returning(op_log::id)
-        .get_result::<i32>(&mut establish_connection())
+        .get_result::<i32>(&mut conn)
         .ok()
 }
 
@@ -62,6 +73,13 @@ pub enum PermissionError {
     ReadRequired,
     WriteRequired,
     NamespaceMismatch { path: String, namespace: String },
+}
+
+impl From<PermissionError> for ApiError {
+    fn from(e: PermissionError) -> Self {
+        warn!(error = ?e, "Permission denied");
+        ApiError::Unauthorized
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -110,12 +128,18 @@ impl Permission {
     }
 }
 
-fn permission_error_to_status(e: PermissionError) -> Status {
-    warn!(error = ?e, "Permission denied");
-    Status::Unauthorized
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Returns `Err(Forbidden)` unless the token carries the `share_share`
+/// permission, which is only held by root-level tokens.
+pub(crate) fn require_root(token: &Token) -> Result<(), ApiError> {
+    if token.permission_share_share {
+        Ok(())
+    } else {
+        warn!(token_id = token.id, "Root permission required but not held");
+        Err(ApiError::Forbidden)
+    }
+}
 
 fn permission_from_token(token: &Token) -> Permission {
     let namespace = token
@@ -124,11 +148,6 @@ fn permission_from_token(token: &Token) -> Permission {
         .unwrap_or(&token.namespace)
         .to_string();
     Permission::new(namespace, token.permission_read, token.permission_write)
-}
-
-fn mork_error_to_status(e: MorkError) -> Status {
-    error!(error = %e, "MORK request failed");
-    Status::InternalServerError
 }
 
 fn get_mork_client() -> MorkClient {
@@ -154,16 +173,19 @@ const LOCK_WAIT_MS: u64 = 5_000;
 /// Default number of retries before giving up.
 const LOCK_MAX_RETRIES: u32 = 2;
 
+/// Normalize a path into a consistent lock cache key (trim trailing slashes).
+fn normalize_lock_key(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    s.trim_end_matches('/').to_string()
+}
+
 /// Retries an async operation if it fails due to a lock conflict.
-///
-/// On each conflict: waits for the path to become available (up to `wait_ms`),
-/// then retries. After `max_retries` exhausted, returns 409 Conflict.
 async fn with_retry<F, Fut, T>(
     path: &PathBuf,
     wait_ms: u64,
     max_retries: u32,
     operation: F,
-) -> Result<T, Status>
+) -> Result<T, ApiError>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = Result<T, MorkError>>,
@@ -175,94 +197,109 @@ where
             Err(e) if is_lock_conflict(&e) && attempts < max_retries => {
                 attempts += 1;
                 warn!(path = %path.display(), attempt = attempts, max_retries, "MORK lock conflict, retrying");
-                let _ = get_mork_client().wait_for_available(path, wait_ms).await;
+                if let Err(wait_err) = get_mork_client().wait_for_available(path, wait_ms).await {
+                    warn!(path = %path.display(), error = %wait_err, "wait_for_available failed during retry");
+                }
             }
             Err(e) if is_lock_conflict(&e) => {
                 warn!(path = %path.display(), max_retries, "MORK lock conflict, giving up after max retries");
-                return Err(Status::Conflict);
+                return Err(ApiError::Conflict("MORK lock conflict".into()));
             }
-            Err(e) => return Err(mork_error_to_status(e)),
+            Err(e) => return Err(ApiError::Mork(e)),
         }
     }
 }
 
+/// Acquire application-level locks on `paths`, run `operation`, then release.
+///
+/// The global mutex is held only during the check-and-mark and unlock phases,
+/// NOT during the (potentially long-running) operation itself.
 pub(crate) async fn with_lock<F, Fut, T>(
     lock_manager: &State<LockManager>,
     paths: &[&PathBuf],
     operation: F,
-) -> Result<T, Status>
+) -> Result<T, ApiError>
 where
-    F: Fn() -> Fut,
-    Fut: std::future::Future<Output = Result<T, Status>>,
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<T, ApiError>>,
 {
-    let _l = lock_manager.op_mutex.lock().await;
+    {
+        let _l = lock_manager.op_mutex.lock().await;
 
-    for &path in paths {
-        for ancestor in path.ancestors() {
-            if let Some(entry) = lock_manager
-                .cache
-                .get(&ancestor.to_string_lossy().to_string())
-                .await
-            {
-                if entry.is_locked {
-                    debug!(path = %path.display(), ancestor = %ancestor.display(), "Rejecting: ancestor is locked");
-                    return Err(Status::Conflict);
+        for &path in paths {
+            let path_key = normalize_lock_key(path);
+            for ancestor in path.ancestors() {
+                let key = normalize_lock_key(ancestor);
+                if let Some(entry) = lock_manager.cache.get(&key).await {
+                    if entry.is_locked && key != path_key {
+                        debug!(path = %path.display(), ancestor = %ancestor.display(), "Rejecting: ancestor is locked");
+                        return Err(ApiError::Conflict("path is locked".into()));
+                    }
+                    if entry.is_locked && key == path_key {
+                        debug!(path = %path.display(), "Rejecting: path is already locked");
+                        return Err(ApiError::Conflict("path is locked".into()));
+                    }
+                }
+            }
+
+            if let Some(entry) = lock_manager.cache.get(&path_key).await {
+                if entry.descendants_locked > 0 {
+                    debug!(path = %path.display(), "Rejecting: descendant paths are locked");
+                    return Err(ApiError::Conflict("descendant paths are locked".into()));
                 }
             }
         }
 
-        if let Some(entry) = lock_manager
-            .cache
-            .get(&path.to_string_lossy().to_string())
-            .await
-        {
-            if entry.descendants_locked > 0 {
-                debug!(path = %path.display(), "Rejecting: descendant paths are locked");
-                return Err(Status::Conflict);
+        for &path in paths {
+            let path_key = normalize_lock_key(path);
+            for ancestor in path.ancestors() {
+                let key = normalize_lock_key(ancestor);
+                lock_manager
+                    .cache
+                    .entry(key.clone())
+                    .and_upsert_with(|maybe_entry| {
+                        let mut entry = match maybe_entry {
+                            Some(entry_ref) => entry_ref.value().clone(),
+                            None => LockEntry::default(),
+                        };
+                        if key == path_key {
+                            entry.is_locked = true;
+                        } else {
+                            entry.descendants_locked += 1;
+                        }
+                        std::future::ready(entry)
+                    })
+                    .await;
             }
-        }
-    }
-
-    for &path in paths {
-        for ancestor in path.ancestors() {
-            lock_manager
-                .cache
-                .entry(ancestor.to_string_lossy().to_string())
-                .and_upsert_with(|maybe_entry| {
-                    let mut entry = match maybe_entry {
-                        Some(entry_ref) => entry_ref.value().clone(),
-                        None => LockEntry::default(),
-                    };
-                    if ancestor == path.as_path() {
-                        entry.is_locked = true;
-                    } else {
-                        entry.descendants_locked += 1;
-                    }
-                    std::future::ready(entry)
-                })
-                .await;
         }
     }
 
     let result = operation().await;
 
-    for &path in paths {
-        for ancestor in path.ancestors() {
-            lock_manager
-                .cache
-                .entry(ancestor.to_string_lossy().to_string())
-                .and_upsert_with(|maybe_entry| {
-                    let mut entry = match maybe_entry {
-                        Some(entry_ref) => entry_ref.value().clone(),
-                        None => LockEntry::default(),
-                    };
-                    if ancestor == path.as_path() {
-                        entry.is_locked = false;
-                    }
-                    entry.descendants_locked = entry.descendants_locked.saturating_sub(1);
-                    std::future::ready(entry)
-                })
-                .await;
+    {
+        let _l = lock_manager.op_mutex.lock().await;
+
+        for &path in paths {
+            let path_key = normalize_lock_key(path);
+            for ancestor in path.ancestors() {
+                let key = normalize_lock_key(ancestor);
+                lock_manager
+                    .cache
+                    .entry(key.clone())
+                    .and_upsert_with(|maybe_entry| {
+                        let mut entry = match maybe_entry {
+                            Some(entry_ref) => entry_ref.value().clone(),
+                            None => LockEntry::default(),
+                        };
+                        if key == path_key {
+                            entry.is_locked = false;
+                        } else {
+                            entry.descendants_locked = entry.descendants_locked.saturating_sub(1);
+                        }
+                        std::future::ready(entry)
+                    })
+                    .await;
+            }
         }
     }
 
@@ -285,7 +322,8 @@ pub async fn transform(
     transformation: Json<Transformation>,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<bool>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<bool>, ApiError> {
     if transformation.input_spaces.len() != transformation.patterns.len()
         || transformation.output_spaces.len() != transformation.templates.len()
     {
@@ -293,7 +331,9 @@ pub async fn transform(
             token_id = token.id,
             "Transform rejected: mismatched input/output counts"
         );
-        return Err(Status::BadRequest);
+        return Err(ApiError::BadRequest(
+            "mismatched input/output counts".into(),
+        ));
     }
 
     let all_balanced = transformation
@@ -306,19 +346,20 @@ pub async fn transform(
             token_id = token.id,
             "Transform rejected: unbalanced patterns or templates"
         );
-        return Err(Status::UnprocessableEntity);
+        return Err(ApiError::Unprocessable(
+            "unbalanced patterns or templates".into(),
+        ));
     }
 
     let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.require_write().map_err(permission_error_to_status)?;
+    perm.require_read()?;
+    perm.require_write()?;
     for path in transformation
         .input_spaces
         .iter()
         .chain(transformation.output_spaces.iter())
     {
-        perm.check_namespace(path)
-            .map_err(permission_error_to_status)?;
+        perm.check_namespace(path)?;
     }
 
     let prefix_path = PathBuf::from("space");
@@ -381,47 +422,49 @@ pub async fn transform(
         .chain(transformation.output_spaces.iter())
         .collect();
 
-    let result = with_lock(lock_manager, &lock_paths, || {
-        crate::commands::transform::execute(&transform_command)
+    let pool_ref = pool.inner();
+    let input_json = serde_json::to_value(
+        transformation
+            .input_spaces
+            .iter()
+            .zip(transformation.patterns.iter())
+            .map(|(p, pat)| serde_json::json!({"path": p.to_string_lossy(), "pattern": pat}))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_default();
+    let output_json = serde_json::to_value(
+        transformation
+            .output_spaces
+            .iter()
+            .zip(transformation.templates.iter())
+            .map(|(p, tmpl)| serde_json::json!({"path": p.to_string_lossy(), "template": tmpl}))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_default();
+
+    let result = with_lock(lock_manager, &lock_paths, || async {
+        crate::commands::transform::execute(&transform_command).await?;
+
+        if let Some(log_id) = insert_op_log(pool_ref, "Transform", token.id) {
+            let mut conn = db::get_conn(pool_ref)?;
+            let _ = diesel::insert_into(op_log_transform::table)
+                .values(&OpLogTransformInsert {
+                    op_log_id: log_id,
+                    input_spaces: input_json.clone(),
+                    output_spaces: output_json.clone(),
+                    operation_id: Some(operation_id.to_string()),
+                })
+                .execute(&mut conn);
+            emit_new_op(pool_ref, &bus.0, log_id, token.id);
+        }
+
+        Ok(())
     })
     .await;
 
     match result {
         Ok(()) => {
             info!(operation_id = %operation_id, "Transform command submitted successfully");
-            if let Some(log_id) = insert_op_log("Transform", token.id) {
-                let input_json = serde_json::to_value(
-                    transformation
-                        .input_spaces
-                        .iter()
-                        .zip(transformation.patterns.iter())
-                        .map(|(p, pat)| {
-                            serde_json::json!({"path": p.to_string_lossy(), "pattern": pat})
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .unwrap_or_default();
-                let output_json = serde_json::to_value(
-                    transformation
-                        .output_spaces
-                        .iter()
-                        .zip(transformation.templates.iter())
-                        .map(|(p, tmpl)| {
-                            serde_json::json!({"path": p.to_string_lossy(), "template": tmpl})
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .unwrap_or_default();
-                let _ = diesel::insert_into(op_log_transform::table)
-                    .values(&OpLogTransformInsert {
-                        op_log_id: log_id,
-                        input_spaces: input_json,
-                        output_spaces: output_json,
-                        operation_id: Some(operation_id.to_string()),
-                    })
-                    .execute(&mut establish_connection());
-                emit_new_op(&bus.0, log_id, token.id);
-            }
 
             let bus_tx = bus.0.clone();
             let monitor_path = transformation
@@ -453,10 +496,10 @@ pub async fn transform(
             Ok(Json(true))
         }
         Err(e) => {
-            error!(operation_id = %operation_id, status = %e, "Transform command failed");
+            error!(operation_id = %operation_id, error = %e, "Transform command failed");
             let _ = bus.0.send(SpaceEvent::TransformError {
                 path: event_path.clone(),
-                message: format!("{:?}", e),
+                message: format!("{}", e),
             });
             let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
             Err(e)
@@ -466,15 +509,32 @@ pub async fn transform(
 
 // ─── Import ──────────────────────────────────────────────────────────────────
 
-#[post("/spaces/<path..>", rank = 5, data = "<space>")]
+#[post("/spaces/<path..>", rank = 5, data = "<data>")]
 pub async fn import(
     token: Token,
     path: PathBuf,
-    space: String,
+    data: Data<'_>,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
-    do_import(&token, &path, &space, &bus.0, &lock_manager).await
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
+    let stream = data
+        .open(crate::config::config().max_upload_bytes.bytes())
+        .into_string()
+        .await
+        .map_err(|e| ApiError::Internal(format!("failed to read request body: {e}")))?;
+    if !stream.is_complete() {
+        return Err(ApiError::PayloadTooLarge);
+    }
+    do_import(
+        &token,
+        &path,
+        &stream.into_inner(),
+        &bus.0,
+        lock_manager,
+        pool.inner(),
+    )
+    .await
 }
 
 /// Default timeout (5 minutes) for monitoring MORK operations.
@@ -486,11 +546,11 @@ pub async fn do_import(
     space: &str,
     bus: &broadcast::Sender<SpaceEvent>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &DbPool,
+) -> Result<Json<String>, ApiError> {
     let perm = permission_from_token(token);
-    perm.require_write().map_err(permission_error_to_status)?;
-    perm.check_namespace(path)
-        .map_err(permission_error_to_status)?;
+    perm.require_write()?;
+    perm.check_namespace(path)?;
 
     info!(path = %path.display(), token_id = token.id, "Starting MeTTa import");
 
@@ -498,11 +558,11 @@ pub async fn do_import(
     let file_path = format!("static/{}.metta", file_id);
     let mut file = File::create(&file_path).map_err(|e| {
         error!(error = %e, "Error creating temp file");
-        Status::InternalServerError
+        ApiError::Internal(e.to_string())
     })?;
     file.write_all(space.as_bytes()).map_err(|e| {
         error!(error = %e, "Error writing temp file");
-        Status::InternalServerError
+        ApiError::Internal(e.to_string())
     })?;
     drop(file);
 
@@ -529,25 +589,29 @@ pub async fn do_import(
         operation_id: operation_id.to_string(),
     };
 
-    let cmd_result = with_lock(lock_manager, &[path], || {
-        crate::commands::import::execute(&import_command)
+    let cmd_result = with_lock(lock_manager, &[path], || async {
+        crate::commands::import::execute(&import_command).await?;
+
+        if let Some(log_id) = insert_op_log(pool, "Import", token.id) {
+            let mut conn = db::get_conn(pool)?;
+            let _ = diesel::insert_into(op_log_import::table)
+                .values(&OpLogImportInsert {
+                    op_log_id: log_id,
+                    path: path.to_string_lossy().into_owned(),
+                    uri: uri.clone(),
+                    operation_id: Some(operation_id.to_string()),
+                })
+                .execute(&mut conn);
+            emit_new_op(pool, bus, log_id, token.id);
+        }
+
+        Ok(())
     })
     .await;
 
     match cmd_result {
         Ok(()) => {
             info!(path = %path.display(), operation_id = %operation_id, "Import command submitted successfully");
-            if let Some(log_id) = insert_op_log("Import", token.id) {
-                let _ = diesel::insert_into(op_log_import::table)
-                    .values(&OpLogImportInsert {
-                        op_log_id: log_id,
-                        path: path.to_string_lossy().into_owned(),
-                        uri: uri.clone(),
-                        operation_id: Some(operation_id.to_string()),
-                    })
-                    .execute(&mut establish_connection());
-                emit_new_op(bus, log_id, token.id);
-            }
 
             // Spawn background monitor: wait for MORK to finish, then emit events
             let bus_clone = bus.clone();
@@ -576,14 +640,14 @@ pub async fn do_import(
             });
             Ok(Json(operation_id.to_string()))
         }
-        Err(status) => {
-            error!(path = %path.display(), status = %status, "Import command failed");
+        Err(e) => {
+            error!(path = %path.display(), error = %e, "Import command failed");
             let _ = bus.send(SpaceEvent::ImportError {
                 path: event_path.clone(),
                 message: "Import failed".into(),
             });
             let _ = bus.send(SpaceEvent::Unlocked { path: event_path });
-            Err(status)
+            Err(e)
         }
     }
 }
@@ -597,8 +661,9 @@ pub async fn clear(
     pattern: Option<String>,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<bool>, Status> {
-    clear_inner(token, path, pattern, bus, lock_manager).await
+    pool: &State<DbPool>,
+) -> Result<Json<bool>, ApiError> {
+    clear_inner(token, path, pattern, bus, lock_manager, pool).await
 }
 
 async fn clear_inner(
@@ -607,12 +672,12 @@ async fn clear_inner(
     pattern: Option<String>,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<bool>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<bool>, ApiError> {
     let pattern = pattern.unwrap_or_else(|| "$".to_string());
     let perm = permission_from_token(&token);
-    perm.require_write().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path)
-        .map_err(permission_error_to_status)?;
+    perm.require_write()?;
+    perm.check_namespace(&path)?;
 
     info!(path = %path.display(), pattern = %pattern, token_id = token.id, "Starting space clear");
 
@@ -635,29 +700,36 @@ async fn clear_inner(
         pattern: pattern.clone(),
     };
 
-    let cmd_result = with_lock(&lock_manager, &[&path], || {
-        crate::commands::clear::execute(&clear_command)
+    let pool_ref = pool.inner();
+    let path_str = if path.as_os_str().is_empty() {
+        String::new()
+    } else {
+        format!("{}/", path.to_string_lossy())
+    };
+
+    let cmd_result = with_lock(lock_manager, &[&path], || async {
+        crate::commands::clear::execute(&clear_command).await?;
+
+        if let Some(log_id) = insert_op_log(pool_ref, "Clear", token.id) {
+            let mut conn = db::get_conn(pool_ref)?;
+            let _ = diesel::insert_into(op_log_clear::table)
+                .values(&OpLogClearInsert {
+                    op_log_id: log_id,
+                    path: path_str,
+                    operation_id: Some(operation_id.to_string()),
+                    pattern,
+                })
+                .execute(&mut conn);
+            emit_new_op(pool_ref, &bus.0, log_id, token.id);
+        }
+
+        Ok(())
     })
     .await;
 
     match cmd_result {
         Ok(()) => {
             info!(path = %path.display(), operation_id = %operation_id, "Clear command submitted successfully");
-            if let Some(log_id) = insert_op_log("Clear", token.id) {
-                let _ = diesel::insert_into(op_log_clear::table)
-                    .values(&OpLogClearInsert {
-                        op_log_id: log_id,
-                        path: if path.as_os_str().is_empty() {
-                            String::new()
-                        } else {
-                            format!("{}/", path.to_string_lossy())
-                        },
-                        operation_id: Some(operation_id.to_string()),
-                        pattern,
-                    })
-                    .execute(&mut establish_connection());
-                emit_new_op(&bus.0, log_id, token.id);
-            }
 
             let bus_tx = bus.0.clone();
             let monitor_path = augmented_path.clone();
@@ -684,14 +756,14 @@ async fn clear_inner(
             });
             Ok(Json(true))
         }
-        Err(status) => {
-            error!(path = %path.display(), status = %status, "Clear command failed");
+        Err(e) => {
+            error!(path = %path.display(), error = %e, "Clear command failed");
             let _ = bus.0.send(SpaceEvent::ClearError {
                 path: event_path.clone(),
                 message: "Clear failed".into(),
             });
             let _ = bus.0.send(SpaceEvent::Unlocked { path: event_path });
-            Err(status)
+            Err(e)
         }
     }
 }
@@ -709,23 +781,20 @@ pub async fn copy(
     req: Json<CopyRequest>,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<bool>, Status> {
-    // Strip leading slashes so that PathBuf::join doesn't treat them as absolute paths,
-    // which would replace the "space/" prefix entirely.
+    pool: &State<DbPool>,
+) -> Result<Json<bool>, ApiError> {
     let src_rel = PathBuf::from(req.src.to_string_lossy().trim_start_matches('/'));
     let dst_rel = PathBuf::from(req.dst.to_string_lossy().trim_start_matches('/'));
 
     let perm = permission_from_token(&token);
-    perm.require_write().map_err(permission_error_to_status)?;
-    perm.check_namespace(&src_rel)
-        .map_err(permission_error_to_status)?;
-    perm.check_namespace(&dst_rel)
-        .map_err(permission_error_to_status)?;
+    perm.require_write()?;
+    perm.check_namespace(&src_rel)?;
+    perm.check_namespace(&dst_rel)?;
 
-    // Reject copies where one path is a subspace of the other (would cause
-    // recursive / self-referential behaviour).
     if src_rel == dst_rel || src_rel.starts_with(&dst_rel) || dst_rel.starts_with(&src_rel) {
-        return Err(Status::UnprocessableEntity);
+        return Err(ApiError::Unprocessable(
+            "overlapping source and destination".into(),
+        ));
     }
 
     info!(
@@ -763,8 +832,24 @@ pub async fn copy(
     let src_path = src_rel.clone();
     let dst_path = dst_rel.clone();
 
-    let cmd_result = with_lock(lock_manager, &[&src_path, &dst_path], || {
-        crate::commands::copy::execute(&copy_command)
+    let pool_ref = pool.inner();
+    let cmd_result = with_lock(lock_manager, &[&src_path, &dst_path], || async {
+        crate::commands::copy::execute(&copy_command).await?;
+
+        if let Some(log_id) = insert_op_log(pool_ref, "Copy", token.id) {
+            let mut conn = db::get_conn(pool_ref)?;
+            let _ = diesel::insert_into(op_log_copy::table)
+                .values(&OpLogCopyInsert {
+                    op_log_id: log_id,
+                    src: src_rel.to_string_lossy().into_owned(),
+                    dst: dst_rel.to_string_lossy().into_owned(),
+                    operation_id: Some(operation_id.to_string()),
+                })
+                .execute(&mut conn);
+            emit_new_op(pool_ref, &bus.0, log_id, token.id);
+        }
+
+        Ok(())
     })
     .await;
 
@@ -776,33 +861,22 @@ pub async fn copy(
                 operation_id = %operation_id,
                 "Copy command completed successfully"
             );
-            if let Some(log_id) = insert_op_log("Copy", token.id) {
-                let _ = diesel::insert_into(op_log_copy::table)
-                    .values(&OpLogCopyInsert {
-                        op_log_id: log_id,
-                        src: src_rel.to_string_lossy().into_owned(),
-                        dst: dst_rel.to_string_lossy().into_owned(),
-                        operation_id: Some(operation_id.to_string()),
-                    })
-                    .execute(&mut establish_connection());
-                emit_new_op(&bus.0, log_id, token.id);
-            }
             let _ = bus.0.send(SpaceEvent::Unlocked {
                 path: dst_event_path,
             });
             Ok(Json(true))
         }
-        Err(status) => {
+        Err(e) => {
             error!(
                 src = %src_rel.display(),
                 dst = %dst_rel.display(),
-                status = %status,
+                error = %e,
                 "Copy command failed"
             );
             let _ = bus.0.send(SpaceEvent::Unlocked {
                 path: dst_event_path,
             });
-            Err(status)
+            Err(e)
         }
     }
 }
@@ -816,11 +890,10 @@ pub async fn explore(
     focus_token: String,
     depth: Option<u32>,
     page_size: Option<usize>,
-) -> Result<Json<ExploreResult>, Status> {
+) -> Result<Json<ExploreResult>, ApiError> {
     let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path)
-        .map_err(permission_error_to_status)?;
+    perm.require_read()?;
+    perm.check_namespace(&path)?;
     let depth = depth.unwrap_or(1).max(1);
     let page_size = page_size.unwrap_or(100).clamp(1, 10000);
     debug!(path = %path.display(), focus_token = %focus_token, depth, page_size, "Explore request");
@@ -849,15 +922,15 @@ pub async fn explore(
 pub async fn explore_namespaces(
     token: Token,
     path: PathBuf,
-) -> Result<Json<NamespaceInfo>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<NamespaceInfo>, ApiError> {
     let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path)
-        .map_err(permission_error_to_status)?;
+    perm.require_read()?;
+    perm.check_namespace(&path)?;
     debug!(path = %path.display(), "Explore namespaces request");
 
-    // Collect all descendant token namespaces to build the "virtual" tree.
-    // These are namespaces that have tokens but may not yet exist in MORK.
+    let mut conn = db::get_conn(pool.inner())?;
+
     let child_tokens = diesel::sql_query(
         "WITH RECURSIVE rectree AS (
             SELECT * FROM tokens WHERE id = $1
@@ -866,7 +939,7 @@ pub async fn explore_namespaces(
         ) SELECT * FROM rectree;",
     )
     .bind::<Integer, _>(token.id)
-    .get_results::<Token>(&mut establish_connection())
+    .get_results::<Token>(&mut conn)
     .unwrap_or_default();
 
     let token_namespaces: Vec<String> = child_tokens
@@ -905,9 +978,6 @@ pub async fn explore_namespaces(
 
 // ─── Namespace tree helpers ───────────────────────────────────────────────────
 
-/// Recursively builds a `NamespaceInfo` tree rooted at `current_path` from a
-/// flat list of normalized namespace strings (no leading/trailing slashes,
-/// e.g. `"myproject/sub"`).
 fn build_namespace_tree(current_path: &Path, all_ns: &[String]) -> NamespaceInfo {
     let current_str = current_path.to_string_lossy();
     let mut child_names: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -951,8 +1021,6 @@ fn build_namespace_tree(current_path: &Path, all_ns: &[String]) -> NamespaceInfo
     }
 }
 
-/// Merges two `NamespaceInfo` trees, keeping `a`'s root namespace.
-/// Sub-trees present in both are merged recursively; those only in `b` are appended.
 fn merge_namespace_info(a: NamespaceInfo, b: NamespaceInfo) -> NamespaceInfo {
     let mut subs = a.subnamespaces.unwrap_or_default();
     for sub_b in b.subnamespaces.unwrap_or_default() {
@@ -972,11 +1040,10 @@ fn merge_namespace_info(a: NamespaceInfo, b: NamespaceInfo) -> NamespaceInfo {
 // ─── Count ───────────────────────────────────────────────────────────────────
 
 #[get("/count/<path..>")]
-pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, Status> {
+pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, ApiError> {
     let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path)
-        .map_err(permission_error_to_status)?;
+    perm.require_read()?;
+    perm.check_namespace(&path)?;
     debug!(path = %path.display(), "Count request");
     with_retry(&path, LOCK_WAIT_MS, LOCK_MAX_RETRIES, || {
         let path = path.clone();
@@ -996,11 +1063,10 @@ pub async fn count(token: Token, path: PathBuf) -> Result<Json<usize>, Status> {
 // ─── Status ──────────────────────────────────────────────────────────────────
 
 #[get("/status/<path..>")]
-pub async fn status(token: Token, path: PathBuf) -> Result<Json<serde_json::Value>, Status> {
+pub async fn status(token: Token, path: PathBuf) -> Result<Json<serde_json::Value>, ApiError> {
     let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path)
-        .map_err(permission_error_to_status)?;
+    perm.require_read()?;
+    perm.check_namespace(&path)?;
     debug!(path = %path.display(), "Status request");
     let root = PathBuf::from("space");
     let augmented_path = if !path.as_os_str().is_empty() {
@@ -1009,11 +1075,7 @@ pub async fn status(token: Token, path: PathBuf) -> Result<Json<serde_json::Valu
         root.clone()
     };
 
-    get_mork_client()
-        .status(&augmented_path)
-        .await
-        .map(Json)
-        .map_err(mork_error_to_status)
+    Ok(Json(get_mork_client().status(&augmented_path).await?))
 }
 
 // ─── Subtract ────────────────────────────────────────────────────────────────
@@ -1031,8 +1093,8 @@ pub async fn subtract(
     token: Token,
     req: Json<SubtractRequest>,
     _bus: &State<EventBus>,
-    _lock_manager: &State<LockManager>,
-) -> Result<Json<bool>, Status> {
+    lock_manager: &State<LockManager>,
+) -> Result<Json<bool>, ApiError> {
     if req.input_spaces.len() != req.patterns.len()
         || req.output_spaces.len() != req.templates.len()
     {
@@ -1040,7 +1102,9 @@ pub async fn subtract(
             token_id = token.id,
             "Subtract rejected: mismatched input/output counts"
         );
-        return Err(Status::BadRequest);
+        return Err(ApiError::BadRequest(
+            "mismatched input/output counts".into(),
+        ));
     }
 
     let all_balanced = req
@@ -1053,7 +1117,9 @@ pub async fn subtract(
             token_id = token.id,
             "Subtract rejected: unbalanced patterns or templates"
         );
-        return Err(Status::UnprocessableEntity);
+        return Err(ApiError::Unprocessable(
+            "unbalanced patterns or templates".into(),
+        ));
     }
 
     info!(
@@ -1064,11 +1130,10 @@ pub async fn subtract(
     );
 
     let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.require_write().map_err(permission_error_to_status)?;
+    perm.require_read()?;
+    perm.require_write()?;
     for path in req.input_spaces.iter().chain(req.output_spaces.iter()) {
-        perm.check_namespace(path)
-            .map_err(permission_error_to_status)?;
+        perm.check_namespace(path)?;
     }
 
     let root = PathBuf::from("space");
@@ -1089,17 +1154,24 @@ pub async fn subtract(
 
     let last_output = output.last().map(|(p, _)| p.clone());
 
-    get_mork_client()
-        .subtract(&input, &output)
-        .await
-        .map_err(mork_error_to_status)?;
+    let lock_paths: Vec<&PathBuf> = req
+        .input_spaces
+        .iter()
+        .chain(req.output_spaces.iter())
+        .collect();
 
-    if let Some(monitor_path) = last_output {
-        get_mork_client()
-            .wait_for_available(&monitor_path, 5_000)
-            .await
-            .map_err(mork_error_to_status)?;
-    }
+    with_lock(lock_manager, &lock_paths, || async {
+        get_mork_client().subtract(&input, &output).await?;
+
+        if let Some(monitor_path) = last_output {
+            get_mork_client()
+                .wait_for_available(&monitor_path, 5_000)
+                .await?;
+        }
+
+        Ok(())
+    })
+    .await?;
 
     info!(token_id = token.id, "Subtract complete");
     Ok(Json(true))
@@ -1112,15 +1184,16 @@ pub async fn import_csv(
     token: Token,
     path: PathBuf,
     file: rocket::fs::TempFile<'_>,
-    params: crate::routes::translations::CsvParams,
+    params: crate::translations::CsvParams,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
     info!(path = %path.display(), token_id = token.id, "File import: CSV");
-    let space = crate::routes::translations::create_from_csv(file, params)
+    let space = crate::translations::create_from_csv(file, params)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0, &lock_manager).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
 }
 
 #[post("/spaces/import/nt/<path..>", data = "<file>")]
@@ -1130,12 +1203,13 @@ pub async fn import_nt(
     file: rocket::fs::TempFile<'_>,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
     info!(path = %path.display(), token_id = token.id, "File import: N-Triples");
-    let space = crate::routes::translations::create_from_nt(file)
+    let space = crate::translations::create_from_nt(file)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0, &lock_manager).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
 }
 
 #[post("/spaces/import/jsonld/<path..>", data = "<file>")]
@@ -1145,12 +1219,13 @@ pub async fn import_jsonld(
     file: rocket::fs::TempFile<'_>,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
     info!(path = %path.display(), token_id = token.id, "File import: JSON-LD");
-    let space = crate::routes::translations::create_from_jsonld(file)
+    let space = crate::translations::create_from_jsonld(file)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0, &lock_manager).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
 }
 
 #[post("/spaces/import/n3/<path..>", data = "<file>")]
@@ -1160,29 +1235,33 @@ pub async fn import_n3(
     file: rocket::fs::TempFile<'_>,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
     info!(path = %path.display(), token_id = token.id, "File import: N3");
-    let space = crate::routes::translations::create_from_n3(file)
+    let space = crate::translations::create_from_n3(file)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0, &lock_manager).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
 }
 
 // ─── Import from URL ─────────────────────────────────────────────────────────
 
-async fn fetch_url_bytes(url: &str) -> Result<Vec<u8>, Status> {
+async fn fetch_url_bytes(url: &str) -> Result<Vec<u8>, ApiError> {
     let client = reqwest::Client::new();
     let resp = client.get(url).send().await.map_err(|e| {
         error!(error = %e, url, "Error fetching URL");
-        Status::BadRequest
+        ApiError::BadRequest(format!("failed to fetch URL: {}", e))
     })?;
     if !resp.status().is_success() {
         error!(status = %resp.status(), "URL fetch returned error status");
-        return Err(Status::BadRequest);
+        return Err(ApiError::BadRequest(format!(
+            "URL returned status {}",
+            resp.status()
+        )));
     }
     resp.bytes().await.map(|b| b.to_vec()).map_err(|e| {
         error!(error = %e, "Error reading URL response bytes");
-        Status::InternalServerError
+        ApiError::Internal(e.to_string())
     })
 }
 
@@ -1193,14 +1272,15 @@ pub async fn import_url_metta(
     url: String,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: MeTTa");
     let bytes = fetch_url_bytes(&url).await?;
     let space = String::from_utf8(bytes).map_err(|e| {
         error!(error = %e, "URL content is not valid UTF-8");
-        Status::UnprocessableEntity
+        ApiError::Unprocessable(e.to_string())
     })?;
-    do_import(&token, &path, &space, &bus.0, lock_manager).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
 }
 
 #[post("/spaces/import/url/csv/<path..>?<url>&<params..>")]
@@ -1208,21 +1288,22 @@ pub async fn import_url_csv(
     token: Token,
     path: PathBuf,
     url: String,
-    params: crate::routes::translations::CsvParams,
+    params: crate::translations::CsvParams,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: CSV");
     let bytes = fetch_url_bytes(&url).await?;
-    let space = crate::routes::translations::create_from_bytes(
+    let space = crate::translations::create_from_bytes(
         bytes,
-        crate::routes::translations::ParseFormat::Csv {
+        crate::translations::ParseFormat::Csv {
             direction: params.direction as u8,
             delimiter: params.delimiter,
         },
     )
     .await?;
-    do_import(&token, &path, &space, &bus.0, &lock_manager).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
 }
 
 #[post("/spaces/import/url/nt/<path..>?<url>")]
@@ -1232,15 +1313,13 @@ pub async fn import_url_nt(
     url: String,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: N-Triples");
     let bytes = fetch_url_bytes(&url).await?;
-    let space = crate::routes::translations::create_from_bytes(
-        bytes,
-        crate::routes::translations::ParseFormat::Nt,
-    )
-    .await?;
-    do_import(&token, &path, &space, &bus.0, &lock_manager).await
+    let space =
+        crate::translations::create_from_bytes(bytes, crate::translations::ParseFormat::Nt).await?;
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
 }
 
 #[post("/spaces/import/url/jsonld/<path..>?<url>")]
@@ -1250,15 +1329,14 @@ pub async fn import_url_jsonld(
     url: String,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: JSON-LD");
     let bytes = fetch_url_bytes(&url).await?;
-    let space = crate::routes::translations::create_from_bytes(
-        bytes,
-        crate::routes::translations::ParseFormat::JsonLd,
-    )
-    .await?;
-    do_import(&token, &path, &space, &bus.0, &lock_manager).await
+    let space =
+        crate::translations::create_from_bytes(bytes, crate::translations::ParseFormat::JsonLd)
+            .await?;
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
 }
 
 #[post("/spaces/import/url/n3/<path..>?<url>")]
@@ -1268,15 +1346,77 @@ pub async fn import_url_n3(
     url: String,
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
-) -> Result<Json<String>, Status> {
+    pool: &State<DbPool>,
+) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: N3");
     let bytes = fetch_url_bytes(&url).await?;
-    let space = crate::routes::translations::create_from_bytes(
-        bytes,
-        crate::routes::translations::ParseFormat::N3,
-    )
-    .await?;
-    do_import(&token, &path, &space, &bus.0, &lock_manager).await
+    let space =
+        crate::translations::create_from_bytes(bytes, crate::translations::ParseFormat::N3).await?;
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+}
+
+// ─── Full-space export / init ────────────────────────────────────────────────
+
+/// A response that streams a text body to the browser as a file download.
+pub struct FileDownload {
+    content: String,
+    filename: String,
+}
+
+impl<'r> rocket::response::Responder<'r, 'static> for FileDownload {
+    fn respond_to(self, _req: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
+        rocket::response::Response::build()
+            .header(rocket::http::ContentType::Plain)
+            .header(rocket::http::Header::new(
+                "Content-Disposition",
+                format!("attachment; filename=\"{}\"", self.filename),
+            ))
+            .sized_body(self.content.len(), std::io::Cursor::new(self.content))
+            .ok()
+    }
+}
+
+/// Export the entire MORK space (pattern `$`, template `$` at the root) as a
+/// downloadable `.metta` file.
+#[get("/spaces/export")]
+pub async fn export_space(token: Token) -> Result<FileDownload, ApiError> {
+    require_root(&token)?;
+
+    let client = get_mork_client();
+    let data = client.export(Path::new(""), "$", "$").await?;
+
+    info!(token_id = token.id, bytes = data.len(), "Full-space export");
+    Ok(FileDownload {
+        content: data,
+        filename: "metta_kg_export.metta".to_string(),
+    })
+}
+
+/// Initialise / restore the MORK space from an uploaded `.metta` file.
+/// The body is uploaded raw (pattern `$`, template `$` at the root).
+#[post("/spaces/init", data = "<data>")]
+pub async fn init_space(token: Token, data: Data<'_>) -> Result<Json<String>, ApiError> {
+    require_root(&token)?;
+
+    let stream = data
+        .open(crate::config::config().max_upload_bytes.bytes())
+        .into_string()
+        .await
+        .map_err(|e| ApiError::Internal(format!("failed to read request body: {e}")))?;
+    if !stream.is_complete() {
+        return Err(ApiError::PayloadTooLarge);
+    }
+    let body = stream.into_inner();
+
+    let client = get_mork_client();
+    client.upload(Path::new(""), "$", "$", &body).await?;
+
+    info!(
+        token_id = token.id,
+        bytes = body.len(),
+        "Full-space init/restore"
+    );
+    Ok(Json("ok".to_string()))
 }
 
 // ─── Editor diff ─────────────────────────────────────────────────────────────
@@ -1288,8 +1428,6 @@ pub struct EditorDiffPayload {
 }
 
 /// Recursively traverse the diff prefix trie and collect added/removed atom strings.
-/// Each path from root to a leaf (marked `a` or `r`) is joined with spaces to
-/// reconstruct the original atom string.
 pub(crate) fn collect_diff_atoms(
     node: &serde_json::Value,
     tokens: &mut Vec<String>,
@@ -1317,11 +1455,11 @@ pub async fn editor_diff(
     path: PathBuf,
     payload: Json<EditorDiffPayload>,
     bus: &State<EventBus>,
-) -> Result<(), Status> {
+) -> Result<(), ApiError> {
     let perm = permission_from_token(&token);
-    perm.require_read().map_err(permission_error_to_status)?;
-    perm.require_write().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path).map_err(permission_error_to_status)?;
+    perm.require_read()?;
+    perm.require_write()?;
+    perm.check_namespace(&path)?;
 
     let event_path = path_to_event_path(&path);
     debug!(path = %path.display(), token_id = token.id, "Editor diff received");
@@ -1331,7 +1469,9 @@ pub async fn editor_diff(
     collect_diff_atoms(&payload.trie, &mut Vec::new(), &mut added, &mut removed);
     added.retain(|a| {
         let ok = mork_client::is_balanced(a);
-        if !ok { warn!(atom = %a, "Dropping malformed addition with unbalanced parentheses"); }
+        if !ok {
+            warn!(atom = %a, "Dropping malformed addition with unbalanced parentheses");
+        }
         ok
     });
 
@@ -1343,7 +1483,11 @@ pub async fn editor_diff(
 
     if !added.is_empty() || !removed.is_empty() {
         let root = PathBuf::from("space");
-        let target_path = if path.as_os_str().is_empty() { root } else { root.join(&path) };
+        let target_path = if path.as_os_str().is_empty() {
+            root
+        } else {
+            root.join(&path)
+        };
 
         let cmd = crate::commands::edit::Params {
             target_path,
@@ -1353,7 +1497,7 @@ pub async fn editor_diff(
         };
         tokio::spawn(async move {
             if let Err(e) = crate::commands::edit::execute(&cmd).await {
-                error!(path = %cmd.target_path.display(), status = %e, "Editor diff apply failed");
+                error!(path = %cmd.target_path.display(), error = %e, "Editor diff apply failed");
             }
         });
     }
@@ -1375,10 +1519,11 @@ pub async fn editor_commit(
     path: PathBuf,
     payload: Json<EditorCommitPayload>,
     bus: &State<EventBus>,
-) -> Result<(), Status> {
+    pool: &State<DbPool>,
+) -> Result<(), ApiError> {
     let perm = permission_from_token(&token);
-    perm.require_write().map_err(permission_error_to_status)?;
-    perm.check_namespace(&path).map_err(permission_error_to_status)?;
+    perm.require_write()?;
+    perm.check_namespace(&path)?;
 
     if payload.added.is_empty() && payload.removed.is_empty() {
         return Ok(());
@@ -1390,7 +1535,8 @@ pub async fn editor_commit(
         format!("{}/", path.to_string_lossy())
     };
 
-    if let Some(log_id) = insert_op_log("Edit", token.id) {
+    if let Some(log_id) = insert_op_log(pool.inner(), "Edit", token.id) {
+        let mut conn = db::get_conn(pool.inner())?;
         let _ = diesel::insert_into(op_log_edit::table)
             .values(&OpLogEditInsert {
                 op_log_id: log_id,
@@ -1398,10 +1544,9 @@ pub async fn editor_commit(
                 added: serde_json::to_value(&payload.added).unwrap_or_default(),
                 removed: serde_json::to_value(&payload.removed).unwrap_or_default(),
             })
-            .execute(&mut establish_connection());
-        emit_new_op(&bus.0, log_id, token.id);
+            .execute(&mut conn);
+        emit_new_op(pool.inner(), &bus.0, log_id, token.id);
     }
 
     Ok(())
 }
-

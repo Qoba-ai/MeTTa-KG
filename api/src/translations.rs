@@ -1,6 +1,6 @@
+use crate::error::ApiError;
 use rocket::form::{FromForm, FromFormField};
 use rocket::fs::TempFile;
-use rocket::http::Status;
 use rocket::serde::json::Json;
 use std::fs;
 use std::process::Command;
@@ -47,7 +47,7 @@ impl ParseFormat {
         }
     }
 
-    fn translate(&self, base_path: &str) -> Result<String, Status> {
+    fn translate(&self, base_path: &str) -> Result<String, ApiError> {
         match self {
             Self::Csv {
                 direction,
@@ -75,7 +75,7 @@ impl ParseFormat {
 
 // ── Python subprocess translators ─────────────────────────────────────────────
 
-fn run_python_translation(script: &str, path: &str, extra_args: &[&str]) -> Result<String, Status> {
+fn run_python_translation(script: &str, path: &str, extra_args: &[&str]) -> Result<String, ApiError> {
     let mut cmd = Command::new("python");
     cmd.arg(script).arg(path);
     for arg in extra_args {
@@ -85,66 +85,69 @@ fn run_python_translation(script: &str, path: &str, extra_args: &[&str]) -> Resu
         Ok(_) => (),
         Err(e) => {
             error!(error = %e, script, "Python translation script failed");
-            return Err(Status::InternalServerError);
+            return Err(ApiError::Internal(format!("translation script failed: {}", e)));
         }
     }
     let output_path = format!("{}-output.metta", path);
     match fs::read_to_string(&output_path) {
         Ok(contents) => {
-            let _ = fs::remove_file(&output_path);
+            // TODO: re-enable cleanup after debugging
+            // let _ = fs::remove_file(&output_path);
             Ok(contents)
         }
         Err(e) => {
             error!(error = %e, output_path, "Failed to read translation output");
-            Err(Status::InternalServerError)
+            Err(ApiError::Internal(format!("failed to read translation output: {}", e)))
         }
     }
 }
 
 // ── Shared entry points ───────────────────────────────────────────────────────
 
-pub async fn create(mut file: TempFile<'_>, fmt: ParseFormat) -> Result<String, Status> {
+pub async fn create(mut file: TempFile<'_>, fmt: ParseFormat) -> Result<String, ApiError> {
     if let Err(e) = fs::create_dir_all("temp") {
         error!(error = %e, "Failed to create temp directory");
-        return Err(Status::InternalServerError);
+        return Err(ApiError::Internal(e.to_string()));
     }
     let base_path = format!("temp/translations-{}", Uuid::new_v4());
     let path_with_ext = format!("{}.{}", base_path, fmt.ext());
 
     if let Err(e) = file.persist_to(&path_with_ext).await {
         error!(error = %e, "Failed to persist uploaded file");
-        return Err(Status::InternalServerError);
+        return Err(ApiError::Internal(e.to_string()));
     }
 
     let result = fmt.translate(&base_path);
-    let _ = fs::remove_file(&path_with_ext);
+    // TODO: re-enable cleanup after debugging
+    // let _ = fs::remove_file(&path_with_ext);
     result
 }
 
-pub async fn create_from_bytes(bytes: Vec<u8>, fmt: ParseFormat) -> Result<String, Status> {
+pub async fn create_from_bytes(bytes: Vec<u8>, fmt: ParseFormat) -> Result<String, ApiError> {
     if let Err(e) = fs::create_dir_all("temp") {
         error!(error = %e, "Failed to create temp directory");
-        return Err(Status::InternalServerError);
+        return Err(ApiError::Internal(e.to_string()));
     }
     let base_path = format!("temp/translations-{}", Uuid::new_v4());
     let path_with_ext = format!("{}.{}", base_path, fmt.ext());
 
     if let Err(e) = fs::write(&path_with_ext, &bytes) {
         error!(error = %e, "Failed to write bytes to temp file");
-        return Err(Status::InternalServerError);
+        return Err(ApiError::Internal(e.to_string()));
     }
 
     let result = fmt.translate(&base_path);
-    let _ = fs::remove_file(&path_with_ext);
+    // TODO: re-enable cleanup after debugging
+    // let _ = fs::remove_file(&path_with_ext);
     result
 }
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── Helpers called by route handlers ─────────────────────────────────────────
 
 pub async fn create_from_csv(
     file: TempFile<'_>,
     params: CsvParams,
-) -> Result<Json<String>, Status> {
+) -> Result<Json<String>, ApiError> {
     info!(direction = params.direction as u8, delimiter = %params.delimiter, "Received CSV translation request");
     create(
         file,
@@ -157,17 +160,17 @@ pub async fn create_from_csv(
     .map(Json)
 }
 
-pub async fn create_from_nt(file: TempFile<'_>) -> Result<Json<String>, Status> {
+pub async fn create_from_nt(file: TempFile<'_>) -> Result<Json<String>, ApiError> {
     info!("Received NT translation request");
     create(file, ParseFormat::Nt).await.map(Json)
 }
 
-pub async fn create_from_jsonld(file: TempFile<'_>) -> Result<Json<String>, Status> {
+pub async fn create_from_jsonld(file: TempFile<'_>) -> Result<Json<String>, ApiError> {
     info!("Received JSONLD translation request");
     create(file, ParseFormat::JsonLd).await.map(Json)
 }
 
-pub async fn create_from_n3(file: TempFile<'_>) -> Result<Json<String>, Status> {
+pub async fn create_from_n3(file: TempFile<'_>) -> Result<Json<String>, ApiError> {
     info!("Received N3 translation request");
     create(file, ParseFormat::N3).await.map(Json)
 }

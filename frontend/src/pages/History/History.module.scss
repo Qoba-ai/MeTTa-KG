@@ -162,11 +162,13 @@
 }
 
 .ToolbarButton {
-    width: 32px;
+    min-width: 32px;
     height: 32px;
+    padding: 0 10px;
     display: flex;
     align-items: center;
     justify-content: center;
+    white-space: nowrap;
     background: var(--surface);
     border: 1px solid var(--border-subtle);
     border-radius: 6px;

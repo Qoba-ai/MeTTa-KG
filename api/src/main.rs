@@ -17,15 +17,18 @@ use crate::config::{config, Config};
 use crate::lock::LockManager;
 use crate::log::setup_logging;
 
+mod auth;
 mod commands;
 mod config;
 mod db;
+mod error;
 mod events;
 mod lock;
 mod log;
 mod model;
 mod routes;
 mod schema;
+mod translations;
 
 pub struct Shutdown(pub broadcast::Sender<()>);
 
@@ -40,11 +43,12 @@ impl Fairing for DevModeFairing {
         }
     }
 
-    #[instrument(skip(self, _rocket))]
-    async fn on_liftoff(&self, _rocket: &Rocket<rocket::Orbit>) {
+    #[instrument(skip(self, rocket))]
+    async fn on_liftoff(&self, rocket: &Rocket<rocket::Orbit>) {
         if config().env == "dev" {
-            let conn = &mut db::establish_connection();
-            match diesel::delete(schema::op_log::table).execute(conn) {
+            let pool = rocket.state::<db::DbPool>().expect("DbPool not managed");
+            let mut conn = pool.get().expect("Failed to get DB connection from pool");
+            match diesel::delete(schema::op_log::table).execute(&mut conn) {
                 Ok(n) => info!(rows_deleted = n, "Cleared op_log table"),
                 Err(e) => warn!(error = %e, "Failed to clear op_log on startup"),
             }
@@ -85,9 +89,22 @@ impl Fairing for ShutdownFairing {
 fn rocket() -> Rocket<Build> {
     let config = Config::load();
 
+    // Apply the configurable upload size limit to all Rocket data guards
+    // (String, bytes, TempFile, json, etc.) so one env var controls everything.
+    let max = config.max_upload_bytes;
+    let figment = rocket::Config::figment()
+        .merge(("limits.string",    max))
+        .merge(("limits.bytes",     max))
+        .merge(("limits.file",      max))
+        .merge(("limits.json",      max))
+        .merge(("limits.msgpack",   max))
+        .merge(("limits.data-form", max));
+
     mork_client::MorkLogger::init("logs");
 
     let _log_guard = setup_logging();
+
+    let pool = db::init_pool();
 
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
@@ -122,13 +139,14 @@ fn rocket() -> Rocket<Build> {
         op_mutex: Mutex::new(()),
     };
 
-    rocket::build()
+    rocket::custom(figment)
         .manage(events::EventBus::new())
         .manage(events::PresenceStore::new())
         .manage(Shutdown(shutdown_tx))
         .manage(lock_manager)
         .manage(cors.clone())
         .manage(config.clone())
+        .manage(pool)
         .mount(
             "/",
             routes![
@@ -164,6 +182,9 @@ fn rocket() -> Rocket<Build> {
                 routes::spaces::import_url_n3,
                 routes::spaces::copy,
                 routes::spaces::subtract,
+                routes::spaces::export_space,
+                routes::spaces::init_space,
+                routes::server_logs::server_logs,
                 routes::spaces::editor_diff,
                 routes::spaces::editor_commit,
                 routes::events::ws_ping,

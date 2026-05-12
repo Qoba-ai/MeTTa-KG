@@ -500,7 +500,9 @@ const App: Component = () => {
     // UI Layout State
     const [isFullscreen, setIsFullscreen] = createSignal<boolean>(false)
     const [exploreDepth, setExploreDepth] = createSignal(parseInt(localStorage.getItem('exploreDepth') || '1', 10))
-    const [pageSize, setPageSize] = createSignal(parseInt(localStorage.getItem('explorePageSize') || '100', 10))
+    const PAGE_SIZE_STEPS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+    const snapPageSize = (v: number) => PAGE_SIZE_STEPS.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a)
+    const [pageSize, setPageSize] = createSignal(snapPageSize(parseInt(localStorage.getItem('explorePageSize') || '100', 10)))
     const [trieWidth, setTrieWidth] = createSignal(300)
     const [isResizing, setIsResizing] = createSignal(false)
     const [consoleHeight, setConsoleHeight] = createSignal(120)
@@ -1559,7 +1561,10 @@ const App: Component = () => {
                         headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
                         body: fileText,
                     })
-                    if (!resp.ok) throw new Error(`Status ${resp.status}`)
+                    if (!resp.ok) {
+                        const body = await resp.json().catch(() => ({}))
+                        throw new Error(`Status ${resp.status} ${body?.error ?? ''}`)
+                    }
                 } else {
                     const parameters = new URLSearchParams(parserParams as any)
                     const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}/${encodedPath}?${parameters.toString()}`, {
@@ -1567,7 +1572,10 @@ const App: Component = () => {
                         headers: { Authorization: token()?.code ?? '' },
                         body: file,
                     })
-                    if (!resp.ok) throw new Error(`Status ${resp.status}`)
+                    if (!resp.ok) {
+                        const body = await resp.json().catch(() => ({}))
+                        throw new Error(`Status ${resp.status} ${body?.error ?? ''}`)
+                    }
                 }
 
             } else if (src === ImportSource.URL) {
@@ -1627,7 +1635,12 @@ const App: Component = () => {
             setEditorMode(EditorMode.EDIT)
         } catch (e) {
             console.error(e)
-            notify.error(`Failed to ${format === ImportFormat.METTA ? 'import' : 'translate and import'} (Backend error or invalid format).`)
+            const msg = e instanceof Error ? e.message : ''
+            if (msg.includes('too_large') || msg.includes('413')) {
+                notify.error('File is too large — the server rejected the upload.')
+            } else {
+                notify.error(`Failed to ${format === ImportFormat.METTA ? 'import' : 'translate and import'} (Backend error or invalid format).`)
+            }
         } finally {
             setPendingOps(prev => prev.filter(op => op.id !== opId))
             setIsTranslating(false)
@@ -2474,16 +2487,16 @@ const App: Component = () => {
                                     <div class={styles.DepthControl} title="Number of expressions to load per page">
                                         <button
                                             class={styles.UndoRedoButton}
-                                            disabled={pageSize() <= 100}
-                                            onClick={() => { const s = Math.max(100, pageSize() - 100); setPageSize(s); localStorage.setItem('explorePageSize', String(s)); }}
+                                            disabled={PAGE_SIZE_STEPS.indexOf(pageSize()) <= 0}
+                                            onClick={() => { const s = PAGE_SIZE_STEPS[Math.max(0, PAGE_SIZE_STEPS.indexOf(pageSize()) - 1)]; setPageSize(s); localStorage.setItem('explorePageSize', String(s)); }}
                                             aria-label="Decrease page size"
                                         >−</button>
                                         <span class={styles.DepthLabel}>{pageSize()}</span>
                                         <button
                                             class={styles.UndoRedoButton}
-                                            onClick={() => { const s = Math.min(10000, pageSize() + 100); setPageSize(s); localStorage.setItem('explorePageSize', String(s)); }}
+                                            onClick={() => { const s = PAGE_SIZE_STEPS[Math.min(PAGE_SIZE_STEPS.length - 1, PAGE_SIZE_STEPS.indexOf(pageSize()) + 1)]; setPageSize(s); localStorage.setItem('explorePageSize', String(s)); }}
                                             aria-label="Increase page size"
-                                            disabled={pageSize() >= 10000}
+                                            disabled={PAGE_SIZE_STEPS.indexOf(pageSize()) >= PAGE_SIZE_STEPS.length - 1}
                                         >+</button>
                                     </div>
                                 </div>

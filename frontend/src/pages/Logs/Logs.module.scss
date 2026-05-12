@@ -1,0 +1,188 @@
+.MainLayout {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--base);
+    overflow: hidden;
+}
+
+// ─── Tab Bar ──────────────────────────────────────────────────────────────────
+
+.TabBar {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--highlight-med);
+    flex-shrink: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+.Tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    color: var(--subtle);
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 200px;
+    font-family: monospace;
+
+    &:hover {
+        color: var(--text);
+        background: var(--surface);
+    }
+}
+
+.TabActive {
+    color: var(--text);
+    background: var(--base);
+    border-color: var(--highlight-med);
+    margin-bottom: -1px;
+}
+
+.TabClose {
+    opacity: 0.4;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 2px;
+    flex-shrink: 0;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+.TabAdd {
+    padding: 4px 10px;
+    font-size: 1.1rem;
+    color: var(--subtle);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    align-self: center;
+    line-height: 1;
+
+    &:hover {
+        color: var(--text);
+    }
+}
+
+// ─── Main Content ─────────────────────────────────────────────────────────────
+
+.Main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 20px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.Toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.PatternInput {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--highlight-med);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    width: 220px;
+
+    &:focus {
+        outline: none;
+        border-color: var(--foam);
+    }
+
+    &::placeholder {
+        color: var(--muted);
+    }
+}
+
+.FilterSelect {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--highlight-med);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+// ─── Pagination Controls ──────────────────────────────────────────────────────
+
+.PageControl {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.PageLabel {
+    font-size: 0.72rem;
+    color: var(--subtle);
+    white-space: nowrap;
+    padding: 0 4px;
+}
+
+.PageButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: 1px solid var(--highlight-med);
+    border-radius: 4px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.875rem;
+
+    &:hover:not(:disabled) {
+        background: var(--overlay);
+    }
+
+    &:disabled {
+        color: var(--muted);
+        cursor: not-allowed;
+    }
+}
+
+// ─── Editor ───────────────────────────────────────────────────────────────────
+
+.EditorWrapper {
+    flex: 1;
+    overflow: hidden;
+    border: 1px solid var(--highlight-med);
+    border-radius: 8px;
+
+    :global(.cm-editor) {
+        height: 100%;
+    }
+
+    :global(.cm-scroller) {
+        overflow: auto;
+        height: 100%;
+    }
+}

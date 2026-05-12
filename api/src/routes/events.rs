@@ -1,9 +1,9 @@
-use crate::db::establish_connection;
+use crate::db::{self, DbPool};
+use crate::error::ApiError;
 use crate::events::{EventBus, PresenceEntry, PresenceStore, SpaceEvent};
 use crate::routes::path_to_metta_sexpr;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use futures::{SinkExt, StreamExt};
-use rocket::http::Status;
 use rocket::State;
 use rocket_ws as ws;
 use std::collections::{HashMap, HashSet};
@@ -11,14 +11,14 @@ use std::path::PathBuf;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
-fn validate_token_code(token_code: &str) -> Option<crate::model::Token> {
+fn validate_token_code(pool: &DbPool, token_code: &str) -> Result<crate::model::Token, ApiError> {
     use crate::schema::tokens::dsl::*;
-    let conn = &mut establish_connection();
+    let conn = &mut db::get_conn(pool)?;
     tokens
         .select(crate::model::Token::as_select())
         .filter(code.eq(token_code))
         .get_result(conn)
-        .ok()
+        .map_err(|_| ApiError::Unauthorized)
 }
 
 fn event_in_namespace(event: &SpaceEvent, namespace: &str) -> bool {
@@ -89,21 +89,19 @@ pub fn ws_ping(ws: ws::WebSocket, shutdown: &State<crate::Shutdown>) -> ws::Chan
 pub fn ws_events(
     ws: ws::WebSocket,
     token_code: String,
+    pool: &State<DbPool>,
     bus: &State<EventBus>,
     presence: &State<PresenceStore>,
     shutdown: &State<crate::Shutdown>,
-) -> Result<ws::Channel<'static>, Status> {
-    let token = validate_token_code(&token_code).ok_or_else(|| {
-        warn!("WebSocket events connection rejected: invalid token");
-        Status::Unauthorized
-    })?;
+) -> Result<ws::Channel<'static>, ApiError> {
+    let token = validate_token_code(pool.inner(), &token_code)?;
 
     if !token.permission_read {
         warn!(
             token_id = token.id,
             "WebSocket events connection rejected: no read permission"
         );
-        return Err(Status::Unauthorized);
+        return Err(ApiError::Unauthorized);
     }
 
     info!(token_id = token.id, namespace = %token.namespace, "WebSocket events client connected");
@@ -205,20 +203,18 @@ pub async fn ws_editor(
     token_code: String,
     session_id: String,
     display_name: String,
+    pool: &State<DbPool>,
     bus: &State<EventBus>,
     presence: &State<PresenceStore>,
     shutdown: &State<crate::Shutdown>,
-) -> Result<ws::Channel<'static>, Status> {
-    let token = validate_token_code(&token_code).ok_or_else(|| {
-        warn!("WebSocket editor presence connection rejected: invalid token");
-        Status::Unauthorized
-    })?;
+) -> Result<ws::Channel<'static>, ApiError> {
+    let token = validate_token_code(pool.inner(), &token_code)?;
     if !token.permission_read {
         warn!(
             token_id = token.id,
             "WebSocket editor presence connection rejected: no read permission"
         );
-        return Err(Status::Unauthorized);
+        return Err(ApiError::Unauthorized);
     }
 
     let token_ns = token
@@ -232,7 +228,7 @@ pub async fn ws_editor(
             path = %path.display(),
             "WebSocket editor presence connection rejected: path outside namespace"
         );
-        return Err(Status::Unauthorized);
+        return Err(ApiError::Unauthorized);
     }
 
     let event_path = if path.as_os_str().is_empty() {
@@ -333,20 +329,18 @@ pub async fn ws_editor(
 pub async fn ws_watch(
     ws: ws::WebSocket,
     token_code: String,
+    pool: &State<DbPool>,
     bus: &State<EventBus>,
     shutdown: &State<crate::Shutdown>,
-) -> Result<ws::Channel<'static>, Status> {
-    let token = validate_token_code(&token_code).ok_or_else(|| {
-        warn!("WebSocket watch connection rejected: invalid token");
-        Status::Unauthorized
-    })?;
+) -> Result<ws::Channel<'static>, ApiError> {
+    let token = validate_token_code(pool.inner(), &token_code)?;
 
     if !token.permission_read {
         warn!(
             token_id = token.id,
             "WebSocket watch connection rejected: no read permission"
         );
-        return Err(Status::Unauthorized);
+        return Err(ApiError::Unauthorized);
     }
 
     let token_namespace = token.namespace.clone();
@@ -494,18 +488,16 @@ pub async fn ws_status(
     ws: ws::WebSocket,
     path: PathBuf,
     token_code: String,
+    pool: &State<DbPool>,
     shutdown: &State<crate::Shutdown>,
-) -> Result<ws::Channel<'static>, Status> {
-    let token = validate_token_code(&token_code).ok_or_else(|| {
-        warn!("WebSocket status connection rejected: invalid token");
-        Status::Unauthorized
-    })?;
+) -> Result<ws::Channel<'static>, ApiError> {
+    let token = validate_token_code(pool.inner(), &token_code)?;
     if !token.permission_read {
         warn!(
             token_id = token.id,
             "WebSocket status connection rejected: no read permission"
         );
-        return Err(Status::Unauthorized);
+        return Err(ApiError::Unauthorized);
     }
 
     let token_ns = token
@@ -515,7 +507,7 @@ pub async fn ws_status(
         .to_string();
     if !token_ns.is_empty() && !path.starts_with(&token_ns) {
         warn!(token_id = token.id, path = %path.display(), "WebSocket status connection rejected: path outside namespace");
-        return Err(Status::Unauthorized);
+        return Err(ApiError::Unauthorized);
     }
 
     info!(token_id = token.id, path = %path.display(), "WebSocket status client connected");

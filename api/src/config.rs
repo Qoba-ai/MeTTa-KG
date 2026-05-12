@@ -6,7 +6,9 @@ static CONFIG: OnceLock<Config> = OnceLock::new();
 /// Returns a reference to the global config.
 /// Panics if `Config::load()` has not been called first.
 pub fn config() -> &'static Config {
-    CONFIG.get().expect("Config::load() must be called before config()")
+    CONFIG
+        .get()
+        .expect("Config::load() must be called before config()")
 }
 
 #[derive(Debug, Clone)]
@@ -23,6 +25,9 @@ pub struct Config {
     /// Directory containing the Python translation scripts.
     /// Set via TRANSLATIONS_RELATIVE_PATH; defaults to "translations/src".
     pub translations_path: String,
+    /// Maximum request body size in bytes for all upload endpoints.
+    /// Set via METTA_KG_MAX_UPLOAD_BYTES; defaults to 268435456 (256 MiB).
+    pub max_upload_bytes: u64,
 }
 
 impl Config {
@@ -31,7 +36,9 @@ impl Config {
     pub fn load() -> &'static Config {
         CONFIG.get_or_init(|| {
             Self::build().unwrap_or_else(|missing| {
-                eprintln!("ERROR: Required environment variable '{missing}' is not set. Shutting down.");
+                eprintln!(
+                    "ERROR: Required environment variable '{missing}' is not set. Shutting down."
+                );
                 std::process::exit(1);
             })
         })
@@ -54,6 +61,10 @@ impl Config {
             env: require("METTA_KG_ENV")?,
             translations_path: env::var("TRANSLATIONS_RELATIVE_PATH")
                 .unwrap_or_else(|_| "translations/src".to_string()),
+            max_upload_bytes: env::var("METTA_KG_MAX_UPLOAD_BYTES")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(1 * 1024 * 1024),
         })
     }
 }

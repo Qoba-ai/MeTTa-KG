@@ -11,7 +11,7 @@ import { BACKEND_URL } from '../../urls';
 
 interface NavbarProps {
     title?: string;
-    currentPage: 'editor' | 'tokens' | 'settings' | 'history';
+    currentPage: 'editor' | 'tokens' | 'settings' | 'history' | 'logs';
 }
 
 const fetchToken = async (tokenCode: string | null): Promise<Token | null> => {
@@ -118,6 +118,15 @@ export const Navbar: Component<NavbarProps> = (props) => {
                     >
                         History
                     </A>
+                    <Show when={tokenData()?.permission_share_share}>
+                        <A
+                            href="/logs"
+                            class={styles.TextButton}
+                            style={props.currentPage === 'logs' ? { "background": "var(--highlight-med)", "font-weight": "600" } : {}}
+                        >
+                            Logs
+                        </A>
+                    </Show>
                     <A
                         href="/settings"
                         class={styles.TextButton}

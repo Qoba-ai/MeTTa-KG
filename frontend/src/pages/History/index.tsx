@@ -417,6 +417,7 @@ const LEGEND_ITEMS = [
 const History: Component = () => {
     let containerRef: HTMLDivElement | undefined
     let cy: Core | undefined
+    let restoreInputRef: HTMLInputElement | undefined
 
     const [logs, setLogs]               = createSignal<OpLogEntry[]>([])
     const [graphEdges, setGraphEdges]   = createSignal<GraphEdge[]>([])
@@ -631,27 +632,92 @@ const History: Component = () => {
 
     createEffect(() => { filterTokenName(); applyTokenHighlight() })
 
-    /** Timeline: nodes left → right by id, children fanned vertically. */
+    /** Timeline: nodes left → right by id; y-axis is a proper subtree layout.
+     *
+     *  Each node is allocated a vertical band whose height equals the sum of its
+     *  children's bands (or the node height, whichever is larger).  The node is
+     *  then centered in that band.  This prevents sibling subtrees from
+     *  overlapping and gives a clean tree appearance on the y-axis.
+     */
     const applyTimeline = (dur = 350) => {
         if (!cy) return
         const sorted = [...logs()].sort((a, b) => a.id - b.id)
-        const H_STEP = 210, Y_STEP = 110
+        const H_STEP  = 220
+        const V_GAP   = 28   // minimum vertical gap between nodes
 
-        const yOf = new Map<string, number>()
+        // Build parent → children and child → parents maps
+        const children = new Map<string, string[]>(sorted.map(e => [String(e.id), []]))
+        const parents  = new Map<string, string[]>(sorted.map(e => [String(e.id), []]))
+        cy!.edges().forEach(edge => {
+            const src = edge.data('source') as string
+            const tgt = edge.data('target') as string
+            children.get(src)?.push(tgt)
+            parents.get(tgt)?.push(src)
+        })
+        // keep children in chronological order
+        children.forEach(kids => kids.sort((a, b) => parseInt(a) - parseInt(b)))
+
+        // Root nodes: no incoming edges
+        const roots = sorted
+            .map(e => String(e.id))
+            .filter(id => (parents.get(id)?.length ?? 0) === 0)
+
+        // Compute the vertical band each subtree needs
+        const bandOf = new Map<string, number>()
+        const computeBand = (id: string): number => {
+            const nodeH = (cy!.getElementById(id).data('nodeHeight') as number) ?? 60
+            const kids  = children.get(id) ?? []
+            const childSum = kids.reduce((s, k) => s + computeBand(k), 0)
+            const h = Math.max(nodeH + V_GAP, childSum)
+            bandOf.set(id, h)
+            return h
+        }
+        roots.forEach(computeBand)
+
+        // Assign y: each node is centred within its allocated band
+        const yOf     = new Map<string, number>()
+        const visited = new Set<string>()
+
+        const assignY = (id: string, bandTop: number) => {
+            if (visited.has(id)) return
+            visited.add(id)
+            const nodeH = (cy!.getElementById(id).data('nodeHeight') as number) ?? 60
+            const kids  = children.get(id) ?? []
+
+            if (kids.length === 0) {
+                yOf.set(id, bandTop + nodeH / 2)
+                return
+            }
+
+            // Stack children top-to-bottom, each in its own sub-band
+            let top = bandTop
+            kids.forEach(kid => {
+                assignY(kid, top)
+                top += bandOf.get(kid) ?? (nodeH + V_GAP)
+            })
+
+            // Centre parent between first and last child
+            const firstY = yOf.get(kids[0]) ?? bandTop
+            const lastY  = yOf.get(kids[kids.length - 1]) ?? bandTop
+            yOf.set(id, (firstY + lastY) / 2)
+        }
+
+        let cursor = 0
+        roots.forEach(root => {
+            assignY(root, cursor)
+            cursor += bandOf.get(root) ?? 80
+        })
+
+        // Fallback: isolated nodes that weren't reached above
         sorted.forEach(entry => {
             const id = String(entry.id)
-            if (!yOf.has(id)) yOf.set(id, 0)
-            const parentY = yOf.get(id)!
-            let childIdx = 0
-            cy!.getElementById(id).outgoers('node').toArray()
-                .sort((a, b) => parseInt(a.id()) - parseInt(b.id()))
-                .forEach(child => {
-                    if (!yOf.has(child.id())) {
-                        yOf.set(child.id(), parentY + childIdx * Y_STEP)
-                        childIdx++
-                    }
-                })
+            if (!yOf.has(id)) {
+                const nodeH = (cy!.getElementById(id).data('nodeHeight') as number) ?? 60
+                yOf.set(id, cursor + nodeH / 2)
+                cursor += nodeH + V_GAP
+            }
         })
+
         sorted.forEach((entry, i) =>
             setPos(String(entry.id), { x: i * H_STEP, y: yOf.get(String(entry.id)) ?? 0 }, dur))
         setTimeout(() => cy?.fit(undefined, 60), dur + 30)
@@ -749,6 +815,47 @@ const History: Component = () => {
             setGraphEdges(edges)
             setSelectedEntry(entries.find((e) => e.id === entry.id) ?? null)
             initGraph(entries, edges, tokenMap())
+        } finally {
+            setActionBusy(false)
+        }
+    }
+
+    const handleExport = async () => {
+        if (!tokenCode) return
+        setActionBusy(true)
+        try {
+            const resp = await fetch(`${BACKEND_URL}/spaces/export`, {
+                headers: { Authorization: tokenCode },
+            })
+            if (!resp.ok) throw new Error(`Status ${resp.status}`)
+            const blob = await resp.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = 'metta_kg_export.metta'
+            a.click()
+            URL.revokeObjectURL(url)
+        } catch (e) {
+            console.error('Export failed:', e)
+        } finally {
+            setActionBusy(false)
+        }
+    }
+
+    const handleRestore = async (file: File) => {
+        if (!tokenCode) return
+        setActionBusy(true)
+        try {
+            const text = await file.text()
+            const resp = await fetch(`${BACKEND_URL}/spaces/init`, {
+                method: 'POST',
+                headers: { Authorization: tokenCode },
+                body: text,
+            })
+            if (!resp.ok) throw new Error(`Status ${resp.status}`)
+            await handleRefresh()
+        } catch (e) {
+            console.error('Restore failed:', e)
         } finally {
             setActionBusy(false)
         }
@@ -864,6 +971,19 @@ const History: Component = () => {
                     </div>
                 </div>
 
+                {/* Hidden file input for restore */}
+                <input
+                    ref={restoreInputRef}
+                    type="file"
+                    accept=".metta"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0]
+                        if (file) handleRestore(file)
+                        ;(e.target as HTMLInputElement).value = ''
+                    }}
+                />
+
                 {/* Toolbar */}
                 <div class={styles.Toolbar}>
                     <button class={styles.ToolbarButton} onClick={handleRefresh} title="Refresh">
@@ -871,6 +991,22 @@ const History: Component = () => {
                     </button>
                     <button class={styles.ToolbarButton} onClick={handleFit} title="Fit to view">
                         ⊞
+                    </button>
+                    <button
+                        class={styles.ToolbarButton}
+                        onClick={handleExport}
+                        disabled={actionBusy()}
+                        title="Export entire MORK space as a .metta file"
+                    >
+                        Export
+                    </button>
+                    <button
+                        class={styles.ToolbarButton}
+                        onClick={() => restoreInputRef?.click()}
+                        disabled={!canWrite() || actionBusy()}
+                        title={canWrite() ? "Restore MORK space from a .metta file" : "Read-only token"}
+                    >
+                        Restore
                     </button>
                     <button
                         class={styles.ToolbarButton}
@@ -883,9 +1019,9 @@ const History: Component = () => {
                 </div>
 
                 {/* Node action panel — shown when a node is selected */}
-                <Show when={selectedEntry()}>
+                <Show when={selectedEntry()} keyed>
                     {(entry) => {
-                        const e = entry()
+                        const e = entry
                         const tokenName = e.token_id != null ? (tokenMap().get(e.token_id) ?? `#${e.token_id}`) : null
                         return (
                         <div class={styles.ActionPanel}>

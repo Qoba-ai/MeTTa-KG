@@ -778,6 +778,89 @@ impl MorkClient {
         })
     }
 
+    /// Like `explore`, but uses an explicit MORK pattern string instead of deriving one from a
+    /// path. Useful when the desired pattern doesn't map cleanly to a filesystem path (e.g.
+    /// `"(logs (log ERROR $))"`). Subspace detection is skipped; only leaf atoms are returned.
+    ///
+    /// * `mork_pattern` — the full MORK explore pattern, e.g. `"(logs $)"`
+    /// * `strip_path`   — path prefix stripped from each result expression
+    /// * `root`         — used to compute the `namespace` field in the result
+    pub async fn explore_pattern(
+        &self,
+        mork_pattern: &str,
+        strip_path: &Path,
+        root: &PathBuf,
+        focus_token: &str,
+        page_size: usize,
+    ) -> Result<ExploreResult, MorkError> {
+        let page_size = page_size.max(1);
+
+        let mut metta_expressions: Vec<String> = Vec::new();
+        let mut next_focus_token: Option<String> = None;
+        let mut skip_tokens: HashSet<String> = HashSet::new();
+
+        let mut stack: VecDeque<String> = if focus_token.is_empty() {
+            VecDeque::from([String::new()])
+        } else {
+            serde_json::from_str::<VecDeque<String>>(focus_token)
+                .unwrap_or_else(|_| VecDeque::from([String::new()]))
+        };
+
+        while let Some(current_token) = stack.pop_front() {
+            if !skip_tokens.insert(current_token.clone()) {
+                continue;
+            }
+
+            let mut responses = self.explore_raw(mork_pattern, &current_token).await?;
+            responses.reverse();
+            let nr_of_responses = responses.len();
+
+            for response in responses {
+                let relative_expr = match strip_prefix(&response.expr, strip_path) {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                let encoded_token =
+                    percent_encode(&response.token, NON_ALPHANUMERIC).to_string();
+
+                if parse_binary_sexp(&relative_expr).is_some() {
+                    continue;
+                }
+
+                if !metta_expressions.contains(&relative_expr) && nr_of_responses == 1 {
+                    metta_expressions.push(relative_expr);
+                    if metta_expressions.len() >= page_size {
+                        if !stack.is_empty() {
+                            next_focus_token =
+                                Some(serde_json::to_string(&stack).unwrap_or_default());
+                        }
+                        break;
+                    }
+                } else if !skip_tokens.contains(&encoded_token) {
+                    stack.push_front(encoded_token);
+                }
+            }
+
+            if metta_expressions.len() >= page_size {
+                break;
+            }
+        }
+
+        let namespace = strip_path
+            .strip_prefix(root)
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|_| strip_path.to_path_buf());
+
+        Ok(ExploreResult {
+            namespace,
+            metta_expressions,
+            subspaces: Vec::new(),
+            focus_token: next_focus_token,
+            children: None,
+        })
+    }
+
     /// Like `explore`, but recursively visits each subspace up to `depth` levels.
     /// `depth = 1` is equivalent to a plain `explore` call (no recursion).
     pub fn explore_with_depth<'a>(
