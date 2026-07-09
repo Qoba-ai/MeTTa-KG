@@ -10,11 +10,11 @@ services:
       METTA_KG_ORIGIN_URL: ${METTA_KG_ORIGIN_URL} 
       ROCKET_ADDRESS: ${METTA_KG_ADDRESS}
       ROCKET_PORT: ${METTA_KG_PORT}
-  db: 
+  db:
     image: "postgres"
     restart: always
-    ports: 
-      - "5432:5432"
+    ports:
+      - "${POSTGRES_PORT}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
