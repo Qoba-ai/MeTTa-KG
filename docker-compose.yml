@@ -45,13 +45,23 @@ services:
       ADMINER_DEFAULT_DB_HOST: db
       ADMINER_DEFAULT_DB_NAME: ${POSTGRES_DB}
   mork:
-    image: mork-server
+    image: ghcr.io/qoba-ai/metta-kg-mork:latest
     restart: always
     ports:
       - "${MORK_SERVER_PORT}:${MORK_SERVER_PORT}"
     environment:
       MORK_SERVER_ADDR: ${MORK_SERVER_ADDR}
       MORK_SERVER_PORT: ${MORK_SERVER_PORT}
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL}
+    restart: always
+    ports:
+      - "${FRONTEND_PORT}:80"
+    depends_on:
+      - api
 
 volumes:
   pgdata:
