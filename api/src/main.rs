@@ -107,6 +107,7 @@ fn rocket() -> Rocket<Build> {
     let _log_guard = setup_logging();
 
     let pool = db::init_pool();
+    db::run_migrations(&pool);
 
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
