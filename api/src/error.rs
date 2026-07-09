@@ -3,7 +3,6 @@ use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{self, Responder};
 use rocket::serde::json::{serde_json, Json};
-use serde::Serialize;
 use tracing::error;
 
 #[derive(Debug, thiserror::Error)]
@@ -61,12 +60,6 @@ impl ApiError {
     }
 }
 
-#[derive(Serialize)]
-struct RedoConflictBody {
-    conflicting_ops: Vec<i32>,
-    message: String,
-}
-
 impl<'r> Responder<'r, 'static> for ApiError {
     fn respond_to(self, req: &'r Request<'_>) -> response::Result<'static> {
         let status = self.status();
@@ -80,24 +73,45 @@ impl<'r> Responder<'r, 'static> for ApiError {
             _ => {}
         }
 
-        match self {
+        let body = match &self {
+            Self::NotFound | Self::Db(DieselError::NotFound) => {
+                serde_json::json!({"error": "not_found", "message": "resource not found"})
+            }
+            Self::Unauthorized => {
+                serde_json::json!({"error": "unauthorized", "message": "valid Bearer token required"})
+            }
+            Self::Forbidden => {
+                serde_json::json!({"error": "forbidden", "message": "insufficient permissions"})
+            }
+            Self::BadRequest(msg) => {
+                serde_json::json!({"error": "bad_request", "message": msg})
+            }
+            Self::Unprocessable(msg) => {
+                serde_json::json!({"error": "unprocessable", "message": msg})
+            }
+            Self::Conflict(msg) => {
+                serde_json::json!({"error": "conflict", "message": msg})
+            }
+            Self::PayloadTooLarge => {
+                serde_json::json!({"error": "payload_too_large", "message": "File is too large. Maximum upload size is configured via METTA_KG_MAX_UPLOAD_BYTES."})
+            }
             Self::RedoConflict {
                 conflicting_ops,
                 message,
-            } => rocket::response::status::Custom(
-                status,
-                Json(RedoConflictBody {
-                    conflicting_ops,
-                    message,
-                }),
-            )
-            .respond_to(req),
-            Self::PayloadTooLarge => rocket::response::status::Custom(
-                status,
-                Json(serde_json::json!({ "error": "payload_too_large", "message": "File is too large. Maximum upload size is 256 MiB." })),
-            )
-            .respond_to(req),
-            _ => status.respond_to(req),
-        }
+            } => {
+                serde_json::json!({"error": "redo_conflict", "message": message, "conflicting_ops": conflicting_ops})
+            }
+            Self::Db(_) => {
+                serde_json::json!({"error": "internal_error", "message": "a database error occurred"})
+            }
+            Self::Mork(e) => {
+                serde_json::json!({"error": "upstream_error", "message": e.to_string()})
+            }
+            Self::Internal(msg) => {
+                serde_json::json!({"error": "internal_error", "message": msg})
+            }
+        };
+
+        rocket::response::status::Custom(status, Json(body)).respond_to(req)
     }
 }

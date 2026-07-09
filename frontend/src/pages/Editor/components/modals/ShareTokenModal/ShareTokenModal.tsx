@@ -49,7 +49,7 @@ export const ShareTokenModal: Component<ShareTokenModalProps> = (props) => {
     try {
       const resp = await fetch(`${BACKEND_URL}/tokens`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: code },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${code}` },
         body: JSON.stringify({
           id: 0,
           code: '',

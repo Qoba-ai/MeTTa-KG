@@ -49,7 +49,6 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
     setExploreFocusIndex(-1);
     const results = await fetchSuggestions(val);
     setExploreResults(results);
-    setExploreFocusIndex(results.length > 0 ? 0 : -1);
   };
 
   const handleFocus = async () => {
@@ -57,7 +56,6 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
     setExploreFocusIndex(-1);
     const results = await fetchSuggestions(props.value);
     setExploreResults(results);
-    setExploreFocusIndex(results.length > 0 ? 0 : -1);
   };
 
   const handleBlur = () => {
@@ -73,7 +71,6 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
     setExploreFocusIndex(-1);
     const results = await props.fetchExploreResults(parent);
     setExploreResults(results);
-    setExploreFocusIndex(results.length > 0 ? 0 : -1);
   };
 
   const navigateInto = async (path: string) => {
@@ -82,7 +79,6 @@ export const NamespaceSelector: Component<NamespaceSelectorProps> = (props) => {
     setExploreFocusIndex(-1);
     const results = await props.fetchExploreResults(target);
     setExploreResults(results);
-    setExploreFocusIndex(results.length > 0 ? 0 : -1);
     setIsExploring(true);
   };
 

@@ -457,7 +457,7 @@ const History: Component = () => {
             nsTreePromise = (async () => {
                 try {
                     const res = await fetch(`${BACKEND_URL}/namespaces/`, {
-                        headers: { Authorization: tokenCode! },
+                        headers: { Authorization: `Bearer ${tokenCode!}` },
                     })
                     if (res.ok) nsTree = await res.json()
                 } catch { /* ignore */ } finally {
@@ -503,7 +503,7 @@ const History: Component = () => {
 
     const fetchGraph = async (): Promise<GraphData> => {
         const res = await fetch(`${BACKEND_URL}/logs/graph`, {
-            headers: { Authorization: tokenCode! },
+            headers: { Authorization: `Bearer ${tokenCode!}` },
         })
         if (!res.ok) throw new Error('Failed to load operation history.')
         return res.json()
@@ -512,7 +512,7 @@ const History: Component = () => {
     const fetchTokenMap = async (): Promise<Map<number, string | null>> => {
         try {
             const res = await fetch(`${BACKEND_URL}/tokens`, {
-                headers: { Authorization: tokenCode! },
+                headers: { Authorization: `Bearer ${tokenCode!}` },
             })
             if (!res.ok) return new Map()
             const tokens: Array<{ id: number; name: string | null }> = await res.json()
@@ -533,7 +533,7 @@ const History: Component = () => {
             // Fetch own token info to check write permission
             try {
                 const meRes = await fetch(`${BACKEND_URL}/tokens/me`, {
-                    headers: { Authorization: tokenCode! },
+                    headers: { Authorization: `Bearer ${tokenCode!}` },
                 })
                 if (meRes.ok) {
                     const me = await meRes.json()
@@ -777,7 +777,7 @@ const History: Component = () => {
         try {
             await fetch(`${BACKEND_URL}/logs/${entry.id}/rollback`, {
                 method: 'POST',
-                headers: { Authorization: tokenCode },
+                headers: { Authorization: `Bearer ${tokenCode}` },
             })
             const { entries, edges } = await fetchGraph()
             setLogs(entries)
@@ -799,7 +799,7 @@ const History: Component = () => {
                 : `${BACKEND_URL}/logs/${entry.id}/redo`
             const res = await fetch(url, {
                 method: 'POST',
-                headers: { Authorization: tokenCode },
+                headers: { Authorization: `Bearer ${tokenCode}` },
             })
             if (res.status === 409) {
                 const body = await res.json()
@@ -825,7 +825,7 @@ const History: Component = () => {
         setActionBusy(true)
         try {
             const resp = await fetch(`${BACKEND_URL}/spaces/export`, {
-                headers: { Authorization: tokenCode },
+                headers: { Authorization: `Bearer ${tokenCode}` },
             })
             if (!resp.ok) throw new Error(`Status ${resp.status}`)
             const blob = await resp.blob()
@@ -849,7 +849,7 @@ const History: Component = () => {
             const text = await file.text()
             const resp = await fetch(`${BACKEND_URL}/spaces/init`, {
                 method: 'POST',
-                headers: { Authorization: tokenCode },
+                headers: { Authorization: `Bearer ${tokenCode}` },
                 body: text,
             })
             if (!resp.ok) throw new Error(`Status ${resp.status}`)
@@ -867,7 +867,7 @@ const History: Component = () => {
         try {
             const res = await fetch(`${BACKEND_URL}/logs/checkpoint`, {
                 method: 'POST',
-                headers: { Authorization: tokenCode },
+                headers: { Authorization: `Bearer ${tokenCode}` },
             })
             if (res.ok) {
                 const { entries, edges } = await fetchGraph()

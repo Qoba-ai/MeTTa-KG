@@ -53,7 +53,7 @@ const fetchLogs = async (params: {
     const token = localStorage.getItem('rootToken');
     const resp = await fetch(
         `${BACKEND_URL}/server-logs?focus_token=${encodeURIComponent(params.focus_token)}&page_size=${params.page_size}&pattern=${encodeURIComponent(params.pattern)}`,
-        { headers: { ...(token ? { Authorization: token } : {}) } },
+        { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } },
     );
     if (resp.status === 401 || resp.status === 403) {
         throw new Error('Access denied. Admin token required.');

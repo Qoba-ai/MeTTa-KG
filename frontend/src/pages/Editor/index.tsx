@@ -155,6 +155,7 @@ import { NamespaceSelector } from './components/NamespaceSelector/NamespaceSelec
 import { TrieExplorer, buildTrie, TrieNode } from './components/TrieExplorer/TrieExplorer'
 import { EditorASTState, astToString, initializeEditorState, emptyEditorState, parseMeTTaString, buildASTFromTokens, mergeTokensIntoAST, unexpandFringe, hasFringeDescendant, computeDiff, ASTNode, ExprNode } from './lib/ast'
 import { getDisplayContent, getOriginalContent, createASTStateFromTokens, stripNamespacePrefix } from './lib/editorASTUtils'
+import { parse as parseSExprs, serialize as serializeSExpr } from './lib/dsl'
 
 // Components
 import { Navbar } from '../../components/Navbar/Navbar'
@@ -224,25 +225,28 @@ function isBalanced(text: string): boolean {
 }
 
 function computeAtomDiff(current: string, original: string): { added: string[]; removed: string[] } {
-    const currLines = current.split('\n').map(l => l.trim()).filter(Boolean)
-    const origLines = original.split('\n').map(l => l.trim()).filter(Boolean)
+    const toAtoms = (text: string): string[] =>
+        parseSExprs(text).map(serializeSExpr).filter(Boolean)
+
+    const currAtoms = toAtoms(current)
+    const origAtoms = toAtoms(original)
 
     const origCounts = new Map<string, number>()
-    for (const line of origLines) origCounts.set(line, (origCounts.get(line) ?? 0) + 1)
+    for (const atom of origAtoms) origCounts.set(atom, (origCounts.get(atom) ?? 0) + 1)
 
     const currCounts = new Map<string, number>()
-    for (const line of currLines) currCounts.set(line, (currCounts.get(line) ?? 0) + 1)
+    for (const atom of currAtoms) currCounts.set(atom, (currCounts.get(atom) ?? 0) + 1)
 
     const added: string[] = []
     const removed: string[] = []
 
-    for (const [line, count] of currCounts) {
-        const extra = count - (origCounts.get(line) ?? 0)
-        for (let i = 0; i < extra; i++) added.push(line)
+    for (const [atom, count] of currCounts) {
+        const extra = count - (origCounts.get(atom) ?? 0)
+        for (let i = 0; i < extra; i++) added.push(atom)
     }
-    for (const [line, count] of origCounts) {
-        const extra = count - (currCounts.get(line) ?? 0)
-        for (let i = 0; i < extra; i++) removed.push(line)
+    for (const [atom, count] of origCounts) {
+        const extra = count - (currCounts.get(atom) ?? 0)
+        for (let i = 0; i < extra; i++) removed.push(atom)
     }
 
     return { added, removed }
@@ -547,7 +551,7 @@ const App: Component = () => {
                 if (!t) return
                 try {
                     const res = await fetch(`${BACKEND_URL}/namespaces/`, {
-                        headers: { Authorization: t.code }
+                        headers: { Authorization: `Bearer ${t.code}` }
                     })
                     if (res.ok) setNamespaceTree(await res.json())
                 } catch (e) {
@@ -724,13 +728,13 @@ const App: Component = () => {
         const trie = buildDiffPrefixTrie(added, removed)
         fetch(`${BACKEND_URL}/editor/diff/${namespaceSeg}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: tok.code },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok.code}` },
             body: JSON.stringify({ ts: Date.now(), trie }),
         }).catch(() => {})
 
         fetch(`${BACKEND_URL}/editor/commit/${namespaceSeg}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: tok.code },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok.code}` },
             body: JSON.stringify({ added, removed }),
         }).catch(() => {})
     }
@@ -1558,7 +1562,7 @@ const App: Component = () => {
                     const fileText = await file.text()
                     const resp = await fetch(`${BACKEND_URL}/spaces/${encodedPath}`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()?.code ?? ''}` },
                         body: fileText,
                     })
                     if (!resp.ok) {
@@ -1569,7 +1573,7 @@ const App: Component = () => {
                     const parameters = new URLSearchParams(parserParams as any)
                     const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}/${encodedPath}?${parameters.toString()}`, {
                         method: 'POST',
-                        headers: { Authorization: token()?.code ?? '' },
+                        headers: { Authorization: `Bearer ${token()?.code ?? ''}` },
                         body: file,
                     })
                     if (!resp.ok) {
@@ -1584,14 +1588,14 @@ const App: Component = () => {
                 if (format === ImportFormat.METTA) {
                     const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta/${encodedPath}?url=${encodeURIComponent(url)}`, {
                         method: 'POST',
-                        headers: { Authorization: token()?.code ?? '' },
+                        headers: { Authorization: `Bearer ${token()?.code ?? ''}` },
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 } else {
                     const parameters = new URLSearchParams({ ...parserParams as any, url })
                     const resp = await fetch(`${BACKEND_URL}/spaces/import/url/${format}/${encodedPath}?${parameters.toString()}`, {
                         method: 'POST',
-                        headers: { Authorization: token()?.code ?? '' },
+                        headers: { Authorization: `Bearer ${token()?.code ?? ''}` },
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
                 }
@@ -1602,7 +1606,7 @@ const App: Component = () => {
                 if (format === ImportFormat.METTA) {
                     const resp = await fetch(`${BACKEND_URL}/spaces/${encodedPath}`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()?.code ?? ''}` },
                         body: text,
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
@@ -1610,7 +1614,7 @@ const App: Component = () => {
                     const parameters = new URLSearchParams(parserParams as any)
                     const resp = await fetch(`${BACKEND_URL}/spaces/import/${format}/${encodedPath}?${parameters.toString()}`, {
                         method: 'POST',
-                        headers: { Authorization: token()?.code ?? '' },
+                        headers: { Authorization: `Bearer ${token()?.code ?? ''}` },
                         body: text,
                     })
                     if (!resp.ok) throw new Error(`Status ${resp.status}`)
@@ -1620,7 +1624,7 @@ const App: Component = () => {
                 const rawUrl = `https://raw.githubusercontent.com/trueagi-io/metta-examples/main/${exPath}`
                 const resp = await fetch(`${BACKEND_URL}/spaces/import/url/metta/${encodedPath}?url=${encodeURIComponent(rawUrl)}`, {
                     method: 'POST',
-                    headers: { Authorization: token()?.code ?? '' },
+                    headers: { Authorization: `Bearer ${token()?.code ?? ''}` },
                 })
                 if (!resp.ok) throw new Error(`Status ${resp.status}`)
             }
@@ -1672,7 +1676,7 @@ const App: Component = () => {
     const loadSpace = async (tokenStr: string, silent: boolean = false): Promise<void> => {
         try {
             const resp = await fetch(`${BACKEND_URL}/tokens/me`, {
-                headers: { 'Content-Type': 'application/json', Authorization: tokenStr },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenStr}` },
             })
             const self: Token = await resp.json()
             if (self) {
@@ -1707,7 +1711,7 @@ const App: Component = () => {
             const url = `${BACKEND_URL}/explore/${encodedNs}?focus_token=${tokenParam}&depth=${exploreDepth()}&page_size=${pageSize()}`
 
             const res = await fetch(url, {
-                headers: { Authorization: token()?.code ?? '' }
+                headers: { Authorization: `Bearer ${token()?.code ?? ''}` }
             })
             if (!res.ok) throw new Error(`Status ${res.status}`)
             const data = await res.json()
@@ -1823,7 +1827,7 @@ const App: Component = () => {
 
         try {
             const res = await fetch(`${BACKEND_URL}/namespaces/${encodedNs}`, {
-                headers: { Authorization: token()?.code ?? '' }
+                headers: { Authorization: `Bearer ${token()?.code ?? ''}` }
             })
             if (res.ok) {
                 const data = await res.json()
@@ -1948,7 +1952,7 @@ const App: Component = () => {
                 try {
                     const resp = await fetch(`${BACKEND_URL}/spaces/${encodedPath}`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()?.code ?? ''}` },
                         body: diffContent,
                     })
                     if (resp.ok) {
@@ -2052,7 +2056,7 @@ const App: Component = () => {
         try {
             const resp = await fetch(`${BACKEND_URL}/spaces`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json', Authorization: token()?.code ?? '' },
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()?.code ?? ''}` },
                 body: JSON.stringify({ input_spaces, output_spaces, patterns, templates }),
             })
             if (resp.ok) {
@@ -2153,7 +2157,7 @@ const App: Component = () => {
 
             const resp = await fetch(url, {
                 method: 'DELETE',
-                headers: { Authorization: token()?.code ?? '' },
+                headers: { Authorization: `Bearer ${token()?.code ?? ''}` },
             })
 
             if (resp.ok) {
@@ -2186,7 +2190,7 @@ const App: Component = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: token()?.code ?? '',
+                    Authorization: `Bearer ${token()?.code ?? ''}`,
                 },
                 body: JSON.stringify({ src, dst }),
             })
@@ -2226,7 +2230,7 @@ const App: Component = () => {
 
                     const resp = await fetch(url, {
                         method: 'DELETE',
-                        headers: { Authorization: token()?.code ?? '' },
+                        headers: { Authorization: `Bearer ${token()?.code ?? ''}` },
                     })
                     if (resp.ok) {
                         notify.success(`Successfully deleted subspace '${path}'`)

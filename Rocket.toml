@@ -2,4 +2,4 @@
 temp_dir = "temp/"
 
 [default.limits]
-string = "1000 GiB"
+string = "1 MiB"

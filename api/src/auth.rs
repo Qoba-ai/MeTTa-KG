@@ -22,8 +22,14 @@ impl<'r> FromRequest<'r> for Token {
     async fn from_request(request: &'r Request<'_>) -> request::Outcome<Token, Self::Error> {
         use crate::schema::tokens::dsl::*;
 
-        let token = match request.headers().get_one("authorization") {
-            Some(token) => token,
+        let auth_header = match request.headers().get_one("authorization") {
+            Some(h) => h,
+            None => {
+                return request::Outcome::Error((Status::Unauthorized, Self::Error::InvalidToken))
+            }
+        };
+        let token_code = match auth_header.strip_prefix("Bearer ") {
+            Some(t) => t,
             None => {
                 return request::Outcome::Error((Status::Unauthorized, Self::Error::InvalidToken))
             }
@@ -41,7 +47,7 @@ impl<'r> FromRequest<'r> for Token {
 
         let result = tokens
             .select(Token::as_select())
-            .filter(code.eq(token))
+            .filter(code.eq(token_code))
             .get_result(&mut conn);
 
         match result {

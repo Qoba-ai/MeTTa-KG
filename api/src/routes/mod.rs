@@ -3,6 +3,7 @@ use std::path::{Component, Path};
 pub mod events;
 pub mod health;
 pub mod op_logs;
+pub mod operations;
 pub mod server_logs;
 pub mod spaces;
 pub mod tokens;

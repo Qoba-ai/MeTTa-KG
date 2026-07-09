@@ -19,7 +19,7 @@ const fetchToken = async (tokenCode: string | null): Promise<Token | null> => {
 
     try {
         const resp = await fetch(`${BACKEND_URL}/tokens/me`, {
-            headers: { 'Content-Type': 'application/json', Authorization: tokenCode },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCode}` },
         });
         return await resp.json();
     } catch (e) {
@@ -134,6 +134,9 @@ export const Navbar: Component<NavbarProps> = (props) => {
                     >
                         Settings
                     </A>
+                    <a href="/docs/" class={styles.TextButton} target="_blank" rel="noopener noreferrer">
+                        Docs
+                    </a>
                 </div>
                 <div class={commonStyles.NavDivider}></div>
                 <div

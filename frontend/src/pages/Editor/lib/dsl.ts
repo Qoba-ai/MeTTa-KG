@@ -150,7 +150,7 @@ async function runImport(args: SExpr[], ctx: CommandContext): Promise<CommandRes
     try {
         const resp = await fetch(`${ctx.backendUrl}/spaces/${encodedPath}`, {
             method: 'POST',
-            headers: { Authorization: ctx.tokenCode },
+            headers: { Authorization: `Bearer ${ctx.tokenCode}` },
             body: content,
         })
         if (resp.ok) return { ok: true, output: `; imported ${atoms.length} atom(s) into ${space}` }
@@ -194,7 +194,7 @@ async function runTransform(args: SExpr[], ctx: CommandContext): Promise<Command
     try {
         const resp = await fetch(`${ctx.backendUrl}/spaces`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Authorization: ctx.tokenCode },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.tokenCode}` },
             body: JSON.stringify({ input_spaces, output_spaces, patterns, templates }),
         })
         if (resp.ok) return { ok: true, output: '; transform dispatched' }
@@ -223,7 +223,7 @@ async function runClear(args: SExpr[], ctx: CommandContext): Promise<CommandResu
     try {
         const resp = await fetch(url, {
             method: 'DELETE',
-            headers: { Authorization: ctx.tokenCode },
+            headers: { Authorization: `Bearer ${ctx.tokenCode}` },
         })
         if (resp.ok) {
             const desc = pattern !== null ? `pattern ${pattern}` : 'all atoms'
@@ -246,7 +246,7 @@ async function runExplore(args: SExpr[], ctx: CommandContext): Promise<CommandRe
     const url = `${ctx.backendUrl}/explore/${encodedNs}?focus_token=`
 
     try {
-        const resp = await fetch(url, { headers: { Authorization: ctx.tokenCode } })
+        const resp = await fetch(url, { headers: { Authorization: `Bearer ${ctx.tokenCode}` } })
         if (!resp.ok) return { ok: false, output: `; explore failed (HTTP ${resp.status})` }
 
         const data = await resp.json()
@@ -277,7 +277,7 @@ async function runExplore(args: SExpr[], ctx: CommandContext): Promise<CommandRe
 async function fetchCount(space: string, ctx: CommandContext): Promise<number> {
     const encodedNs = space.replace(/^\//, '').split('/').filter(Boolean).map(encodeURIComponent).join('/')
     const url = `${ctx.backendUrl}/count/${encodedNs}`
-    const resp = await fetch(url, { headers: { Authorization: ctx.tokenCode } })
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${ctx.tokenCode}` } })
     if (!resp.ok) throw `count failed (HTTP ${resp.status})`
     return resp.json()
 }
@@ -391,7 +391,7 @@ async function runSubtract(args: SExpr[], ctx: CommandContext): Promise<CommandR
     try {
         const resp = await fetch(`${ctx.backendUrl}/spaces/subtract`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: ctx.tokenCode },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.tokenCode}` },
             body: JSON.stringify({ input_spaces, output_spaces, patterns, templates }),
         })
         if (resp.ok) return { ok: true, output: '; subtract dispatched' }
@@ -421,7 +421,7 @@ async function fetchAllAtoms(space: string, ctx: CommandContext): Promise<string
     let focusToken = ''
     do {
         const resp = await fetch(`${ctx.backendUrl}/explore/${encodedNs}?focus_token=${encodeURIComponent(focusToken)}`, {
-            headers: { Authorization: ctx.tokenCode },
+            headers: { Authorization: `Bearer ${ctx.tokenCode}` },
         })
         if (!resp.ok) throw `explore failed (HTTP ${resp.status})`
         const data = await resp.json()

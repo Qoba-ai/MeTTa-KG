@@ -39,7 +39,7 @@ const fetchTokens = async (
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                Authorization: root,
+                Authorization: `Bearer ${root}`,
             },
         })
 
@@ -87,7 +87,7 @@ const createToken = async (
 
     const resp = await fetch(`${BACKEND_URL}/tokens`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: root },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${root}` },
         body: JSON.stringify(newToken),
     })
 
@@ -107,7 +107,7 @@ const refreshCodes = async (
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
-                Authorization: root,
+                Authorization: `Bearer ${root}`,
             },
         }).then((r) => r.json())
     )
@@ -125,7 +125,7 @@ const deleteTokens = async (
 
     await fetch(`${BACKEND_URL}/tokens`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', Authorization: root },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${root}` },
         body: JSON.stringify(tokens.map((t) => t.id)),
     })
 }
@@ -135,7 +135,7 @@ const fetchNamespaces = async (root: string | null): Promise<any | null> => {
     try {
         const resp = await fetch(`${BACKEND_URL}/namespaces/`, {
             method: 'GET',
-            headers: { 'Content-Type': 'application/json', Authorization: root },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${root}` },
         })
         if (resp.ok) return await resp.json()
         return null

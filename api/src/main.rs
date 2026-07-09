@@ -16,6 +16,7 @@ use tracing::{error, info, instrument, warn};
 use crate::config::{config, Config};
 use crate::lock::LockManager;
 use crate::log::setup_logging;
+use crate::operations::OperationStore;
 
 mod auth;
 mod commands;
@@ -26,6 +27,7 @@ mod events;
 mod lock;
 mod log;
 mod model;
+mod operations;
 mod routes;
 mod schema;
 mod translations;
@@ -144,6 +146,7 @@ fn rocket() -> Rocket<Build> {
         .manage(events::PresenceStore::new())
         .manage(Shutdown(shutdown_tx))
         .manage(lock_manager)
+        .manage(OperationStore::new())
         .manage(cors.clone())
         .manage(config.clone())
         .manage(pool)
@@ -187,6 +190,7 @@ fn rocket() -> Rocket<Build> {
                 routes::server_logs::server_logs,
                 routes::spaces::editor_diff,
                 routes::spaces::editor_commit,
+                routes::operations::get_operation,
                 routes::events::ws_ping,
                 routes::events::ws_events,
                 routes::events::ws_editor,

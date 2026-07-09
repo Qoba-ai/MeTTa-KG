@@ -26,6 +26,8 @@ use diesel::sql_types::Integer;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use mork_client::{ExploreResult, MorkClient, MorkError, NamespaceInfo};
 
+use crate::operations::{OperationRecord, OperationStatus, OperationStore};
+
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 
 /// Fetch a freshly created op-log entry and emit `OpLogChanged` to its owner.
@@ -323,7 +325,8 @@ pub async fn transform(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
-) -> Result<Json<bool>, ApiError> {
+    ops: &State<OperationStore>,
+) -> Result<Json<String>, ApiError> {
     if transformation.input_spaces.len() != transformation.patterns.len()
         || transformation.output_spaces.len() != transformation.templates.len()
     {
@@ -466,25 +469,47 @@ pub async fn transform(
         Ok(()) => {
             info!(operation_id = %operation_id, "Transform command submitted successfully");
 
+            let op_id_str = operation_id.to_string();
+            ops.insert(OperationRecord {
+                id: op_id_str.clone(),
+                op_type: "transform".to_string(),
+                status: OperationStatus::Pending,
+                message: None,
+                path: event_path.clone(),
+            })
+            .await;
+
             let bus_tx = bus.0.clone();
             let monitor_path = transformation
                 .output_spaces
                 .first()
                 .cloned()
                 .unwrap_or_default();
+            let ops_clone = ops.inner().clone();
+            let spawn_op_id = op_id_str.clone();
             tokio::spawn(async move {
                 match get_mork_client()
                     .wait_for_available(&monitor_path, MONITOR_TIMEOUT_MS)
                     .await
                 {
                     Ok(()) => {
-                        info!(operation_id = %operation_id, "Transform complete");
+                        info!(operation_id = %spawn_op_id, "Transform complete");
+                        ops_clone
+                            .update(&spawn_op_id, OperationStatus::Complete, None)
+                            .await;
                         let _ = bus_tx.send(SpaceEvent::TransformComplete {
                             path: event_path.clone(),
                         });
                     }
                     Err(e) => {
-                        error!(operation_id = %operation_id, error = %e, "Transform timed out waiting for MORK");
+                        error!(operation_id = %spawn_op_id, error = %e, "Transform timed out waiting for MORK");
+                        ops_clone
+                            .update(
+                                &spawn_op_id,
+                                OperationStatus::Error,
+                                Some("Timed out waiting for transform to complete".into()),
+                            )
+                            .await;
                         let _ = bus_tx.send(SpaceEvent::TransformError {
                             path: event_path.clone(),
                             message: "Timed out waiting for transform to complete".into(),
@@ -493,7 +518,7 @@ pub async fn transform(
                 }
                 let _ = bus_tx.send(SpaceEvent::Unlocked { path: event_path });
             });
-            Ok(Json(true))
+            Ok(Json(op_id_str))
         }
         Err(e) => {
             error!(operation_id = %operation_id, error = %e, "Transform command failed");
@@ -517,6 +542,7 @@ pub async fn import(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     let stream = data
         .open(crate::config::config().max_upload_bytes.bytes())
@@ -533,6 +559,7 @@ pub async fn import(
         &bus.0,
         lock_manager,
         pool.inner(),
+        ops.inner(),
     )
     .await
 }
@@ -547,6 +574,7 @@ pub async fn do_import(
     bus: &broadcast::Sender<SpaceEvent>,
     lock_manager: &State<LockManager>,
     pool: &DbPool,
+    ops: &OperationStore,
 ) -> Result<Json<String>, ApiError> {
     let perm = permission_from_token(token);
     perm.require_write()?;
@@ -613,9 +641,21 @@ pub async fn do_import(
         Ok(()) => {
             info!(path = %path.display(), operation_id = %operation_id, "Import command submitted successfully");
 
+            let op_id_str = operation_id.to_string();
+            ops.insert(OperationRecord {
+                id: op_id_str.clone(),
+                op_type: "import".to_string(),
+                status: OperationStatus::Pending,
+                message: None,
+                path: event_path.clone(),
+            })
+            .await;
+
             // Spawn background monitor: wait for MORK to finish, then emit events
             let bus_clone = bus.clone();
             let monitor_path = augmented_path.clone();
+            let ops_clone = ops.clone();
+            let spawn_op_id = op_id_str.clone();
             tokio::spawn(async move {
                 match get_mork_client()
                     .wait_for_available(&monitor_path, MONITOR_TIMEOUT_MS)
@@ -623,12 +663,22 @@ pub async fn do_import(
                 {
                     Ok(()) => {
                         info!(path = %monitor_path.display(), "Import complete");
+                        ops_clone
+                            .update(&spawn_op_id, OperationStatus::Complete, None)
+                            .await;
                         let _ = bus_clone.send(SpaceEvent::ImportComplete {
                             path: event_path.clone(),
                         });
                     }
                     Err(e) => {
                         error!(path = %monitor_path.display(), error = %e, "Import timed out waiting for MORK");
+                        ops_clone
+                            .update(
+                                &spawn_op_id,
+                                OperationStatus::Error,
+                                Some("Timed out waiting for import to complete".into()),
+                            )
+                            .await;
                         let _ = bus_clone.send(SpaceEvent::ImportError {
                             path: event_path.clone(),
                             message: "Timed out waiting for import to complete".into(),
@@ -638,7 +688,7 @@ pub async fn do_import(
                 let _ = bus_clone.send(SpaceEvent::Unlocked { path: event_path });
                 let _ = std::fs::remove_file(&file_path);
             });
-            Ok(Json(operation_id.to_string()))
+            Ok(Json(op_id_str))
         }
         Err(e) => {
             error!(path = %path.display(), error = %e, "Import command failed");
@@ -662,8 +712,9 @@ pub async fn clear(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
-) -> Result<Json<bool>, ApiError> {
-    clear_inner(token, path, pattern, bus, lock_manager, pool).await
+    ops: &State<OperationStore>,
+) -> Result<Json<String>, ApiError> {
+    clear_inner(token, path, pattern, bus, lock_manager, pool, ops).await
 }
 
 async fn clear_inner(
@@ -673,7 +724,8 @@ async fn clear_inner(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
-) -> Result<Json<bool>, ApiError> {
+    ops: &State<OperationStore>,
+) -> Result<Json<String>, ApiError> {
     let pattern = pattern.unwrap_or_else(|| "$".to_string());
     let perm = permission_from_token(&token);
     perm.require_write()?;
@@ -731,8 +783,20 @@ async fn clear_inner(
         Ok(()) => {
             info!(path = %path.display(), operation_id = %operation_id, "Clear command submitted successfully");
 
+            let op_id_str = operation_id.to_string();
+            ops.insert(OperationRecord {
+                id: op_id_str.clone(),
+                op_type: "clear".to_string(),
+                status: OperationStatus::Pending,
+                message: None,
+                path: event_path.clone(),
+            })
+            .await;
+
             let bus_tx = bus.0.clone();
             let monitor_path = augmented_path.clone();
+            let ops_clone = ops.inner().clone();
+            let spawn_op_id = op_id_str.clone();
             tokio::spawn(async move {
                 match get_mork_client()
                     .wait_for_available(&monitor_path, MONITOR_TIMEOUT_MS)
@@ -740,12 +804,22 @@ async fn clear_inner(
                 {
                     Ok(()) => {
                         info!(path = %monitor_path.display(), "Clear complete");
+                        ops_clone
+                            .update(&spawn_op_id, OperationStatus::Complete, None)
+                            .await;
                         let _ = bus_tx.send(SpaceEvent::ClearComplete {
                             path: event_path.clone(),
                         });
                     }
                     Err(e) => {
                         error!(path = %monitor_path.display(), error = %e, "Clear timed out waiting for MORK");
+                        ops_clone
+                            .update(
+                                &spawn_op_id,
+                                OperationStatus::Error,
+                                Some("Timed out waiting for clear to complete".into()),
+                            )
+                            .await;
                         let _ = bus_tx.send(SpaceEvent::ClearError {
                             path: event_path.clone(),
                             message: "Timed out waiting for clear to complete".into(),
@@ -754,7 +828,7 @@ async fn clear_inner(
                 }
                 let _ = bus_tx.send(SpaceEvent::Unlocked { path: event_path });
             });
-            Ok(Json(true))
+            Ok(Json(op_id_str))
         }
         Err(e) => {
             error!(path = %path.display(), error = %e, "Clear command failed");
@@ -1188,12 +1262,13 @@ pub async fn import_csv(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     info!(path = %path.display(), token_id = token.id, "File import: CSV");
     let space = crate::translations::create_from_csv(file, params)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner(), ops.inner()).await
 }
 
 #[post("/spaces/import/nt/<path..>", data = "<file>")]
@@ -1204,12 +1279,13 @@ pub async fn import_nt(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     info!(path = %path.display(), token_id = token.id, "File import: N-Triples");
     let space = crate::translations::create_from_nt(file)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner(), ops.inner()).await
 }
 
 #[post("/spaces/import/jsonld/<path..>", data = "<file>")]
@@ -1220,12 +1296,13 @@ pub async fn import_jsonld(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     info!(path = %path.display(), token_id = token.id, "File import: JSON-LD");
     let space = crate::translations::create_from_jsonld(file)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner(), ops.inner()).await
 }
 
 #[post("/spaces/import/n3/<path..>", data = "<file>")]
@@ -1236,12 +1313,13 @@ pub async fn import_n3(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     info!(path = %path.display(), token_id = token.id, "File import: N3");
     let space = crate::translations::create_from_n3(file)
         .await?
         .into_inner();
-    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner(), ops.inner()).await
 }
 
 // ─── Import from URL ─────────────────────────────────────────────────────────
@@ -1273,6 +1351,7 @@ pub async fn import_url_metta(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: MeTTa");
     let bytes = fetch_url_bytes(&url).await?;
@@ -1280,7 +1359,7 @@ pub async fn import_url_metta(
         error!(error = %e, "URL content is not valid UTF-8");
         ApiError::Unprocessable(e.to_string())
     })?;
-    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner(), ops.inner()).await
 }
 
 #[post("/spaces/import/url/csv/<path..>?<url>&<params..>")]
@@ -1292,6 +1371,7 @@ pub async fn import_url_csv(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: CSV");
     let bytes = fetch_url_bytes(&url).await?;
@@ -1303,7 +1383,7 @@ pub async fn import_url_csv(
         },
     )
     .await?;
-    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner(), ops.inner()).await
 }
 
 #[post("/spaces/import/url/nt/<path..>?<url>")]
@@ -1314,12 +1394,13 @@ pub async fn import_url_nt(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: N-Triples");
     let bytes = fetch_url_bytes(&url).await?;
     let space =
         crate::translations::create_from_bytes(bytes, crate::translations::ParseFormat::Nt).await?;
-    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner(), ops.inner()).await
 }
 
 #[post("/spaces/import/url/jsonld/<path..>?<url>")]
@@ -1330,13 +1411,14 @@ pub async fn import_url_jsonld(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: JSON-LD");
     let bytes = fetch_url_bytes(&url).await?;
     let space =
         crate::translations::create_from_bytes(bytes, crate::translations::ParseFormat::JsonLd)
             .await?;
-    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner(), ops.inner()).await
 }
 
 #[post("/spaces/import/url/n3/<path..>?<url>")]
@@ -1347,12 +1429,13 @@ pub async fn import_url_n3(
     bus: &State<EventBus>,
     lock_manager: &State<LockManager>,
     pool: &State<DbPool>,
+    ops: &State<OperationStore>,
 ) -> Result<Json<String>, ApiError> {
     info!(url = %url, path = %path.display(), token_id = token.id, "URL import: N3");
     let bytes = fetch_url_bytes(&url).await?;
     let space =
         crate::translations::create_from_bytes(bytes, crate::translations::ParseFormat::N3).await?;
-    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner()).await
+    do_import(&token, &path, &space, &bus.0, lock_manager, pool.inner(), ops.inner()).await
 }
 
 // ─── Full-space export / init ────────────────────────────────────────────────

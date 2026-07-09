@@ -49,7 +49,7 @@ export function createOwnHistoryStore(getTokenCode: () => string | undefined) {
 
     function authHeader(): HeadersInit | null {
         const code = getTokenCode()
-        return code ? { Authorization: code } : null
+        return code ? { Authorization: `Bearer ${code}` } : null
     }
 
     // ── Targets ───────────────────────────────────────────────────────────────

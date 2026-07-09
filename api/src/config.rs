@@ -64,7 +64,7 @@ impl Config {
             max_upload_bytes: env::var("METTA_KG_MAX_UPLOAD_BYTES")
                 .ok()
                 .and_then(|v| v.parse::<u64>().ok())
-                .unwrap_or(1 * 1024 * 1024),
+                .unwrap_or(256 * 1024 * 1024),
         })
     }
 }
