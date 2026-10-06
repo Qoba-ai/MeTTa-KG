@@ -89,12 +89,28 @@ pub struct ExploreResult {
 
 // ─── S-Expression Utilities ─────────────────────────────────────────────────
 
+// Called after the opening quote. Escaped quotes do not end the string.
+fn skip_quoted_string(chars: &mut impl Iterator<Item = char>) -> bool {
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\\' => {
+                if chars.next().is_none() {
+                    return false;
+                }
+            }
+            '"' => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Count the arity (number of top-level elements) of an S-expression.
 /// Returns 0 for atoms (non-parenthesized values).
 pub fn arity(expr: &str) -> usize {
     let trimmed = expr.trim();
 
-    if !trimmed.starts_with('(') || !trimmed.ends_with(')') {
+    if !is_sexpr(trimmed) {
         return 0;
     }
 
@@ -103,8 +119,18 @@ pub fn arity(expr: &str) -> usize {
     let mut depth = 0;
     let mut in_token = false;
 
-    for ch in inner.chars() {
+    let mut chars = inner.chars();
+    while let Some(ch) = chars.next() {
         match ch {
+            '"' => {
+                if !skip_quoted_string(&mut chars) {
+                    return 0;
+                }
+                if depth == 0 && !in_token {
+                    in_token = true;
+                    count += 1;
+                }
+            }
             '(' => {
                 if depth == 0 && !in_token {
                     in_token = true;
@@ -143,11 +169,8 @@ pub fn is_balanced(s: &str) -> bool {
     while let Some(c) = chars.next() {
         match c {
             '"' => {
-                // Skip the contents of a quoted string
-                for c2 in chars.by_ref() {
-                    if c2 == '"' {
-                        break;
-                    }
+                if !skip_quoted_string(&mut chars) {
+                    return false;
                 }
             }
             '(' => depth += 1,
@@ -171,16 +194,13 @@ pub fn is_sexpr(s: &str) -> bool {
     if !s.starts_with('(') {
         return false;
     }
-    let chars: Vec<char> = s.chars().collect();
-    let len = chars.len();
+    let mut chars = s.chars().peekable();
     let mut depth: i32 = 0;
-    let mut i = 0;
-    while i < len {
-        match chars[i] {
+    while let Some(ch) = chars.next() {
+        match ch {
             '"' => {
-                i += 1;
-                while i < len && chars[i] != '"' {
-                    i += 1;
+                if !skip_quoted_string(&mut chars) {
+                    return false;
                 }
             }
             '(' => depth += 1,
@@ -189,13 +209,12 @@ pub fn is_sexpr(s: &str) -> bool {
                 if depth < 0 {
                     return false;
                 }
-                if depth == 0 && i != len - 1 {
+                if depth == 0 && chars.peek().is_some() {
                     return false;
                 }
             }
             _ => {}
         }
-        i += 1;
     }
     depth == 0
 }
@@ -207,11 +226,15 @@ pub fn parse_binary_sexp(input: &str) -> Option<(&str, &str)> {
         return None;
     }
 
-    let inner = input.trim().strip_prefix('(')?.strip_suffix(')')?;
+    let inner = input.trim().strip_prefix('(')?.strip_suffix(')')?.trim();
     let (lhs, rhs) = inner.split_once(' ')?;
 
-    // LHS must be a simple symbol (no parens)
-    if lhs.contains('(') || lhs.contains(')') {
+    // LHS must be a simple symbol, not an expression or quoted string.
+    if lhs.is_empty()
+        || lhs
+            .chars()
+            .any(|ch| ch.is_whitespace() || matches!(ch, '(' | ')' | '"'))
+    {
         return None;
     }
 
@@ -1018,6 +1041,21 @@ mod tests {
         assert_eq!(arity("((X) Y)"), 2);
     }
 
+    #[test]
+    fn arity_quoted_strings() {
+        for expr in [
+            r#"(name "Alice Smith")"#,
+            r#"(name "")"#,
+            r#"(name "left ) right")"#,
+            r#"(name "left ( right")"#,
+            r#"(name "say \"hello ) world\"")"#,
+            r#"(name "path\\")"#,
+            r#"(name ("嵌套 ) 文本" "another ( string"))"#,
+        ] {
+            assert_eq!(arity(expr), 2, "{expr}");
+        }
+    }
+
     // ── parse_binary_sexp tests ─────────────────────────────────────────────
 
     #[test]
@@ -1033,6 +1071,55 @@ mod tests {
     #[test]
     fn parse_binary_complex_lhs_returns_none() {
         assert_eq!(parse_binary_sexp("((X) Y)"), None);
+    }
+
+    #[test]
+    fn parse_binary_quoted_rhs() {
+        for rhs in [
+            r#""Alice Smith""#,
+            r#""left ) right""#,
+            r#""say \"hello ) world\"""#,
+            r#""path\\""#,
+            r#"("嵌套 ) 文本" "another ( string")"#,
+        ] {
+            let expr = format!("(name {rhs})");
+            assert_eq!(parse_binary_sexp(&expr), Some(("name", rhs)), "{expr}");
+        }
+    }
+
+    #[test]
+    fn parse_binary_quoted_lhs_returns_none() {
+        assert_eq!(parse_binary_sexp(r#"("Alice Smith" value)"#), None);
+        assert_eq!(parse_binary_sexp(r#"("Alice" value)"#), None);
+        for whitespace in [" ", "\t ", "\t", "\n"] {
+            let expr = format!(r#"({whitespace}"Alice Smith" value)"#);
+            assert_eq!(parse_binary_sexp(&expr), None);
+            let expr = format!(r#"({whitespace}name "Alice Smith")"#);
+            assert_eq!(parse_binary_sexp(&expr), Some(("name", r#""Alice Smith""#)));
+        }
+        assert_eq!(parse_binary_sexp("(name\t value)"), None);
+    }
+
+    #[test]
+    fn quoted_string_balance() {
+        for expr in [r#"(name "say \"hello ) world\"")"#, r#"(name "path\\")"#] {
+            assert!(is_balanced(expr), "{expr}");
+            assert!(is_sexpr(expr), "{expr}");
+        }
+        for expr in [
+            r#"(name "unterminated)"#,
+            r#"(name "escaped end\")"#,
+            "(a b))",
+        ] {
+            assert!(!is_balanced(expr), "{expr}");
+            assert!(!is_sexpr(expr), "{expr}");
+        }
+        assert!(!is_sexpr(r#"(name "Alice Smith") (other value)"#));
+        for expr in ["", "bare-symbol", r#""a quoted atom""#, "(a b) (c d)"] {
+            assert!(is_balanced(expr), "{expr}");
+            assert!(!is_sexpr(expr), "{expr}");
+        }
+        assert_eq!(arity("(a b) (c d)"), 0);
     }
 
     #[test]
